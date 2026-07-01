@@ -1,0 +1,50 @@
+# Dependencies
+ddtm_evm/node_modules/
+ddtm_evm/package-lock.json
+
+# Hardhat artifacts & cache
+ddtm_evm/artifacts/
+ddtm_evm/cache/
+ddtm_evm/typechain-types/
+
+# ZKP build outputs (NOT pre-compiled releases)
+ddtm_zkp/pi_q_bin
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.toc
+*.out
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.bbl
+*.blg
+*.bak
+*.run.xml
+*.bcf
+_minted*/
+
+# OS
+.DS_Store
+Thumbs.db
+*.exe
+*.test
+*.out
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local

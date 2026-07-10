@@ -30,8 +30,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22.16.0"
-          cache: npm
-          cache-dependency-path: ddtm_evm/package-lock.json
 
       - name: Test V1 circuits
         working-directory: ddtm_zkp
@@ -76,8 +74,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22.16.0"
-          cache: npm
-          cache-dependency-path: services/gateway/package-lock.json
 
       - name: Install gateway dependencies
         working-directory: services/gateway

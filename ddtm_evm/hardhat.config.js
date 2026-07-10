@@ -6,7 +6,8 @@ module.exports = {
     version: "0.8.20",
     settings: {
       viaIR: true,
-      optimizer: { enabled: true, runs: 200 },
+      // V1 favors deployable bytecode size over repeated-call gas optimization.
+      optimizer: { enabled: true, runs: 1 },
     },
   },
   networks: {

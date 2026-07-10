@@ -84,13 +84,13 @@ export function createIndexer({ chain, db, pollMs, confirmations, logger = conso
 
   async function findCommonAncestor(start) {
     let cursor = start;
-    while (cursor > 0n) {
+    while (true) {
       const stored = await db.getBlock(cursor);
       const canonical = await chain.getBlock(Number(cursor));
       if (stored && canonical && stored.block_hash === canonical.hash) return cursor + 1n;
+      if (cursor === 0n) return 0n;
       cursor -= 1n;
     }
-    return 0n;
   }
 
   async function start() {

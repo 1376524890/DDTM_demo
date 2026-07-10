@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { Contract, Interface, JsonRpcProvider, Wallet } from "ethers";
+import { Contract, HDNodeWallet, Interface, JsonRpcProvider, Wallet } from "ethers";
 
 const ABI = [
   "function list((uint256 cD,uint256 cQ,uint256 cK,uint256 zkRoot,bytes32 objectDigest,bytes32 objectKeyHash,bytes32 contractHash,uint256 price,uint256 minPresent,uint256 maxValue,uint256 maxAge,uint64 asOfTime,uint256 nonce) terms,bytes32 requestId) payable returns (uint256 id,bytes32 tid)",
@@ -53,9 +53,9 @@ export async function createChain(config) {
 
   const provider = new JsonRpcProvider(config.rpcUrl);
   const network = await provider.getNetwork();
-  const seller = new Wallet(config.sellerPrivateKey, provider);
-  const buyer = new Wallet(config.buyerPrivateKey, provider);
-  const arbitrator = new Wallet(config.arbitratorPrivateKey, provider);
+  const seller = actorWallet(config.sellerPrivateKey, config.localMnemonic, 1, provider);
+  const buyer = actorWallet(config.buyerPrivateKey, config.localMnemonic, 2, provider);
+  const arbitrator = actorWallet(config.arbitratorPrivateKey, config.localMnemonic, 3, provider);
   const iface = new Interface(ABI);
 
   const contracts = Object.freeze({
@@ -137,6 +137,7 @@ export async function createChain(config) {
   return Object.freeze({
     provider,
     address,
+    deploymentBlock: BigInt(deployment.deploymentBlock ?? 0),
     chainId: network.chainId,
     interface: iface,
     stateNames: STATE_NAMES,
@@ -145,15 +146,19 @@ export async function createChain(config) {
     getListing,
     getState: async (id) => Number(await contracts.readonly.getState(id)),
     getContext: async (id) => (await contracts.readonly.contextOf(id)).toString(),
-    getLogs: (fromBlock, toBlock) =>
-      provider.getLogs({ address, fromBlock, toBlock }),
+    getLogs: (fromBlock, toBlock) => provider.getLogs({ address, fromBlock, toBlock }),
     getBlock: (number) => provider.getBlock(number),
     parseLog: (log) => iface.parseLog(log),
   });
 }
 
+function actorWallet(privateKey, mnemonic, index, provider) {
+  if (privateKey) return new Wallet(privateKey, provider);
+  return HDNodeWallet.fromPhrase(mnemonic, undefined, `m/44'/60'/0'/0/${index}`).connect(provider);
+}
+
 async function loadDeployment(config) {
-  if (config.contractAddress) return { ddtm: config.contractAddress };
+  if (config.contractAddress) return { ddtm: config.contractAddress, deploymentBlock: 0 };
   const data = await readFile(config.deploymentFile, "utf8");
   return JSON.parse(data);
 }

@@ -1,1 +1,20 @@
-{}
+{
+  "name": "ddtm-v1-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/server.js"
+  },
+  "dependencies": {
+    "ethers": "^6.15.0",
+    "express": "^5.1.0",
+    "minio": "^8.0.5",
+    "pg": "^8.16.3"
+  }
+}

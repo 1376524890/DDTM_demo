@@ -93,9 +93,26 @@ func (s *server) handleProof(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	jsonRecord, err := lastJSONRecord(output)
+	if err != nil {
+		log.Printf("proof generator returned no valid JSON: %s", output)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(output)
+	_, _ = w.Write(jsonRecord)
+}
+
+func lastJSONRecord(output []byte) ([]byte, error) {
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		candidate := []byte(strings.TrimSpace(lines[i]))
+		if len(candidate) > 0 && json.Valid(candidate) {
+			return candidate, nil
+		}
+	}
+	return nil, fmt.Errorf("proof generator returned no JSON record")
 }
 
 func (s *server) authenticate(r *http.Request, body []byte) error {

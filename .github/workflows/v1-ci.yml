@@ -13,19 +13,104 @@ permissions:
   contents: read
 
 jobs:
-  repository-smoke-check:
+  zkp-and-contracts:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.7"
+          cache-dependency-path: ddtm_zkp/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: npm
+          cache-dependency-path: ddtm_evm/package-lock.json
+
+      - name: Test V1 circuits
+        working-directory: ddtm_zkp
+        run: go test ./v1/... ./cmd/v1setup ./cmd/v1prove ./cmd/v1prover
+
+      - name: Generate proving keys and Solidity verifiers
+        working-directory: ddtm_zkp
+        run: |
+          mkdir -p bin artifacts/v1 ../ddtm_evm/contracts/generated
+          go run ./cmd/v1setup --artifacts artifacts/v1 --contracts ../ddtm_evm/contracts/generated
+          go build -o bin/v1prove ./cmd/v1prove
+
+      - name: Install Hardhat dependencies
+        working-directory: ddtm_evm
+        run: npm install --no-audit --no-fund
+
+      - name: Run mock and real-proof EVM tests
+        working-directory: ddtm_evm
+        env:
+          DDTM_V1_REAL_ZKP: "1"
+          DDTM_V1_PROVER_BIN: ../ddtm_zkp/bin/v1prove
+          DDTM_V1_ZKP_ARTIFACTS: ../ddtm_zkp/artifacts/v1
+        run: npx hardhat test
+
+      - name: Upload circuit manifest and verifier contracts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ddtm-v1-zkp-manifest
+          path: |
+            ddtm_zkp/artifacts/v1/manifest.json
+            ddtm_evm/contracts/generated/*.sol
+          if-no-files-found: error
+
+  gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: npm
+          cache-dependency-path: services/gateway/package-lock.json
+
+      - name: Install gateway dependencies
+        working-directory: services/gateway
+        run: npm install --no-audit --no-fund
+
+      - name: Check gateway syntax
+        working-directory: services/gateway
+        run: |
+          npm run check
+          for file in src/*.js; do node --check "$file"; done
+
+      - name: Run gateway tests
+        working-directory: services/gateway
+        run: npm test
+
+  compose-definition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose definition
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+
       - name: Verify required V1 paths
-        shell: bash
         run: |
           set -euo pipefail
           test -f ddtm_evm/contracts/DDTM.sol
-          test -f ddtm_evm/hardhat.config.js
-          test -f ddtm_zkp/go.mod
+          test -f ddtm_zkp/v1/circuits/circuits.go
+          test -f services/gateway/src/server.js
+          test -f services/gateway/sql/init.sql
+          test -f scripts/v1_smoke.sh
           test -f docker-compose.yml
-          test -d services/gateway
-          echo "DDTM V1 repository structure is present."

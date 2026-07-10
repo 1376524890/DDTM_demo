@@ -137,3 +137,52 @@ jobs:
           test -f services/gateway/sql/init.sql
           test -f scripts/v1_smoke.sh
           test -f docker-compose.yml
+
+  integrated-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure local research stack
+        run: cp .env.example .env
+
+      - name: Build and start all services
+        run: docker compose up --build -d
+
+      - name: Wait for gateway health
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            if curl -fsS http://127.0.0.1:8080/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose ps
+          exit 1
+
+      - name: Run decrypt-before-confirm smoke test
+        run: bash scripts/v1_smoke.sh 2>&1 | tee /tmp/ddtm-v1-smoke.log
+
+      - name: Capture integration diagnostics
+        if: always()
+        run: |
+          docker compose ps > /tmp/ddtm-v1-compose-ps.log || true
+          docker compose logs --no-color > /tmp/ddtm-v1-compose.log || true
+
+      - name: Upload integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ddtm-v1-integration-diagnostics
+          path: |
+            /tmp/ddtm-v1-smoke.log
+            /tmp/ddtm-v1-compose-ps.log
+            /tmp/ddtm-v1-compose.log
+          if-no-files-found: warn
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v --remove-orphans

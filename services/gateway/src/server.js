@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import express from "express";
 import { requireApiKey, requireIdempotency } from "./auth.js";
 import { createChain } from "./chain.js";
@@ -61,6 +62,30 @@ export async function createApplication(overrides = {}) {
 
   api.get("/listings/:id/downloads", asyncHandler(async (req, res) => {
     res.json(await operations.downloadLinks(req.params.id));
+  }));
+
+  api.get("/listings/:id/artifacts/:kind", asyncHandler(async (req, res) => {
+    const row = await db.getListing(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "listing_not_found" });
+      return;
+    }
+    const isCiphertext = req.params.kind === "ciphertext";
+    const isEnvelope = req.params.kind === "key-envelope";
+    if (!isCiphertext && !isEnvelope) {
+      res.status(404).json({ error: "artifact_not_found" });
+      return;
+    }
+    const objectKey = isCiphertext ? row.object_key : row.envelope_object_key;
+    const digest = isCiphertext ? row.object_digest : row.envelope_digest;
+    if (!objectKey) {
+      res.status(409).json({ error: "artifact_not_available" });
+      return;
+    }
+    const object = await storage.get(objectKey, digest);
+    res.type(isCiphertext ? "application/vnd.ddtm.ciphertext+json" : "application/octet-stream");
+    res.set("x-ddtm-sha256", object.digest);
+    res.send(object.body);
   }));
 
   api.post("/listings", requireIdempotency, asyncHandler(async (req, res) => {
@@ -140,7 +165,7 @@ async function main() {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((error) => {
     console.error(error);
     process.exit(1);

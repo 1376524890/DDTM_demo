@@ -1,1 +1,168 @@
-name: temp
+name: ddtm-v1
+
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ddtm}
+      POSTGRES_USER: ${POSTGRES_USER:-ddtm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ddtm-local-password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./services/gateway/sql/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ddtm} -d ${POSTGRES_DB:-ddtm}"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ddtmadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ddtm-minio-local-password}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  zkp-setup:
+    build:
+      context: ./ddtm_zkp
+      dockerfile: Dockerfile.v1
+    entrypoint: ["/app/bin/v1setup"]
+    command:
+      - --artifacts
+      - /app/artifacts/v1
+      - --contracts
+      - /app/contracts
+    volumes:
+      - zkp-artifacts:/app/artifacts
+      - generated-contracts:/app/contracts
+    restart: "no"
+
+  hardhat:
+    image: node:22.16-bookworm-slim
+    working_dir: /workspace
+    command: sh -c "npm install --no-audit --no-fund && npx hardhat node --hostname 0.0.0.0"
+    environment:
+      HARDHAT_DISABLE_TELEMETRY_PROMPT: "true"
+    ports:
+      - "8545:8545"
+    volumes:
+      - ./ddtm_evm:/workspace
+      - generated-contracts:/workspace/contracts/generated
+      - deployments:/workspace/deployments
+      - hardhat-node-modules:/workspace/node_modules
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://localhost:8545',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_chainId',params:[]})}).then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(j=>{if(!j.result)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    restart: unless-stopped
+
+  deployer:
+    image: node:22.16-bookworm-slim
+    working_dir: /workspace
+    command: sh -c "npm install --no-audit --no-fund && npx hardhat run scripts/deploy_v1.js --network localhost"
+    environment:
+      HARDHAT_DISABLE_TELEMETRY_PROMPT: "true"
+      RPC_URL: http://hardhat:8545
+      DEPLOYMENT_OUTPUT: /workspace/deployments/v1.json
+      DDTM_WINDOW_SECONDS: ${DDTM_WINDOW_SECONDS:-300}
+    volumes:
+      - ./ddtm_evm:/workspace
+      - generated-contracts:/workspace/contracts/generated
+      - deployments:/workspace/deployments
+      - hardhat-node-modules:/workspace/node_modules
+    depends_on:
+      zkp-setup:
+        condition: service_completed_successfully
+      hardhat:
+        condition: service_healthy
+    restart: "no"
+
+  prover:
+    build:
+      context: ./ddtm_zkp
+      dockerfile: Dockerfile.v1
+    environment:
+      PROVER_PORT: "8081"
+      PROVER_BIN: /app/bin/v1prove
+      ARTIFACTS_DIR: /app/artifacts/v1
+      PROVER_SHARED_SECRET: ${PROVER_SHARED_SECRET:-ddtm-v1-prover-local-secret}
+    volumes:
+      - zkp-artifacts:/app/artifacts:ro
+    depends_on:
+      zkp-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ./services/gateway
+    environment:
+      GATEWAY_PORT: "8080"
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:-ddtm-v1-local-api-key}
+      GATEWAY_MASTER_KEY: ${GATEWAY_MASTER_KEY:-ddtm-v1-local-master-key-change-me}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ddtm}:${POSTGRES_PASSWORD:-ddtm-local-password}@postgres:5432/${POSTGRES_DB:-ddtm}
+      RPC_URL: http://hardhat:8545
+      DEPLOYMENT_FILE: /app/deployments/v1.json
+      LOCAL_MNEMONIC: ${LOCAL_MNEMONIC:-test test test test test test test test test test test junk}
+      PROVER_URL: http://prover:8081
+      PROVER_SHARED_SECRET: ${PROVER_SHARED_SECRET:-ddtm-v1-prover-local-secret}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: "9000"
+      MINIO_USE_SSL: "false"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ddtmadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ddtm-minio-local-password}
+      MINIO_BUCKET: ${MINIO_BUCKET:-ddtm-v1}
+      CHAIN_CONFIRMATIONS: "1"
+      INDEXER_POLL_MS: "1000"
+    ports:
+      - "8080:8080"
+    volumes:
+      - deployments:/app/deployments:ro
+    depends_on:
+      deployer:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      prover:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://localhost:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  minio-data:
+  zkp-artifacts:
+  generated-contracts:
+  deployments:
+  hardhat-node-modules:

@@ -13,11 +13,11 @@ import (
 )
 
 const (
-	BlockCount       = 16
-	RecordCount      = 4
-	QualityPurpose   = 1
-	KeyPurpose       = 2
-	DeliveryPurpose  = 3
+	BlockCount      = 16
+	RecordCount     = 4
+	QualityPurpose  = 1
+	KeyPurpose      = 2
+	DeliveryPurpose = 3
 )
 
 // Each record occupies four field elements: value, timestamp, present-bit, reserved-zero.
@@ -59,7 +59,6 @@ func (c *QualityCircuit) Define(api frontend.API) error {
 		api.AssertIsLessOrEqual(value, c.MaxValue)
 		api.AssertIsLessOrEqual(timestamp, c.AsOfTime)
 		api.AssertIsLessOrEqual(api.Sub(c.AsOfTime, timestamp), c.MaxAge)
-		// Missing records must not carry a hidden non-zero value.
 		api.AssertIsEqual(api.Mul(api.Sub(1, present), value), 0)
 		validCount = api.Add(validCount, present)
 	}
@@ -90,11 +89,12 @@ type KeyCircuit struct {
 	RK   frontend.Variable `gnark:",secret"`
 	REnc frontend.Variable `gnark:",secret"`
 
-	CK       frontend.Variable `gnark:",public"`
-	BuyerKey frontend.Variable `gnark:",public"`
-	KEnc     frontend.Variable `gnark:",public"`
-	Context  frontend.Variable `gnark:",public"`
-	Binding  frontend.Variable `gnark:",public"`
+	CK                  frontend.Variable `gnark:",public"`
+	BuyerKey            frontend.Variable `gnark:",public"`
+	KEnc                frontend.Variable `gnark:",public"`
+	EnvelopeDigestField frontend.Variable `gnark:",public"`
+	Context             frontend.Variable `gnark:",public"`
+	Binding             frontend.Variable `gnark:",public"`
 }
 
 func (c *KeyCircuit) Define(api frontend.API) error {
@@ -123,6 +123,7 @@ func (c *KeyCircuit) Define(api frontend.API) error {
 	hBinding.Write(c.CK)
 	hBinding.Write(c.BuyerKey)
 	hBinding.Write(c.KEnc)
+	hBinding.Write(c.EnvelopeDigestField)
 	hBinding.Write(c.Context)
 	hBinding.Write(KeyPurpose)
 	api.AssertIsEqual(hBinding.Sum(), c.Binding)
@@ -136,11 +137,12 @@ type DeliveryCircuit struct {
 	RD      frontend.Variable             `gnark:",secret"`
 	RK      frontend.Variable             `gnark:",secret"`
 
-	CD      frontend.Variable `gnark:",public"`
-	CK      frontend.Variable `gnark:",public"`
-	Root    frontend.Variable `gnark:",public"`
-	Context frontend.Variable `gnark:",public"`
-	Binding frontend.Variable `gnark:",public"`
+	CD                frontend.Variable `gnark:",public"`
+	CK                frontend.Variable `gnark:",public"`
+	Root              frontend.Variable `gnark:",public"`
+	ObjectDigestField frontend.Variable `gnark:",public"`
+	Context           frontend.Variable `gnark:",public"`
+	Binding           frontend.Variable `gnark:",public"`
 }
 
 func (c *DeliveryCircuit) Define(api frontend.API) error {
@@ -187,6 +189,7 @@ func (c *DeliveryCircuit) Define(api frontend.API) error {
 	hBinding.Write(c.CD)
 	hBinding.Write(c.CK)
 	hBinding.Write(c.Root)
+	hBinding.Write(c.ObjectDigestField)
 	hBinding.Write(c.Context)
 	hBinding.Write(DeliveryPurpose)
 	api.AssertIsEqual(hBinding.Sum(), c.Binding)
@@ -270,10 +273,10 @@ func KeyEnvelope(buyerKey, key, rEnc, context *big.Int) *big.Int {
 	return Hash(buyerKey, key, rEnc, context)
 }
 
-func KeyBinding(cK, buyerKey, kEnc, context *big.Int) *big.Int {
-	return Hash(cK, buyerKey, kEnc, context, big.NewInt(KeyPurpose))
+func KeyBinding(cK, buyerKey, kEnc, envelopeDigestField, context *big.Int) *big.Int {
+	return Hash(cK, buyerKey, kEnc, envelopeDigestField, context, big.NewInt(KeyPurpose))
 }
 
-func DeliveryBinding(cD, cK, root, context *big.Int) *big.Int {
-	return Hash(cD, cK, root, context, big.NewInt(DeliveryPurpose))
+func DeliveryBinding(cD, cK, root, objectDigestField, context *big.Int) *big.Int {
+	return Hash(cD, cK, root, objectDigestField, context, big.NewInt(DeliveryPurpose))
 }

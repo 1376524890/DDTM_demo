@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -19,19 +20,21 @@ import (
 )
 
 type request struct {
-	Blocks     []string `json:"blocks"`
-	EncRand    []string `json:"encRand"`
-	Key        string   `json:"key"`
-	RD         string   `json:"rD"`
-	RQ         string   `json:"rQ"`
-	RK         string   `json:"rK"`
-	REnc       string   `json:"rEnc"`
-	MinPresent string   `json:"minPresent"`
-	MaxValue   string   `json:"maxValue"`
-	MaxAge     string   `json:"maxAge"`
-	AsOfTime   string   `json:"asOfTime"`
-	Context    string   `json:"context"`
-	BuyerKey   string   `json:"buyerKey"`
+	Blocks              []string `json:"blocks"`
+	EncRand             []string `json:"encRand"`
+	Key                 string   `json:"key"`
+	RD                  string   `json:"rD"`
+	RQ                  string   `json:"rQ"`
+	RK                  string   `json:"rK"`
+	REnc                string   `json:"rEnc"`
+	MinPresent          string   `json:"minPresent"`
+	MaxValue            string   `json:"maxValue"`
+	MaxAge              string   `json:"maxAge"`
+	AsOfTime            string   `json:"asOfTime"`
+	Context             string   `json:"context"`
+	BuyerKey            string   `json:"buyerKey"`
+	ObjectDigestField   string   `json:"objectDigestField"`
+	EnvelopeDigestField string   `json:"envelopeDigestField"`
 }
 
 type commitments struct {
@@ -83,7 +86,6 @@ func main() {
 
 	switch *proofType {
 	case "commitments":
-		// No proof is generated. This operation is used before the buyer and transaction context are known.
 	case "quality":
 		if err := generateQuality(*artifactsDir, req, mat, &out); err != nil {
 			fatal(err)
@@ -199,16 +201,21 @@ func generateKey(artifactsDir string, req request, mat material, out *response) 
 	if err != nil {
 		return fmt.Errorf("buyerKey: %w", err)
 	}
+	envelopeDigestField, err := scalar(req.EnvelopeDigestField)
+	if err != nil {
+		return fmt.Errorf("envelopeDigestField: %w", err)
+	}
 	context, err := scalar(req.Context)
 	if err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
 	cK, _ := new(big.Int).SetString(out.Commitments.CK, 10)
 	keyEnvelope := circuits.KeyEnvelope(buyerKey, mat.key, mat.rEnc, context)
-	binding := circuits.KeyBinding(cK, buyerKey, keyEnvelope, context)
+	binding := circuits.KeyBinding(cK, buyerKey, keyEnvelope, envelopeDigestField, context)
 	assignment := &circuits.KeyCircuit{
 		Key: mat.key, RK: mat.rK, REnc: mat.rEnc,
-		CK: cK, BuyerKey: buyerKey, KEnc: keyEnvelope, Context: context, Binding: binding,
+		CK: cK, BuyerKey: buyerKey, KEnc: keyEnvelope,
+		EnvelopeDigestField: envelopeDigestField, Context: context, Binding: binding,
 	}
 	proofHex, err := prove(filepath.Join(artifactsDir, "pi_key"), assignment)
 	if err != nil {
@@ -217,11 +224,15 @@ func generateKey(artifactsDir string, req request, mat material, out *response) 
 	out.Proof = proofHex
 	out.Binding = binding.String()
 	out.KeyEnvelope = keyEnvelope.String()
-	out.PublicInputs = decimals(cK, buyerKey, keyEnvelope, context, binding)
+	out.PublicInputs = decimals(cK, buyerKey, keyEnvelope, envelopeDigestField, context, binding)
 	return nil
 }
 
 func generateDelivery(artifactsDir string, req request, mat material, out *response) error {
+	objectDigestField, err := scalar(req.ObjectDigestField)
+	if err != nil {
+		return fmt.Errorf("objectDigestField: %w", err)
+	}
 	context, err := scalar(req.Context)
 	if err != nil {
 		return fmt.Errorf("context: %w", err)
@@ -229,10 +240,11 @@ func generateDelivery(artifactsDir string, req request, mat material, out *respo
 	cD, _ := new(big.Int).SetString(out.Commitments.CD, 10)
 	cK, _ := new(big.Int).SetString(out.Commitments.CK, 10)
 	root, _ := new(big.Int).SetString(out.Commitments.ZKRoot, 10)
-	binding := circuits.DeliveryBinding(cD, cK, root, context)
+	binding := circuits.DeliveryBinding(cD, cK, root, objectDigestField, context)
 	assignment := &circuits.DeliveryCircuit{
 		Key: mat.key, RD: mat.rD, RK: mat.rK,
-		CD: cD, CK: cK, Root: root, Context: context, Binding: binding,
+		CD: cD, CK: cK, Root: root, ObjectDigestField: objectDigestField,
+		Context: context, Binding: binding,
 	}
 	for i := range mat.blocks {
 		assignment.Blocks[i] = mat.blocks[i]
@@ -244,7 +256,7 @@ func generateDelivery(artifactsDir string, req request, mat material, out *respo
 	}
 	out.Proof = proofHex
 	out.Binding = binding.String()
-	out.PublicInputs = decimals(cD, cK, root, context, binding)
+	out.PublicInputs = decimals(cD, cK, root, objectDigestField, context, binding)
 	return nil
 }
 
@@ -288,7 +300,7 @@ func prove(prefix string, assignment frontend.Circuit) (string, error) {
 	return "0x" + hex.EncodeToString(raw.Bytes()[:256]), nil
 }
 
-func readObject(path string, reader interface{ ReadFrom(r interface{ Read([]byte) (int, error) }) (int64, error) }) error {
+func readObject(path string, reader io.ReaderFrom) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)

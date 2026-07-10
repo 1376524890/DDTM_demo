@@ -1,0 +1,17 @@
+FROM golang:1.25-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/v1prove ./cmd/v1prove \
+ && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/v1prover ./cmd/v1prover
+
+FROM alpine:3.22
+RUN addgroup -S ddtm && adduser -S -G ddtm ddtm \
+ && apk add --no-cache ca-certificates
+WORKDIR /app
+COPY --from=build /out/v1prove /app/bin/v1prove
+COPY --from=build /out/v1prover /app/bin/v1prover
+USER ddtm
+EXPOSE 8081
+ENTRYPOINT ["/app/bin/v1prover"]

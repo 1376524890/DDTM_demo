@@ -42,7 +42,8 @@ describeReal("DDTM V1 real Groth16 integration", function () {
     if (child.status !== 0) {
       throw new Error(`v1prove ${type} failed: ${child.stderr || child.stdout}`);
     }
-    return JSON.parse(child.stdout);
+    const jsonLine = child.stdout.trim().split(/\r?\n/).at(-1);
+    return JSON.parse(jsonLine);
   }
 
   it("runs LISTED through CONFIRMED with three generated proofs", async function () {

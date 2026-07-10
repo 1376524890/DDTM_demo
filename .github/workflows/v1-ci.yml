@@ -32,7 +32,6 @@ jobs:
           node-version: "22.16.0"
 
       - name: Test V1 circuits
-        id: go-tests
         working-directory: ddtm_zkp
         run: |
           set -o pipefail
@@ -69,9 +68,20 @@ jobs:
           DDTM_V1_REAL_ZKP: "1"
           DDTM_V1_PROVER_BIN: ../ddtm_zkp/bin/v1prove
           DDTM_V1_ZKP_ARTIFACTS: ../ddtm_zkp/artifacts/v1
-        run: npx hardhat test
+        run: |
+          set -o pipefail
+          npx hardhat test 2>&1 | tee /tmp/ddtm-v1-evm-test.log
+
+      - name: Upload EVM test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ddtm-v1-evm-test-log
+          path: /tmp/ddtm-v1-evm-test.log
+          if-no-files-found: warn
 
       - name: Upload circuit manifest and verifier contracts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ddtm-v1-zkp-manifest

@@ -136,6 +136,7 @@ jobs:
           test -f services/gateway/src/server.js
           test -f services/gateway/sql/init.sql
           test -f scripts/v1_smoke.sh
+          test -f scripts/v1_dispute_smoke.sh
           test -f docker-compose.yml
 
   integrated-smoke:
@@ -166,6 +167,9 @@ jobs:
       - name: Run decrypt-before-confirm smoke test
         run: bash scripts/v1_smoke.sh 2>&1 | tee /tmp/ddtm-v1-smoke.log
 
+      - name: Run evidence-bound dispute smoke test
+        run: bash scripts/v1_dispute_smoke.sh 2>&1 | tee /tmp/ddtm-v1-dispute-smoke.log
+
       - name: Capture integration diagnostics
         if: always()
         run: |
@@ -179,6 +183,7 @@ jobs:
           name: ddtm-v1-integration-diagnostics
           path: |
             /tmp/ddtm-v1-smoke.log
+            /tmp/ddtm-v1-dispute-smoke.log
             /tmp/ddtm-v1-compose-ps.log
             /tmp/ddtm-v1-compose.log
           if-no-files-found: warn

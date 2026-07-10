@@ -20,7 +20,7 @@ contract MockPiKeyVerifier {
         valid = value;
     }
 
-    function verifyProof(bytes calldata proof, uint256[5] calldata) external view {
+    function verifyProof(bytes calldata proof, uint256[6] calldata) external view {
         require(valid && proof.length > 0, "invalid key proof");
     }
 }
@@ -32,7 +32,7 @@ contract MockPiDeliverVerifier {
         valid = value;
     }
 
-    function verifyProof(bytes calldata proof, uint256[5] calldata) external view {
+    function verifyProof(bytes calldata proof, uint256[6] calldata) external view {
         require(valid && proof.length > 0, "invalid delivery proof");
     }
 }

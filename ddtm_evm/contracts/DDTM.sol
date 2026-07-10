@@ -6,18 +6,17 @@ interface IPiQVerifier {
 }
 
 interface IPiKeyVerifier {
-    function verifyProof(bytes calldata proof, uint256[5] calldata input) external view;
+    function verifyProof(bytes calldata proof, uint256[6] calldata input) external view;
 }
 
 interface IPiDeliverVerifier {
-    function verifyProof(bytes calldata proof, uint256[5] calldata input) external view;
+    function verifyProof(bytes calldata proof, uint256[6] calldata input) external view;
 }
 
 /**
  * @title DDTMProtocol V1
- * @notice Reference implementation of the DDTM protocol on an EVM-compatible chain.
- *         Large ciphertexts are stored off-chain in MinIO. The contract stores immutable
- *         commitments, object digests, proof bindings and the complete escrow state machine.
+ * @notice EVM reference implementation of DDTM. Ciphertexts are stored in MinIO;
+ *         the chain stores commitments, object digests, proof bindings and escrow state.
  */
 contract DDTMProtocol {
     uint256 public constant SNARK_SCALAR_FIELD =
@@ -318,7 +317,8 @@ contract DDTMProtocol {
         idempotent(requestId)
     {
         Listing storage item = _listings[id];
-        if (block.timestamp > item.qualityDeadline || binding >= SNARK_SCALAR_FIELD) revert DeadlineExpired();
+        if (block.timestamp > item.qualityDeadline) revert DeadlineExpired();
+        if (binding >= SNARK_SCALAR_FIELD) revert InvalidValue();
 
         uint256[8] memory input = [
             item.cD,
@@ -347,9 +347,18 @@ contract DDTMProtocol {
         idempotent(requestId)
     {
         Listing storage item = _listings[id];
-        if (block.timestamp > item.deliveryDeadline || binding >= SNARK_SCALAR_FIELD) revert DeadlineExpired();
+        if (block.timestamp > item.deliveryDeadline) revert DeadlineExpired();
+        if (binding >= SNARK_SCALAR_FIELD) revert InvalidValue();
 
-        uint256[5] memory input = [item.cD, item.cK, item.zkRoot, contextOf(id), binding];
+        uint256 objectDigestField = uint256(item.objectDigest) % SNARK_SCALAR_FIELD;
+        uint256[6] memory input = [
+            item.cD,
+            item.cK,
+            item.zkRoot,
+            objectDigestField,
+            contextOf(id),
+            binding
+        ];
         try deliveryVerifier.verifyProof(proof, input) {
             item.keyDeadline = uint64(block.timestamp) + keyWindow;
             item.state = State.DELIVERED;
@@ -369,15 +378,23 @@ contract DDTMProtocol {
         bytes32 requestId
     ) external onlySeller(id) inState(id, State.DELIVERED) idempotent(requestId) {
         Listing storage item = _listings[id];
+        if (block.timestamp > item.keyDeadline) revert DeadlineExpired();
         if (
-            block.timestamp > item.keyDeadline ||
             keyEnvelope == 0 ||
             keyEnvelope >= SNARK_SCALAR_FIELD ||
             keyEnvelopeDigest == bytes32(0) ||
             binding >= SNARK_SCALAR_FIELD
-        ) revert DeadlineExpired();
+        ) revert InvalidValue();
 
-        uint256[5] memory input = [item.cK, item.buyerKey, keyEnvelope, contextOf(id), binding];
+        uint256 envelopeDigestField = uint256(keyEnvelopeDigest) % SNARK_SCALAR_FIELD;
+        uint256[6] memory input = [
+            item.cK,
+            item.buyerKey,
+            keyEnvelope,
+            envelopeDigestField,
+            contextOf(id),
+            binding
+        ];
         try keyVerifier.verifyProof(proof, input) {
             item.keyEnvelope = keyEnvelope;
             item.keyEnvelopeDigest = keyEnvelopeDigest;

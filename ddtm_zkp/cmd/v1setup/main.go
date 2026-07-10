@@ -60,8 +60,8 @@ func main() {
 
 	specs := []circuitSpec{
 		{Name: "pi_q", ContractName: "PiQVerifier", PublicInputs: 8, Circuit: &circuits.QualityCircuit{}},
-		{Name: "pi_key", ContractName: "PiKeyVerifier", PublicInputs: 5, Circuit: &circuits.KeyCircuit{}},
-		{Name: "pi_deliver", ContractName: "PiDeliverVerifier", PublicInputs: 5, Circuit: &circuits.DeliveryCircuit{}},
+		{Name: "pi_key", ContractName: "PiKeyVerifier", PublicInputs: 6, Circuit: &circuits.KeyCircuit{}},
+		{Name: "pi_deliver", ContractName: "PiDeliverVerifier", PublicInputs: 6, Circuit: &circuits.DeliveryCircuit{}},
 	}
 
 	out := manifest{

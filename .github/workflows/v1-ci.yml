@@ -114,7 +114,17 @@ jobs:
 
       - name: Run gateway tests
         working-directory: services/gateway
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/ddtm-v1-gateway-test.log
+
+      - name: Upload gateway test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ddtm-v1-gateway-test-log
+          path: /tmp/ddtm-v1-gateway-test.log
+          if-no-files-found: warn
 
   compose-definition:
     runs-on: ubuntu-latest

@@ -32,8 +32,19 @@ jobs:
           node-version: "22.16.0"
 
       - name: Test V1 circuits
+        id: go-tests
         working-directory: ddtm_zkp
-        run: go test ./v1/... ./cmd/v1setup ./cmd/v1prove ./cmd/v1prover
+        run: |
+          set -o pipefail
+          go test ./v1/... ./cmd/v1setup ./cmd/v1prove ./cmd/v1prover 2>&1 | tee /tmp/ddtm-v1-go-test.log
+
+      - name: Upload Go test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ddtm-v1-go-test-log
+          path: /tmp/ddtm-v1-go-test.log
+          if-no-files-found: error
 
       - name: Generate proving keys and Solidity verifiers
         working-directory: ddtm_zkp

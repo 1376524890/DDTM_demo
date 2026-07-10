@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, artifacts } = require("hardhat");
 
 describe("DDTMProtocol V1", function () {
   const PRICE = ethers.parseEther("1");
@@ -219,6 +219,13 @@ describe("DDTMProtocol V1", function () {
     const context = await ddtm.contextOf(id);
     expect(context).to.be.greaterThan(0n);
     expect(context).to.be.lessThan(await ddtm.SNARK_SCALAR_FIELD());
+  });
+
+  it("keeps deployed runtime bytecode within the EIP-170 limit", async function () {
+    const artifact = await artifacts.readArtifact("DDTMProtocol");
+    const runtimeBytes = (artifact.deployedBytecode.length - 2) / 2;
+    console.log(`DDTM V1 runtime bytecode: ${runtimeBytes} bytes`);
+    expect(runtimeBytes).to.be.at.most(24_576);
   });
 
   it("reports gas for the full state transition path", async function () {

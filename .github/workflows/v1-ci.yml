@@ -1,1 +1,31 @@
-name: temporary
+name: DDTM V1 CI
+
+on:
+  push:
+    branches:
+      - master
+      - feature/system-integration-v1
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  repository-smoke-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify required V1 paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ddtm_evm/contracts/DDTM.sol
+          test -f ddtm_evm/hardhat.config.js
+          test -f ddtm_zkp/go.mod
+          test -f docker-compose.yml
+          test -d services/gateway
+          echo "DDTM V1 repository structure is present."

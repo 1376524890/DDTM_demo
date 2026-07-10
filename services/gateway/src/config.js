@@ -20,9 +20,11 @@ export function loadConfig(env = process.env) {
     rpcUrl: env.RPC_URL ?? "http://hardhat:8545",
     deploymentFile: env.DEPLOYMENT_FILE ?? "/app/deployments/v1.json",
     contractAddress: env.DDTM_CONTRACT_ADDRESS ?? "",
-    sellerPrivateKey: required("SELLER_PRIVATE_KEY"),
-    buyerPrivateKey: required("BUYER_PRIVATE_KEY"),
-    arbitratorPrivateKey: required("ARBITRATOR_PRIVATE_KEY"),
+    localMnemonic:
+      env.LOCAL_MNEMONIC ?? "test test test test test test test test test test test junk",
+    sellerPrivateKey: env.SELLER_PRIVATE_KEY ?? "",
+    buyerPrivateKey: env.BUYER_PRIVATE_KEY ?? "",
+    arbitratorPrivateKey: env.ARBITRATOR_PRIVATE_KEY ?? "",
     proverUrl: env.PROVER_URL ?? "http://prover:8081",
     proverSharedSecret: required("PROVER_SHARED_SECRET"),
     minio: Object.freeze({

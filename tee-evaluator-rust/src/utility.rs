@@ -124,9 +124,9 @@ pub fn evaluate(model: &Model, seller: &[Row], validation: &[Row], policy: &Util
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::Row;
+    use crate::data::{Row, FEATURES};
     use crate::fixed::Fixed;
-    use crate::model::Model;
+    use crate::model::{Model, HIDDEN};
 
     fn dummy_policy() -> UtilityPolicy {
         UtilityPolicy {
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn evaluate_with_zero_data() {
         let model = zero_model();
-        let mut row = Row {
+        let row = Row {
             row_id: 0,
             valid: true,
             label: 1,
@@ -163,8 +163,13 @@ mod tests {
             missing_mask: [0u8; 16],
             features: [Fixed::ZERO; FEATURES],
         };
-        let seller = vec![row.clone(); 100];
-        let validation = vec![row.clone(); 100];
+        // Use enough rows (1000) so all 31 MoM groups get at least one sample.
+        let seller = vec![row.clone(); 1000];
+        let validation: Vec<Row> = (0..1000).map(|i| {
+            let mut r = row.clone();
+            r.row_id = i as u64;
+            r
+        }).collect();
         let policy = dummy_policy();
         let seed = [0u8; 32];
         let result = evaluate(&model, &seller, &validation, &policy, &seed).unwrap();

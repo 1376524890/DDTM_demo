@@ -3,6 +3,7 @@ mod audit;
 mod crypto;
 mod data;
 mod fixed;
+mod fixed_array_serde;
 mod model;
 mod utility;
 

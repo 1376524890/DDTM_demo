@@ -1,12 +1,11 @@
 use anyhow::{bail, Context, Result};
-use serde::{Deserialize, Serialize};
 use std::{fs::File, io::{BufReader, Read}, path::Path};
 use crate::fixed::Fixed;
 
 pub const FEATURES: usize = 128;
 pub const ROW_BYTES: usize = 548;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Row {
     pub row_id: u64,
     pub valid: bool,

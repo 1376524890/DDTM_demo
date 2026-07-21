@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use crate::{data::{Row, FEATURES}, fixed::Fixed};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct AuditProbe {
     pub weights: [Fixed; FEATURES],
     pub bias: Fixed,
@@ -93,7 +93,7 @@ mod tests {
     fn audit_fail_on_missing() {
         let mut probe = dummy_probe();
         probe.missing_threshold = 5;
-        let mut row = Row {
+        let row = Row {
             row_id: 0,
             valid: true,
             label: 1,

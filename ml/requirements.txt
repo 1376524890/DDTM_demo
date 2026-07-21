@@ -1,0 +1,5 @@
+numpy==2.2.6
+pandas==2.2.3
+scikit-learn==1.7.0
+torch==2.7.1
+pyarrow==20.0.0

@@ -1,0 +1,12 @@
+{
+  "learning_rate": 655,
+  "gradient_clip": 327680,
+  "delta_clip": 65536,
+  "mom_groups": 31,
+  "lambda_mad": 65536,
+  "lambda_shift": 16384,
+  "lambda_linear": 32768,
+  "min_utility": 65,
+  "max_linear_error": 32768,
+  "max_shift": 131072
+}

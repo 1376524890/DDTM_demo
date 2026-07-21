@@ -1,0 +1,55 @@
+# Build artifacts
+bin/
+target/
+out/
+canonicalizer-go/canonicalizer
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+*.egg
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Contracts
+contracts/lib/
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# Environment
+.env
+*.env.local
+
+# Data
+data/
+artifacts/data/
+artifacts/model/
+artifacts/reports/
+artifacts/zk/
+*.log
+
+# Node
+node_modules/
+
+# Delivery archives
+*.zip
+*.docx
+*.pdf
+
+# Temp
+tmp/
+/tmp/

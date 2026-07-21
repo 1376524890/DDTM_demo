@@ -1,5 +1,11 @@
 module github.com/1376524890/ddtm-qas/canonicalizer
 
-go 1.25
+go 1.25.7
 
 require github.com/consensys/gnark-crypto v0.20.1
+
+require (
+	github.com/bits-and-blooms/bitset v1.24.4 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+)

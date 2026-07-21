@@ -68,7 +68,7 @@ func TestAuditBatchCircuitCompile(t *testing.T) {
 }
 
 func TestFeistel17Native(t *testing.T) {
-	seed := big.NewInt(0xDEADBEEF01010101)
+	seed, _ := new(big.Int).SetString("DEADBEEF01010101", 16)
 	// Check that Feistel17 is a permutation: all values 0..131071 are covered.
 	seen := make(map[uint64]bool)
 	for i := uint64(0); i < 131072; i++ {
@@ -87,7 +87,7 @@ func TestFeistel17Native(t *testing.T) {
 }
 
 func TestFeistel17NativeDeterministic(t *testing.T) {
-	seed := big.NewInt(0xCAFE000000000001)
+	seed, _ := new(big.Int).SetString("CAFE000000000001", 16)
 	ordinal := big.NewInt(42)
 	r1 := NativeFeistel17(seed, ordinal)
 	r2 := NativeFeistel17(seed, ordinal)
@@ -108,7 +108,7 @@ func TestFeistel17NativeSeedSensitive(t *testing.T) {
 }
 
 func TestCycleWalkNative(t *testing.T) {
-	seed := big.NewInt(0xBEEF000000000001)
+	seed, _ := new(big.Int).SetString("BEEF000000000001", 16)
 	// For rowCount=100000, should find index < 100000 quickly.
 	var totalIters int
 	maxIters := 0

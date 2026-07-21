@@ -2,6 +2,10 @@ package circuits
 
 import "github.com/consensys/gnark/frontend"
 
+// MaxCycleWalkIterations is the policy-defined upper bound on Feistel
+// re-application for indices that fall outside [0, rowCount).
+const MaxCycleWalkIterations = 16
+
 // CycleWalkResult holds the cycle-walking witness: the resolved index
 // and the number of Feistel re-applications used (0 to MaxCycleWalkIterations).
 type CycleWalkResult struct {

@@ -63,6 +63,42 @@ func nativeHash(values ...*big.Int) *big.Int {
 	return out.BigInt(new(big.Int))
 }
 
+// NativeInverseFeistel17 computes the inverse of the 4-round unbalanced
+// Feistel permutation. For any valid (seed, ordinal):
+//
+//	NativeInverseFeistel17(seed, NativeFeistel17(seed, ordinal)) == ordinal
+func NativeInverseFeistel17(seed, value *big.Int) *big.Int {
+	if value.BitLen() > 17 {
+		panic("value exceeds 17 bits")
+	}
+	// Decode: L is upper 8 bits, R is lower 9 bits.
+	l := new(big.Int).Rsh(value, 9)        // bits 9..16 (8 bits)
+	r := new(big.Int).And(value, new(big.Int).SetUint64(511)) // bits 0..8 (9 bits)
+
+	// Run rounds in reverse: 3, 2, 1, 0.
+	// Forward round was: l = l XOR f(r), then swap(l, r).
+	// Inverse round is:   unswap, then l = l XOR f(r).
+	for round := 3; round >= 0; round-- {
+		// Undo the swap that happened at the end of the forward round.
+		l, r = r, l
+
+		h := nativeHash(TagFeistelBig(), seed, big.NewInt(int64(round)), r)
+		if round%2 == 0 {
+			f := new(big.Int).And(h, new(big.Int).SetUint64(255)) // 8 bits
+			l.Xor(l, f)
+			l.And(l, new(big.Int).SetUint64(255))
+		} else {
+			f := new(big.Int).And(h, new(big.Int).SetUint64(511)) // 9 bits
+			l.Xor(l, f)
+			l.And(l, new(big.Int).SetUint64(511))
+		}
+	}
+
+	result := new(big.Int).Lsh(l, 9)
+	result.Or(result, r)
+	return result
+}
+
 // NativeCycleWalk finds the valid audit index by re-applying Feistel17
 // until the result is < rowCount.
 func NativeCycleWalk(seed *big.Int, ordinal uint64, rowCount uint64) (uint64, int, error) {

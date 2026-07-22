@@ -63,6 +63,7 @@ def evaluate_policy(policy: Policy, contamination: float) -> OperatingPoint:
     active: Dict[int, float] = {0: 1.0}
     accept = reject = 0.0
     expected_stop = 0.0
+    expected_batches = 0.0
 
     for n in range(0, policy.max_samples):
         nxt: Dict[int, float] = {}
@@ -75,9 +76,11 @@ def evaluate_policy(policy: Policy, contamination: float) -> OperatingPoint:
                 if value <= policy.lower:
                     accept += m2
                     expected_stop += n2 * m2
+                    expected_batches += math.ceil(n2 / policy.batch_size) * m2
                 elif value >= policy.upper:
                     reject += m2
                     expected_stop += n2 * m2
+                    expected_batches += math.ceil(n2 / policy.batch_size) * m2
                 else:
                     nxt[f2] = nxt.get(f2, 0.0) + m2
         active = nxt
@@ -86,6 +89,7 @@ def evaluate_policy(policy: Policy, contamination: float) -> OperatingPoint:
 
     inconclusive = sum(active.values())
     expected_stop += policy.max_samples * inconclusive
+    expected_batches += math.ceil(policy.max_samples / policy.batch_size) * inconclusive
     total = accept + reject + inconclusive
     if abs(total - 1.0) > 1e-9:
         raise RuntimeError(f"probability mass error: {total}")
@@ -96,7 +100,7 @@ def evaluate_policy(policy: Policy, contamination: float) -> OperatingPoint:
         reject_probability=reject,
         inconclusive_probability=inconclusive,
         expected_samples=expected_stop,
-        expected_batches=math.ceil(expected_stop / policy.batch_size),
+        expected_batches=expected_batches,
     )
 
 
@@ -106,16 +110,22 @@ def minimum_bond(price: float, g_max: float, safety_margin: float, detection_pro
     return max(0.0, (g_max + safety_margin) / detection_probability - price)
 
 
-def total_cost(config: dict, op_good: OperatingPoint, op_bad: OperatingPoint, bond: float) -> float:
-    audit_cost = (
-        config["cost_per_row"] * op_good.expected_samples
-        + config["cost_per_batch_proof"] * op_good.expected_batches
-    )
+def total_cost(config: dict, op_good: OperatingPoint, op_bad: OperatingPoint, bond: float) -> dict:
+    row_audit_cost = config["cost_per_row"] * op_good.expected_samples
+    proof_batch_cost = config["cost_per_batch_proof"] * op_good.expected_batches
+    audit_cost = row_audit_cost + proof_batch_cost
     capital_cost = (
         config["annual_capital_rate"] * bond * config["lock_days"] / 365.0
     )
     residual_loss = config["loss_if_missed"] * op_bad.accept_probability
-    return audit_cost + capital_cost + residual_loss
+    return {
+        "row_audit_cost": row_audit_cost,
+        "proof_batch_cost": proof_batch_cost,
+        "audit_cost": audit_cost,
+        "bond_capital_cost": capital_cost,
+        "residual_loss": residual_loss,
+        "objective_cost": audit_cost + capital_cost + residual_loss,
+    }
 
 
 def run(config: dict) -> dict:
@@ -140,7 +150,7 @@ def run(config: dict) -> dict:
         "sprt_boundaries": {"lower": policy.lower, "upper": policy.upper},
         "minimum_bond": bond,
         "bad_quality_detection_probability": detection,
-        "objective_cost": cost,
+        "cost_breakdown": cost,
         "operating_points": [p.__dict__ for p in points],
     }
 

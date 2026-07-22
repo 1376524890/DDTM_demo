@@ -218,7 +218,8 @@ tee_status = "⏳ Pending"
 try:
     detection_prob = policy_result.get("bad_quality_detection_probability", "N/A")
     min_bond = policy_result.get("minimum_bond", "N/A")
-    objective_cost = policy_result.get("objective_cost", "N/A")
+    cost_breakdown = policy_result.get("cost_breakdown", {})
+    objective_cost = cost_breakdown.get("objective_cost", policy_result.get("objective_cost", "N/A"))
     sprt = policy_result.get("sprt_boundaries", {})
     lower = sprt.get("lower", "N/A")
     upper = sprt.get("upper", "N/A")
@@ -227,6 +228,7 @@ except Exception:
     detection_prob = min_bond = objective_cost = "N/A"
     lower = upper = "N/A"
     policy_inner = {}
+    cost_breakdown = {}
 
 op_points = policy_result.get("operating_points", [])
 
@@ -311,14 +313,25 @@ report = f"""# DDTM-QAS Experiment Report
 | SPRT Lower Boundary | {lower} |
 | SPRT Upper Boundary | {upper} |
 
-### 3.3 SPRT Boundary Verification
+### 3.3 Objective Cost Breakdown
+
+| Component | Formula | Value |
+|-----------|---------|-------|
+| Row Audit Cost | c_r · E[T] | {cost_breakdown.get('row_audit_cost', 'N/A')} |
+| Proof Batch Cost | c_p · E[K] | {cost_breakdown.get('proof_batch_cost', 'N/A')} |
+| Audit Cost (subtotal) | row + proof | {cost_breakdown.get('audit_cost', 'N/A')} |
+| Bond Capital Cost | r_B · B · T_lock / 365 | {cost_breakdown.get('bond_capital_cost', 'N/A')} |
+| Residual Loss | L_max · p_miss | {cost_breakdown.get('residual_loss', 'N/A')} |
+| **Total Objective Cost** | **J = audit + capital + loss** | **{cost_breakdown.get('objective_cost', 'N/A')}** |
+
+### 3.4 SPRT Boundary Verification
 
 | Boundary | Calculated | Paper Value | Match |
 |----------|-----------|-------------|-------|
 | Lower | {lower} | -2.985682 | {'✅' if lower != 'N/A' else '❌'} |
 | Upper | {upper} | 4.553877 | {'✅' if upper != 'N/A' else '❌'} |
 
-### 3.4 Operating Points (by Contamination Level)
+### 3.5 Operating Points (by Contamination Level)
 
 | Contamination | Accept Prob | Reject Prob | Inconclusive Prob | Expected Samples | Expected Batches |
 |---------------|-------------|-------------|-------------------|------------------|------------------|
@@ -335,7 +348,7 @@ for op in op_points:
     report += f"| {contamin}% | {accept:.2f}% | {reject:.2f}% | {inconclusive:.2f}% | {samples:.1f} | {batches} |\n"
 
 report += f"""
-### 3.5 Cross-Test Vector Generation
+### 3.6 Cross-Test Vector Generation
 
 **Total test cases:** {len(vectors_info.get('test_cases', []))}
 **Vector binary files generated:** {len(vector_files)}
@@ -354,7 +367,7 @@ report += f"""
 - **File Size:** {data_size:,} bytes ({data_size/1024:.1f} KB)
 - **Status:** {data_status}
 
-### 3.7 Feistel17 Permutation
+### 3.8 Feistel17 Permutation
 
 - **Permutation test:** {feistel_status}
 - **Algorithm:** 17-bit Feistel network with Poseidon2 round function (Go native)

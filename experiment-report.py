@@ -178,7 +178,7 @@ def e2e_summary_table(tests: list) -> str:
         exit_code = t.get("exit_code", "?")
         expected = t.get("expected_unique", 0)
         actual = t.get("actual_unique", 0)
-        icon = "✅" if status == "passed" else "❌"
+        icon = "✅" if status == "passed" else ("⏭️" if status == "skipped" else "❌")
         note = ""
         if expected > 0 and actual != expected:
             note = f" ⚠️ expected {expected} unique, got {actual}"
@@ -198,8 +198,15 @@ def e2e_test_passed(name_prefix: str) -> bool:
         return False
     return all(t.get("status") == "passed" for t in matching)
 
+def e2e_test_skipped(name_prefix: str) -> bool:
+    """Check if all E2E tests matching a prefix were skipped."""
+    matching = [t for t in e2e_tests if t.get("test_name", "").startswith(name_prefix)]
+    if not matching:
+        return False
+    return all(t.get("status") == "skipped" for t in matching)
+
 feistel_status = "✅ Completed" if e2e_test_passed("feistel17") else ("❌ Failed" if e2e_tests else "⏳ Pending")
-foundry_status = "✅ Completed" if e2e_test_passed("foundry") else ("❌ Failed (glibc 2.31)" if e2e_tests else "⏳ Pending")
+foundry_status = "✅ Completed" if e2e_test_passed("foundry") else ("⏭️ Skipped" if e2e_test_skipped("foundry") else ("❌ Failed (glibc 2.31)" if e2e_tests else "⏳ Pending"))
 canonicalizer_status = "⏳ Pending"
 tee_status = "⏳ Pending"
 

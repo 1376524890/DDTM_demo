@@ -65,7 +65,14 @@ docker-status:
 # Docker-based experiments (isolated, reproducible)
 # ------------------------------------------------------------------
 DOCKER_IMG := ddtm-experiments:latest
-DOCKER_RUN := docker run --rm -v "$(ROOT):/workspace" -w /workspace $(DOCKER_IMG)
+DOCKER_RUN := docker run --rm \
+	-v "$(ROOT):/workspace" \
+	-v "$(shell go env GOMODCACHE 2>/dev/null || echo $(HOME)/go/pkg/mod):/root/go/pkg/mod" \
+	-e GOMODCACHE=/root/go/pkg/mod \
+	-e GOPATH=/root/go \
+	-e GOTOOLCHAIN=local \
+	-w /workspace \
+	$(DOCKER_IMG)
 
 docker-build:
 	docker build -t $(DOCKER_IMG) -f experiments/Dockerfile .

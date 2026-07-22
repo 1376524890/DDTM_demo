@@ -1,0 +1,110 @@
+{
+  "timestamp": "20260722_145502",
+  "tests": [
+    {
+      "test_name": "python3_available",
+      "status": "passed",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "go_available",
+      "status": "passed",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "rustc_available",
+      "status": "skipped",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "jabo_policy_optimization",
+      "status": "passed",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "sprt_detection_probability",
+      "status": "passed",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "jabo_minimum_bond",
+      "status": "passed",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "cross_test_vectors",
+      "status": "passed",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "sprt_boundaries",
+      "status": "passed",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "feistel17_permutation",
+      "status": "passed",
+      "expected_unique": 131072,
+      "actual_unique": 131072,
+      "exit_code": 0
+    },
+    {
+      "test_name": "feistel17_inverse_roundtrip",
+      "status": "passed",
+      "expected_unique": 131072,
+      "actual_unique": 131072,
+      "exit_code": 0
+    },
+    {
+      "test_name": "feistel17_multi_seed",
+      "status": "passed",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "foundry_forge",
+      "status": "skipped",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "foundry_anvil",
+      "status": "skipped",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "foundry_cast",
+      "status": "skipped",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    },
+    {
+      "test_name": "data_preparation",
+      "status": "passed",
+      "expected_unique": 0,
+      "actual_unique": 0,
+      "exit_code": 0
+    }
+  ]
+}

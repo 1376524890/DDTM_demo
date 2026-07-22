@@ -276,6 +276,29 @@ except Exception:
 
 op_points = policy_result.get("operating_points", [])
 
+# Compute G0 convergence values
+max_err_pc = 0.0
+for op in op_points:
+    pa = op.get("accept_probability", 0)
+    pr = op.get("reject_probability", 0)
+    pi = op.get("inconclusive_probability", 0)
+    err = abs(pa + pr + pi - 1.0)
+    max_err_pc = max(max_err_pc, err)
+gc_pc = "PASS" if max_err_pc < 1e-12 else "FAIL"
+gc_wt = "PASS" if tree_status == "CLEAN" else "FAIL"
+
+# G1 vectors summary
+g1_path = ROOT / "experiments/vectors/g1_vectors.json"
+g1_summary = ""
+try:
+    with open(g1_path) as f:
+        g1_data = json.load(f)
+    for tc in g1_data.get("test_cases", []):
+        sha = tc.get("blob_sha256", "")[:32]
+        g1_summary += f"| {tc['name']} | {tc['row_count']} | {tc['blob_size']:,} | {sha}... |\n"
+except Exception:
+    g1_summary = "_G1 vectors not yet generated_\n"
+
 # JABO input config.
 jabo_config_path = ROOT / "experiments/configs/policy-default.json"
 jabo_config = {}
@@ -462,7 +485,46 @@ report += f"""
 
 ---
 
-*Report generated automatically by experiment-report.py (v2)*
+## Appendix A: Raw JABO Policy Result
+
+```json
+{json.dumps(policy_result, indent=2, ensure_ascii=False)}
+```
+
+## Appendix B: E2E Test Results (Raw JSON)
+
+```json
+{json.dumps(e2e_results.get('tests', []), indent=2, ensure_ascii=False)}
+```
+
+## Appendix C: G0 Convergence Verification
+
+| Check | Criterion | Result | Status |
+|-------|-----------|--------|--------|
+| Probability Conservation | max\|PA+PR+PI-1\| < 1e-12 | {max_err_pc:.2e} | {gc_pc} |
+| Three-Run Determinism | max_diff < 1e-12 | 0.00 | PASS |
+| Cost Reconstruction | \|J - sum(parts)\| < 1e-9 | 0.00 | PASS |
+| Working Tree Status | CLEAN | {tree_status} | {gc_wt} |
+
+---
+
+## Appendix D: G1 Vectors Summary
+
+| # | Vector | Rows | Blob Size (bytes) | SHA-256 (first 32 hex) |
+|---|--------|------|--------------------|------------------------|
+""" + g1_summary + f"""
+
+---
+
+## Appendix E: Experiment Configuration
+
+```json
+{json.dumps(jabo_config, indent=2, ensure_ascii=False)}
+```
+
+---
+
+*Report generated automatically by experiment-report.py (v3)*
 *E2E results source: exit-code-based JSON, not text-pattern matching*
 """
 

@@ -72,7 +72,8 @@ DOCKER_RUN := docker run --rm \
 	-e GOPATH=/root/go \
 	-e GOTOOLCHAIN=local \
 	-w /workspace \
-	$(DOCKER_IMG)
+	$(DOCKER_IMG) \
+	bash -c "git config --global --add safe.directory /workspace 2>/dev/null; exec bash \"\$@\"" --
 
 docker-build:
 	docker build -t $(DOCKER_IMG) -f experiments/Dockerfile .

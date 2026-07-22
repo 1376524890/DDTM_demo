@@ -5,8 +5,10 @@ Generates a Markdown report by rendering JSON data sources.
 Does NOT re-guess status from text patterns — it reads structured
 data and exit codes from the E2E JSON results file.
 """
+import hashlib
 import json
 import os
+import platform
 import re
 import subprocess
 from pathlib import Path
@@ -24,17 +26,34 @@ def strip_ansi(text: str) -> str:
     """Remove ANSI escape sequences from terminal output."""
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
 
+def sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+def file_sha256(path: Path) -> str:
+    if path.is_file():
+        return sha256_hex(path.read_bytes())
+    return "FILE_NOT_FOUND"
+
 
 # === Git info ===
 try:
     git_hash = subprocess.check_output(
         ["git", "log", "--oneline", "-1"], cwd=ROOT
     ).decode().strip()
+    git_full = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT
+    ).decode().strip()
+    git_worktree = subprocess.check_output(
+        ["git", "status", "--porcelain"], cwd=ROOT
+    ).decode().strip()
+    tree_status = "CLEAN" if not git_worktree else "DIRTY"
     git_log = subprocess.check_output(
         ["git", "log", "--oneline", "-10"], cwd=ROOT
     ).decode().strip()
 except Exception as e:
     git_hash = "N/A"
+    git_full = "N/A"
+    tree_status = "UNKNOWN"
     git_log = str(e)
 
 # === Environment ===
@@ -101,6 +120,31 @@ for tool in ("forge", "anvil", "cast"):
             foundry_versions[tool] = "ERROR running --version"
     else:
         foundry_versions[tool] = f"NOT FOUND at {tool_path}"
+
+# === System Info ===
+hostname = platform.node()
+cpu_info = "UNKNOWN"
+mem_info = "UNKNOWN"
+os_info = f"{platform.system()} {platform.release()} {platform.machine()}"
+try:
+    cpu_info = subprocess.check_output(["lscpu"], timeout=5).decode().strip()
+    # Extract model name
+    for line in cpu_info.split("\n"):
+        if "Model name" in line:
+            cpu_info = line.split(":", 1)[1].strip()
+            break
+except Exception:
+    pass
+try:
+    mem_bytes = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    mem_info = f"{mem_bytes / (1024**3):.1f} GB"
+except Exception:
+    pass
+
+# === Config Hashing ===
+config_sha = file_sha256(ROOT / "experiments/configs/policy-default.json")
+# Source snapshot hash of optimizer
+optimizer_sha = file_sha256(ROOT / "services/policy_optimizer/optimizer.py")
 
 # === E2E Test Results (from JSON) ===
 e2e_results = None
@@ -245,6 +289,22 @@ report = f"""# DDTM-QAS Experiment Report
 
 **Generated:** {timestamp}
 **Git Commit:** {git_hash}
+**Working Tree:** {tree_status}
+
+---
+
+## 0. Experiment Metadata
+
+| Field | Value |
+|-------|-------|
+| Git Commit SHA | `{git_full}` |
+| Working Tree Status | {tree_status} |
+| Config SHA-256 | `{config_sha}` |
+| Optimizer SHA-256 | `{optimizer_sha}` |
+| Host | {hostname} |
+| CPU | {cpu_info} |
+| Memory | {mem_info} |
+| OS | {os_info} |
 
 ---
 
@@ -254,15 +314,15 @@ report = f"""# DDTM-QAS Experiment Report
 |-----------|---------|--------|
 | Python | {python_version} | {'✅' if 'Python' in python_version else '❌'} |
 | NumPy | {numpy_version} | {'✅' if numpy_version != 'NOT INSTALLED' else '❌'} |
-| scikit-learn | {sklearn_version} | {'✅' if sklearn_version != 'NOT INSTALLED' else '❌'} |
-| PyTorch | {torch_version} | {'✅' if torch_version != 'NOT INSTALLED' else '❌'} |
+| scikit-learn | {sklearn_version} | {'✅' if sklearn_version != 'NOT INSTALLED' else '⏳'} |
+| PyTorch | {torch_version} | {'✅' if torch_version != 'NOT INSTALLED' else '⏳'} |
 | Pandas | {pandas_version} | {'✅' if pandas_version != 'NOT INSTALLED' else '⏳'} |
 | PyArrow | {pyarrow_version} | {'✅' if pyarrow_version != 'NOT INSTALLED' else '⏳'} |
 | Go | {go_version[:60]}... | {'✅' if go_version != 'NOT INSTALLED' else '❌'} |
-| Rust | {rust_version[:60]}... | {'✅' if rust_version != 'NOT INSTALLED' else '❌'} |
-| Foundry (forge) | {foundry_versions['forge'][:60]} | {'❌' if foundry_versions['forge'].startswith('ERROR') or foundry_versions['forge'] == 'NOT INSTALLED' else '✅'} |
-| Foundry (anvil) | {foundry_versions['anvil'][:60]} | {'❌' if foundry_versions['anvil'].startswith('ERROR') or foundry_versions['anvil'] == 'NOT INSTALLED' else '✅'} |
-| Foundry (cast) | {foundry_versions['cast'][:60]} | {'❌' if foundry_versions['cast'].startswith('ERROR') or foundry_versions['cast'] == 'NOT INSTALLED' else '✅'} |
+| Rust | {rust_version[:60]}... | {'✅' if rust_version != 'NOT INSTALLED' else '⏭️'} |
+| Foundry (forge) | {foundry_versions['forge'][:60]} | {'✅' if foundry_versions['forge'] not in ('NOT INSTALLED',) and not foundry_versions['forge'].startswith('ERROR') and not foundry_versions['forge'].startswith('NOT FOUND') else ('⏭️' if foundry_versions['forge'].startswith('NOT FOUND') else '⏳')} |
+| Foundry (anvil) | {foundry_versions['anvil'][:60]} | {'✅' if foundry_versions['anvil'] not in ('NOT INSTALLED',) and not foundry_versions['anvil'].startswith('ERROR') and not foundry_versions['anvil'].startswith('NOT FOUND') else ('⏭️' if foundry_versions['anvil'].startswith('NOT FOUND') else '⏳')} |
+| Foundry (cast) | {foundry_versions['cast'][:60]} | {'✅' if foundry_versions['cast'] not in ('NOT INSTALLED',) and not foundry_versions['cast'].startswith('ERROR') and not foundry_versions['cast'].startswith('NOT FOUND') else ('⏭️' if foundry_versions['cast'].startswith('NOT FOUND') else '⏳')} |
 
 ---
 

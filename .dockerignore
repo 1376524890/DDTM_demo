@@ -33,6 +33,10 @@ experiments/results/
 experiments/vectors/*.bin
 experiments/policy-default-result.json
 
+# Large generated vectors (>50MB, regenerate with generate_vectors.py)
+experiments/vectors/tc18_large_100k.bin
+experiments/vectors/tc19_capacity_padding.bin
+
 # Logs
 logs/
 

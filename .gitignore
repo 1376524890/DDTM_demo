@@ -53,3 +53,8 @@ node_modules/
 # Temp
 tmp/
 /tmp/
+*.pyc
+
+# Large generated vectors (>50MB, regenerate)
+experiments/vectors/tc18_large_100k.bin
+experiments/vectors/tc19_capacity_padding.bin

@@ -1,0 +1,130 @@
+{
+  "version": 5,
+  "description": "G1 cross-language test vectors (20 cases)",
+  "schema_hash": "feedc0de00000000000000000000000000000000000000000000000000beef",
+  "dataset_version": "1",
+  "feature_count": 128,
+  "total_cases": 20,
+  "test_cases": [
+    {
+      "name": "tc01_all_zeros",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "e5d2a4bc0e243690b203e4d85d72c9e68ab7f6a817442a70381babc891b894ab"
+    },
+    {
+      "name": "tc02_negative_label",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "71bd23e9316c44bb235074cabd115dd78ea4452246a3344005af5b60189b3c0c"
+    },
+    {
+      "name": "tc03_missing_features",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "0d3c7a2ec3d1f86eaafd0ee46195fc1f14e304b7fdebc7f30adda8afe6269cf6"
+    },
+    {
+      "name": "tc04_padding_row",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "8a14944094fd5ebfa9c1e5f0dfcdc33c03d0e9b2445e10b22d4fb39b2f04d55f"
+    },
+    {
+      "name": "tc05_four_row_tree",
+      "row_count": 4,
+      "blob_size": 2192,
+      "blob_sha256": "37ee5d6e21c07bef13a5c3502115059df396d8a8bb7f5b9b76632903414be942"
+    },
+    {
+      "name": "tc06_row_order",
+      "row_count": 2,
+      "blob_size": 1096,
+      "blob_sha256": "187383178045539cecdf44564fe52b10519ac5390dc46310cdd81049920a81bc"
+    },
+    {
+      "name": "tc07_audit_test",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "187289ce3969ca2131be7811df4cea783cb292172f8846a20bcdc55785aaad85"
+    },
+    {
+      "name": "tc08_int32_max",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "79e5321a389638ae44daf9093409b0ad67d4851b882299fce3958e0e87d3e1d9"
+    },
+    {
+      "name": "tc09_int32_min",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "b80c74689f8646d7a5afae32e057d78e2c38e98f984bbf2d4934d528aa40b0a2"
+    },
+    {
+      "name": "tc10_q16_pos_boundary",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "e5cbae9150a2e33d90f563de9a2f5b795807029dbef8e638404ebc32f6d54d93"
+    },
+    {
+      "name": "tc11_q16_neg_boundary",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "0fd1c785817f1b4172eec596704cc5eaf11c045c72847cd703f6f786f5fd3bc2"
+    },
+    {
+      "name": "tc12_nan_sentinel",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "79e5321a389638ae44daf9093409b0ad67d4851b882299fce3958e0e87d3e1d9"
+    },
+    {
+      "name": "tc13_infinity_clamp",
+      "row_count": 1,
+      "blob_size": 548,
+      "blob_sha256": "e842d237be8cd4b373bf6f5ac1dd9fc7115cae9f37cf96a041a1c691cbdad26f"
+    },
+    {
+      "name": "tc14_same_data_diff_rowid",
+      "row_count": 2,
+      "blob_size": 1096,
+      "blob_sha256": "d996f5df3c94beff0c8ceb5f3e879c76a231c2a409d3ef8003649d0983645ceb"
+    },
+    {
+      "name": "tc15_identical_rows",
+      "row_count": 2,
+      "blob_size": 1096,
+      "blob_sha256": "22a5fd60eb9167a12825cdd134521e8ff7bd7f4334af16629a04c9ca4e18cccf"
+    },
+    {
+      "name": "tc16_single_bit_mutation",
+      "row_count": 2,
+      "blob_size": 1096,
+      "blob_sha256": "19a034b4fba74bbe96e406b9dbcfb6b15e2bdb648e242064b0b841c35075c2f7"
+    },
+    {
+      "name": "tc17_label_mutation",
+      "row_count": 2,
+      "blob_size": 1096,
+      "blob_sha256": "b10ca435fb19c41ae89e740fe7ee75591dd18dfff53df2cfffd5c4645e21c9f5"
+    },
+    {
+      "name": "tc18_large_100k",
+      "row_count": 100000,
+      "blob_size": 54800000,
+      "blob_sha256": "418771baf60b06b7496e3f7c8da4ff6a413068c58ecae642a939b94bc8c2dd74"
+    },
+    {
+      "name": "tc19_capacity_padding",
+      "row_count": 131072,
+      "blob_size": 71827456,
+      "blob_sha256": "844933eedadc2cd459b5d2fc0894cdcc928449f274ba005ec153da81e374fb98"
+    },
+    {
+      "name": "tc20_missing_vs_zero",
+      "row_count": 2,
+      "blob_size": 1096,
+      "blob_sha256": "680912d83546e1a9993f4b50eff0164d58bec25755e1ff8c9fed28a05f181014"
+    }
+  ]
+}

@@ -47,13 +47,46 @@ clean:
 	cd contracts && forge clean
 
 docker-up:
-	docker compose up -d postgres minio anvil
+	docker compose up -d postgres minio anvil 2>/dev/null || \
+	docker-compose up -d postgres minio anvil 2>/dev/null || \
+	echo "docker-compose not available, skipping"
 
 docker-down:
-	docker compose down
+	docker compose down 2>/dev/null || \
+	docker-compose down 2>/dev/null || \
+	echo "docker-compose not available, skipping"
 
 docker-status:
-	docker compose ps
+	docker compose ps 2>/dev/null || \
+	docker-compose ps 2>/dev/null || \
+	docker ps
+
+# ------------------------------------------------------------------
+# Docker-based experiments (isolated, reproducible)
+# ------------------------------------------------------------------
+DOCKER_IMG := ddtm-experiments:latest
+DOCKER_RUN := docker run --rm -v "$(ROOT):/workspace" -w /workspace $(DOCKER_IMG)
+
+docker-build:
+	docker build -t $(DOCKER_IMG) -f experiments/Dockerfile .
+
+docker-experiment:
+	$(DOCKER_RUN) bash experiments/e2e_test.sh
+
+docker-experiment-report:
+	$(DOCKER_RUN) python3 experiment-report.py
+
+docker-shell:
+	$(DOCKER_RUN) bash
+
+docker-zk-test:
+	$(DOCKER_RUN) bash -c "cd zk && go test -v ./..."
+
+docker-contracts-test:
+	$(DOCKER_RUN) bash -c "cd contracts && forge test -vv"
+
+docker-clean-experiments:
+	rm -rf experiments/results/*.json experiments/vectors/*.bin data/raw/synthetic.npz
 
 data-prep:
 	mkdir -p data/prepared data/raw artifacts/model artifacts/reports

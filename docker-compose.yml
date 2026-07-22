@@ -27,6 +27,27 @@ services:
     entrypoint: ["anvil", "--host", "0.0.0.0", "--chain-id", "31337", "--block-time", "1"]
     ports: ["8545:8545"]
 
+  experiments:
+    build:
+      context: .
+      dockerfile: experiments/Dockerfile
+    image: ddtm-experiments:latest
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - go-cache:/root/go
+      - cargo-cache:/root/.cargo
+      - foundry-cache:/root/.foundry
+    environment:
+      - PATH=/opt/venv/bin:/usr/local/go/bin:/root/.cargo/bin:/root/.foundry/bin:${PATH}
+    profiles:
+      - experiments
+    # One-shot service: run with `docker compose run --rm experiments <command>`
+    entrypoint: ["/bin/bash"]
+
 volumes:
   pgdata:
   miniodata:
+  go-cache:
+  cargo-cache:
+  foundry-cache:

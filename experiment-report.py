@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
-ROOT = Path("/home/gb/DDTM_demo")
+ROOT = Path(__file__).resolve().parent
 LOGS = ROOT / "logs"
 LOGS.mkdir(exist_ok=True)
 

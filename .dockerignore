@@ -1,0 +1,54 @@
+# DDTM-QAS Docker build context ignore
+# Prevents sending unnecessary files to Docker daemon
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Rust
+tee-evaluator-rust/target/
+
+# Go
+canonicalizer-go/bin/
+zk/bin/
+
+# Binaries
+bin/
+
+# Data (regenerated)
+data/raw/*.npz
+data/raw/*.parquet
+data/prepared/
+
+# Artifacts (regenerated)
+artifacts/zk/
+artifacts/model/
+artifacts/data/
+artifacts/reports/
+
+# Experiments output
+experiments/results/
+experiments/vectors/*.bin
+experiments/policy-default-result.json
+
+# Logs
+logs/
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

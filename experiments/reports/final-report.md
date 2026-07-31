@@ -2,7 +2,7 @@
 
 - **G0:** PASS
 - **G1:** PASS
-- **Git Working Tree:** DIRTY
+- **Git Working Tree:** CLEAN
 - **Canonical Specification:** DDTM-CANONICAL-V1
 - **Poseidon Parameters:** DDTM-POSEIDON2-BN254-V1
 
@@ -38,7 +38,7 @@
 - `experiments/vectors/manifest.json`
 
 ## Reproducibility
-- Git commit: `c72d8fe7b6e93c1e27e98864a845469b7bb057b4`
+- Git commit: `f4cfcde947ab2f32dd79b87647693bc654b34c6f`
 - Config SHA-256: `742ecbbf94260379cd5973705a05db5d9a71e2434f5f3fb565ebaa43fed70293`
 - Optimizer SHA-256: `a4dd52e5b760b6b769288f72a924c22a87a59ffb2e499b1b4e39a1e935cc7e0b`
 - Host: codeserver (Linux-6.8.0-134-generic-x86_64-with-glibc2.39)

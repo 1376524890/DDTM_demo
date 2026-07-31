@@ -1,7 +1,7 @@
 # G0 Report — Statistical & Economic Baseline
 
-- **Git commit:** `c72d8fe7b6e93c1e27e98864a845469b7bb057b4`
-- **Working tree:** DIRTY
+- **Git commit:** `f4cfcde947ab2f32dd79b87647693bc654b34c6f`
+- **Working tree:** CLEAN
 - **Config SHA-256:** `742ecbbf94260379cd5973705a05db5d9a71e2434f5f3fb565ebaa43fed70293`
 - **Optimizer SHA-256:** `a4dd52e5b760b6b769288f72a924c22a87a59ffb2e499b1b4e39a1e935cc7e0b`
 - **Dataset SHA-256:** `6195a11d2e2cafa3bc901b9f984ab6d67d6e3928d93ae40f6092ccf2ac6babd0`
@@ -48,4 +48,4 @@
 | Probability conservation | max|P+R+I-1| < 1e-12 | 1.53e-14 | PASS |
 | Three-run determinism | max_diff < 1e-12 | 0.00e+00 | PASS |
 | Cost reconstruction | |J-sum(parts)| < 1e-9 | 0.00e+00 | PASS |
-| Working tree (release) | CLEAN | DIRTY | FAIL |
+| Working tree (release) | CLEAN | CLEAN | PASS |

@@ -1,0 +1,282 @@
+{
+  "protocol": "DDTM-QAS",
+  "version": 1,
+  "canonical_specification": "DDTM-CANONICAL-V1",
+  "poseidon_parameters": "poseidon2-bn254-v1",
+  "schema_sha256": "81814bd387b45aaf5394f454efeb98709911a1a53b8d897cee1ab713f62936f5",
+  "schema_hi": "0x81814bd387b45aaf5394f454efeb9870",
+  "schema_lo": "0x9911a1a53b8d897cee1ab713f62936f5",
+  "cases": [
+    {
+      "id": "tc01_all_zeros",
+      "kind": "positive",
+      "row_count": 1,
+      "capacity": 2,
+      "blob": "generated/tc01_all_zeros.bin",
+      "blob_sha256": "d803c926746e544e9b4acd7df675d0ac4f4296bf71de5caaa2a896f14462981b",
+      "expected_row_leaves": [
+        "0x2d3def35a9fcb8980fb48ad03faddc04237288c5721018035b6cb40bd6519767"
+      ],
+      "expected_data_root": "0x2cd9a7bbba491c39b649ff5b6874ad61430836057b7fe1ce32f4138b86070dd8",
+      "note": ""
+    },
+    {
+      "id": "tc02_negative_label",
+      "kind": "positive",
+      "row_count": 1,
+      "capacity": 2,
+      "blob": "generated/tc02_negative_label.bin",
+      "blob_sha256": "9510fe8a5ec276061f7b74a28cbb54590f369ac880e47511b6f5dcdc11c20aa5",
+      "expected_row_leaves": [
+        "0x9f866d9a8f3212a243dd6b8a5b1d69df13f98f445a479830f7f8fff655f8f9e"
+      ],
+      "expected_data_root": "0xd8ef0ebfc745a03f4d459a02cf4c85f0afcea79a705834254000a4c5f8531ad",
+      "note": ""
+    },
+    {
+      "id": "tc03_missing_features",
+      "kind": "positive",
+      "row_count": 1,
+      "capacity": 2,
+      "blob": "generated/tc03_missing_features.bin",
+      "blob_sha256": "4f9490afebecfdb4a394982a5b35229f81355792fcc4eda3c1b182dccdd6b05e",
+      "expected_row_leaves": [
+        "0x285fdd1d6577e0faf94b9ee6755a0d20e982c146308a5e42d53931406092d09e"
+      ],
+      "expected_data_root": "0x2fa6b055b128ce032214b5fc7f1f9fb6003e0e69c1480dcace60e78558d92f85",
+      "note": ""
+    },
+    {
+      "id": "tc04_padding_row",
+      "kind": "positive",
+      "row_count": 1,
+      "capacity": 2,
+      "blob": "generated/tc04_padding_row.bin",
+      "blob_sha256": "4b592531f9e557c0ca1ded7be53272587ab9810705cf1b7c1763c3783fbda120",
+      "expected_row_leaves": [
+        "0x9e12bc083bf0d224d811c1f839c23be6074c043ec5edd2d99eaa7be09e1435a"
+      ],
+      "expected_data_root": "0xfa17ab1cdaa0ca6edb854aa315522829b9d29fb3e3ba38646a3afd5b2212379",
+      "note": ""
+    },
+    {
+      "id": "tc05_two_row_tree",
+      "kind": "positive",
+      "row_count": 2,
+      "capacity": 2,
+      "blob": "generated/tc05_two_row_tree.bin",
+      "blob_sha256": "687c85ccb8811e3d707b8c7d3eca9fab98ca6caa46aaa5f7b290867023f7b1af",
+      "expected_row_leaves": [
+        "0x2019fa3d28433b4dedc42aa3b40b395bbb809d45415be406936f83c654254ffa",
+        "0x2a23446f243c472428b37dd3244569963fdcf95dbb03e65f7f30ecc7c6392837"
+      ],
+      "expected_data_root": "0xa29a0d5de3c707a9126e0883eba73558bfe7d7ab7232e953569e1100c442a20",
+      "note": ""
+    },
+    {
+      "id": "tc06_row_order",
+      "kind": "positive",
+      "row_count": 2,
+      "capacity": 2,
+      "blob": "generated/tc06_row_order.bin",
+      "blob_sha256": "687c85ccb8811e3d707b8c7d3eca9fab98ca6caa46aaa5f7b290867023f7b1af",
+      "expected_row_leaves": [
+        "0x2019fa3d28433b4dedc42aa3b40b395bbb809d45415be406936f83c654254ffa",
+        "0x2a23446f243c472428b37dd3244569963fdcf95dbb03e65f7f30ecc7c6392837"
+      ],
+      "expected_data_root": "0xa29a0d5de3c707a9126e0883eba73558bfe7d7ab7232e953569e1100c442a20",
+      "note": ""
+    },
+    {
+      "id": "tc07_int32_max",
+      "kind": "positive",
+      "row_count": 1,
+      "capacity": 2,
+      "blob": "generated/tc07_int32_max.bin",
+      "blob_sha256": "41bcc19806956e6cbcd0bc747fddf6f647fb4109b150c06be546d52dbe1f3519",
+      "expected_row_leaves": [
+        "0x1361277e4b4bd27a8a7e5e3b46a25326ecd27c9a6e6431b0b7d7fd3852b8d6d4"
+      ],
+      "expected_data_root": "0x777270c9cf07fd64ad79778886b07e013103a2995819c3c474b6863cd58cfbf",
+      "note": ""
+    },
+    {
+      "id": "tc08_int32_min",
+      "kind": "positive",
+      "row_count": 1,
+      "capacity": 2,
+      "blob": "generated/tc08_int32_min.bin",
+      "blob_sha256": "932922dfdef6f1cc003fe4db21fde7e88c5f9133f2658e6684c9cfb90369364a",
+      "expected_row_leaves": [
+        "0x2c660f5330104e42e154572dabdb9986cb5860093c33300ac5171f3e8dad977d"
+      ],
+      "expected_data_root": "0x25ae16e8446a9703b6fe3e4a019489f23d5bfe6b25f396f42d5715ef758e337d",
+      "note": ""
+    },
+    {
+      "id": "tc09_q16_pos_boundary",
+      "kind": "positive",
+      "row_count": 1,
+      "capacity": 2,
+      "blob": "generated/tc09_q16_pos_boundary.bin",
+      "blob_sha256": "1030aeba8ebb950fb8dc49a191c1b35df477c5e7e7d0e8aff14bdb6dfa75f44b",
+      "expected_row_leaves": [
+        "0xae23cfc101407b4278ef6af4bbea1d6752e1dd8681bb39f65f7558959077150"
+      ],
+      "expected_data_root": "0x1a399c0010c29257c32610b8f1aafd557aac8d7c492ff552bdfec7a8859f892a",
+      "note": ""
+    },
+    {
+      "id": "tc10_q16_neg_boundary",
+      "kind": "positive",
+      "row_count": 1,
+      "capacity": 2,
+      "blob": "generated/tc10_q16_neg_boundary.bin",
+      "blob_sha256": "8ed06e3e445fab8639da9c6507fec2706a7d0d7b029e1a6aba3a5a073d6497af",
+      "expected_row_leaves": [
+        "0x300adf0f839f73708dcae15f35eb0f7ead8e0a97f561aefb564e30473438e464"
+      ],
+      "expected_data_root": "0x2c766a7b24e2234a0d90be79caa55ff898ddc39862c918a259476aaab9191fb1",
+      "note": ""
+    },
+    {
+      "id": "tc11_identical_rows",
+      "kind": "positive",
+      "row_count": 2,
+      "capacity": 2,
+      "blob": "generated/tc11_identical_rows.bin",
+      "blob_sha256": "888747c99804e0324c6a31ae3835e772d9c09f8621d49475fb18df2dfb10b718",
+      "expected_row_leaves": [
+        "0x2019fa3d28433b4dedc42aa3b40b395bbb809d45415be406936f83c654254ffa",
+        "0x13286b391e11aa92889c76d1404628e8391f82c5c493ca65d0bb2f1e9892025d"
+      ],
+      "expected_data_root": "0x1038c7045c40ce9ca5a42fe7ecdd61e04655caf31c2b143697ac723a762b0836",
+      "note": ""
+    },
+    {
+      "id": "tc12_single_bit_mutation",
+      "kind": "positive",
+      "row_count": 2,
+      "capacity": 2,
+      "blob": "generated/tc12_single_bit_mutation.bin",
+      "blob_sha256": "0e7dabcef20e843d65dcae0457c75376bcdb054841d0dc5caaf1c298704dcc7a",
+      "expected_row_leaves": [
+        "0x2d3def35a9fcb8980fb48ad03faddc04237288c5721018035b6cb40bd6519767",
+        "0x16ca6bf5683e75ef0ea910c79ef68214a8607b93fada806c0c70012e0216986c"
+      ],
+      "expected_data_root": "0x687f9d753f660bfd700b2cd5d6b9b589404dde0be98b24873f34e2ceef120eb",
+      "note": ""
+    },
+    {
+      "id": "tc13_label_mutation",
+      "kind": "positive",
+      "row_count": 2,
+      "capacity": 2,
+      "blob": "generated/tc13_label_mutation.bin",
+      "blob_sha256": "a93e665b2a9c3b27a1ca14357759502158b0f6b76bebb3edcea6d66a90fa8a50",
+      "expected_row_leaves": [
+        "0x2019fa3d28433b4dedc42aa3b40b395bbb809d45415be406936f83c654254ffa",
+        "0x2d7ef27c6dd0c4e0634bfdfc9bd2667198debb9af7914558f73d04f4542ba330"
+      ],
+      "expected_data_root": "0x1bfde9612fddc23486093e6307464a8f132e5e0afdb9e864e8a04250ad03c34b",
+      "note": ""
+    },
+    {
+      "id": "tc14_same_data_diff_rowid",
+      "kind": "positive",
+      "row_count": 2,
+      "capacity": 2,
+      "blob": "generated/tc14_same_data_diff_rowid.bin",
+      "blob_sha256": "3090655a350cbcce484bc9530f7793bf6bd90a3ee545add199017b167c5226b8",
+      "expected_row_leaves": [
+        "0x24a298c3ac19aec11acea2a06e652a312a26a5d1bbfa659d8446d6b11f40fe2",
+        "0x166216eb5eac5f4e34d77085a9c5a2535d0eb0a1c02a9ebd91b9443caf1a0945"
+      ],
+      "expected_data_root": "0x2500910c7516c3be3999addc88b26891fbffae4e397f62dc9f7bc255c26bbb9e",
+      "note": ""
+    },
+    {
+      "id": "tc15_missing_vs_zero",
+      "kind": "positive",
+      "row_count": 2,
+      "capacity": 2,
+      "blob": "generated/tc15_missing_vs_zero.bin",
+      "blob_sha256": "b6ebb2a97de509a7d00892d5aaec12460e41c53dc9e63affaaa9919803c6e233",
+      "expected_row_leaves": [
+        "0x2d3def35a9fcb8980fb48ad03faddc04237288c5721018035b6cb40bd6519767",
+        "0x293a797865b4ff854eadfc0986edf54bc877cd41908f03b4bbff3d7de9492b8"
+      ],
+      "expected_data_root": "0x2771530416e4fede1548622419368cf9eec8af1233242017af0a56e00a382fbf",
+      "note": ""
+    },
+    {
+      "id": "tc16_four_row_tree",
+      "kind": "positive",
+      "row_count": 4,
+      "capacity": 4,
+      "blob": "generated/tc16_four_row_tree.bin",
+      "blob_sha256": "e57fbc3b404a32a28a9c4235d22dbfb96fa98eb0433f4eb562681e613e8f2c0b",
+      "expected_row_leaves": [
+        "0x2019fa3d28433b4dedc42aa3b40b395bbb809d45415be406936f83c654254ffa",
+        "0x2a23446f243c472428b37dd3244569963fdcf95dbb03e65f7f30ecc7c6392837",
+        "0x56f26861834cf54a86ca6b686fc101313c3cf2ef57ab3680d5bf63f92a9a0e5",
+        "0x2e06c12ad0195c83e68f078bf7c687416dcf52f3980124cdcea645d58a085fb8"
+      ],
+      "expected_data_root": "0x17dff9a8f32d546595d89fed0779eeada99b6d8bbb42c00bf59d683ee605d716",
+      "note": ""
+    },
+    {
+      "id": "tc17_timestamp_distinct",
+      "kind": "positive",
+      "row_count": 3,
+      "capacity": 8,
+      "blob": "generated/tc17_timestamp_distinct.bin",
+      "blob_sha256": "a2473cc55c077db03c52b75ae3d55a56469575c3e411945280b289c79a2f63a7",
+      "expected_row_leaves": [
+        "0x2d3def35a9fcb8980fb48ad03faddc04237288c5721018035b6cb40bd6519767",
+        "0x2612355ec1e51130f810b3dbf0d7521d473901eaf12c811bf45ae03e97be1528",
+        "0x9a6e3d11f938fbf9b24b95b6cb595274f453ac99eb96033ac2171f1299fac9d"
+      ],
+      "expected_data_root": "0x237bb66cfbe531de601193ced52e235df9c62e815998f2fa1a3fed20d32effb0",
+      "note": ""
+    },
+    {
+      "id": "neg01_nan_reject",
+      "kind": "negative",
+      "input": "definitions/neg01_nan_reject.json",
+      "expected_error": "NON_FINITE_FEATURE"
+    },
+    {
+      "id": "neg02_positive_infinity_reject",
+      "kind": "negative",
+      "input": "definitions/neg02_positive_infinity_reject.json",
+      "expected_error": "NON_FINITE_FEATURE"
+    },
+    {
+      "id": "neg03_negative_infinity_reject",
+      "kind": "negative",
+      "input": "definitions/neg03_negative_infinity_reject.json",
+      "expected_error": "NON_FINITE_FEATURE"
+    },
+    {
+      "id": "tc18_large_generated",
+      "kind": "generated",
+      "generator": "synthetic-v1",
+      "seed": 20260731,
+      "row_count": 8000,
+      "capacity": 8192,
+      "expected_data_root": "0x11fade6bcd2f2d6e231fa3d7b9c37b969a15fe693435cae96a622e89455f484c",
+      "expected_first_leaf": "0xc388f6c65ac14db053d135950875f36d0e2c622fd76457f6c520a325a1e7c0a"
+    },
+    {
+      "id": "tc19_capacity_root",
+      "kind": "generated",
+      "generator": "synthetic-v1",
+      "seed": 20260731,
+      "row_count": 1000,
+      "capacity": 8192,
+      "expected_data_root": "0x2cf799b67dffcd9f0967312f94373a79cb29dec9f8027297a88622e4efb466f1",
+      "expected_first_leaf": "0xc388f6c65ac14db053d135950875f36d0e2c622fd76457f6c520a325a1e7c0a"
+    }
+  ]
+}

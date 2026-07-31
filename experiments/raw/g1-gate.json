@@ -1,0 +1,46 @@
+{
+  "passed": true,
+  "mismatches": [],
+  "summary": {
+    "go": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "rust": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "gnark": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 3
+    }
+  },
+  "per_case": {
+    "tc01_all_zeros": "PASS",
+    "tc02_negative_label": "PASS",
+    "tc03_missing_features": "PASS",
+    "tc04_padding_row": "PASS",
+    "tc05_two_row_tree": "PASS",
+    "tc06_row_order": "PASS",
+    "tc07_int32_max": "PASS",
+    "tc08_int32_min": "PASS",
+    "tc09_q16_pos_boundary": "PASS",
+    "tc10_q16_neg_boundary": "PASS",
+    "tc11_identical_rows": "PASS",
+    "tc12_single_bit_mutation": "PASS",
+    "tc13_label_mutation": "PASS",
+    "tc14_same_data_diff_rowid": "PASS",
+    "tc15_missing_vs_zero": "PASS",
+    "tc16_four_row_tree": "PASS",
+    "tc17_timestamp_distinct": "PASS",
+    "neg01_nan_reject": "PASS",
+    "neg02_positive_infinity_reject": "PASS",
+    "neg03_negative_infinity_reject": "PASS",
+    "tc18_large_generated": "PASS",
+    "tc19_capacity_root": "PASS"
+  },
+  "schema_sha256": "81814bd387b45aaf5394f454efeb98709911a1a53b8d897cee1ab713f62936f5"
+}

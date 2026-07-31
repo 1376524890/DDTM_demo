@@ -1,0 +1,168 @@
+{
+  "sprt_boundaries": {
+    "lower": -2.9856819377004893,
+    "upper": 4.553876891600541
+  },
+  "bad_quality_detection_probability": 0.9512150012263231,
+  "minimum_bond": 3141.087960014067,
+  "cost_breakdown": {
+    "honest_boundary_contamination": 0.05,
+    "bad_boundary_contamination": 0.1,
+    "row_audit_cost": 14.133319719165389,
+    "proof_batch_cost": 26.12489702508718,
+    "audit_cost": 40.258216744252564,
+    "bond_capital_cost": 4.819203445501034,
+    "residual_loss": 975.3802792685225,
+    "objective_cost": 1020.4576994582761
+  },
+  "operating_points": [
+    {
+      "contamination": 0.0,
+      "accept_probability": 1.0,
+      "reject_probability": 0.0,
+      "inconclusive_probability": 0.0,
+      "expected_samples": 56.0,
+      "expected_batches": 1.0
+    },
+    {
+      "contamination": 0.01,
+      "accept_probability": 0.9999999994835244,
+      "reject_probability": 5.164751893013958e-10,
+      "inconclusive_probability": 2.5115389236206684e-56,
+      "expected_samples": 64.9408221710254,
+      "expected_batches": 1.4317488620474326
+    },
+    {
+      "contamination": 0.02,
+      "accept_probability": 0.9999996361613911,
+      "reject_probability": 3.638386073809602e-07,
+      "inconclusive_probability": 5.4543828537716854e-30,
+      "expected_samples": 77.19822904388357,
+      "expected_batches": 1.7128004421647371
+    },
+    {
+      "contamination": 0.03,
+      "accept_probability": 0.9999759126706365,
+      "reject_probability": 2.408732936082607e-05,
+      "inconclusive_probability": 3.4365408107716815e-17,
+      "expected_samples": 95.29075211786564,
+      "expected_batches": 2.004851954615341
+    },
+    {
+      "contamination": 0.05,
+      "accept_probability": 0.992115308646786,
+      "reject_probability": 0.00787602858513095,
+      "inconclusive_probability": 8.66276807527102e-06,
+      "expected_samples": 176.66649648956735,
+      "expected_batches": 3.2656121281358974
+    },
+    {
+      "contamination": 0.08,
+      "accept_probability": 0.34365329038433734,
+      "reject_probability": 0.6497705253074212,
+      "inconclusive_probability": 0.006576184308256758,
+      "expected_samples": 365.9636827835533,
+      "expected_batches": 6.207502043088359
+    },
+    {
+      "contamination": 0.1,
+      "accept_probability": 0.048769013963426124,
+      "reject_probability": 0.9512150012263231,
+      "inconclusive_probability": 1.598481025605756e-05,
+      "expected_samples": 214.33772095090913,
+      "expected_batches": 3.8370412365590996
+    },
+    {
+      "contamination": 0.12,
+      "accept_probability": 0.007213834144008569,
+      "reject_probability": 0.9927861656259056,
+      "inconclusive_probability": 2.3008608333515836e-10,
+      "expected_samples": 133.72946170354163,
+      "expected_batches": 2.574888023992514
+    },
+    {
+      "contamination": 0.15,
+      "accept_probability": 0.0005087682923159767,
+      "reject_probability": 0.9994912317076795,
+      "inconclusive_probability": 1.2092142384654169e-20,
+      "expected_samples": 83.14825590071453,
+      "expected_batches": 1.7717871597334374
+    },
+    {
+      "contamination": 0.2,
+      "accept_probability": 8.21859740815264e-06,
+      "reject_probability": 0.9999917814025943,
+      "inconclusive_probability": 1.2850874962619751e-43,
+      "expected_samples": 50.72845363785564,
+      "expected_batches": 1.2327417795046578
+    }
+  ],
+  "boundary_points": {
+    "tau_good": {
+      "contamination": 0.05,
+      "accept_probability": 0.992115308646786,
+      "reject_probability": 0.00787602858513095,
+      "inconclusive_probability": 8.66276807527102e-06,
+      "expected_samples": 176.66649648956735,
+      "expected_batches": 3.2656121281358974
+    },
+    "tau_bad": {
+      "contamination": 0.1,
+      "accept_probability": 0.048769013963426124,
+      "reject_probability": 0.9512150012263231,
+      "inconclusive_probability": 1.598481025605756e-05,
+      "expected_samples": 214.33772095090913,
+      "expected_batches": 3.8370412365590996
+    }
+  },
+  "gate": {
+    "probability_conservation_error": 1.532107773982716e-14,
+    "cost_reconstruction_error": 0.0,
+    "three_run_max_difference": 0.0,
+    "inconclusive_action": "block_settlement"
+  },
+  "metadata": {
+    "git_commit": "c72d8fe7b6e93c1e27e98864a845469b7bb057b4",
+    "working_tree": "DIRTY",
+    "config_sha256": "742ecbbf94260379cd5973705a05db5d9a71e2434f5f3fb565ebaa43fed70293",
+    "optimizer_sha256": "a4dd52e5b760b6b769288f72a924c22a87a59ffb2e499b1b4e39a1e935cc7e0b",
+    "dataset_sha256": "6195a11d2e2cafa3bc901b9f984ab6d67d6e3928d93ae40f6092ccf2ac6babd0",
+    "host": "codeserver",
+    "machine": "x86_64",
+    "platform": "Linux-6.8.0-134-generic-x86_64-with-glibc2.39",
+    "python": "3.12.13"
+  },
+  "config": {
+    "sprt": {
+      "tau_good": 0.05,
+      "tau_bad": 0.1,
+      "alpha": 0.01,
+      "beta": 0.05,
+      "batch_size": 64,
+      "max_samples": 1536
+    },
+    "economics": {
+      "price": 10000.0,
+      "g_max": 12000.0,
+      "loss_if_missed": 20000.0,
+      "cost_per_row": 0.08,
+      "cost_per_batch_proof": 8.0,
+      "annual_capital_rate": 0.08,
+      "lock_days": 7.0,
+      "safety_margin": 500.0
+    },
+    "inconclusive_action": "block_settlement",
+    "evaluation_grid": [
+      0.0,
+      0.01,
+      0.02,
+      0.03,
+      0.05,
+      0.08,
+      0.1,
+      0.12,
+      0.15,
+      0.2
+    ]
+  }
+}

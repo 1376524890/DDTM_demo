@@ -1,0 +1,164 @@
+{
+  "cases": [
+    {
+      "actual_root": "0x2cd9a7bbba491c39b649ff5b6874ad61430836057b7fe1ce32f4138b86070dd8",
+      "expected_root": "0x2cd9a7bbba491c39b649ff5b6874ad61430836057b7fe1ce32f4138b86070dd8",
+      "id": "tc01_all_zeros",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x0d8ef0ebfc745a03f4d459a02cf4c85f0afcea79a705834254000a4c5f8531ad",
+      "expected_root": "0xd8ef0ebfc745a03f4d459a02cf4c85f0afcea79a705834254000a4c5f8531ad",
+      "id": "tc02_negative_label",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x2fa6b055b128ce032214b5fc7f1f9fb6003e0e69c1480dcace60e78558d92f85",
+      "expected_root": "0x2fa6b055b128ce032214b5fc7f1f9fb6003e0e69c1480dcace60e78558d92f85",
+      "id": "tc03_missing_features",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x0fa17ab1cdaa0ca6edb854aa315522829b9d29fb3e3ba38646a3afd5b2212379",
+      "expected_root": "0xfa17ab1cdaa0ca6edb854aa315522829b9d29fb3e3ba38646a3afd5b2212379",
+      "id": "tc04_padding_row",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x0a29a0d5de3c707a9126e0883eba73558bfe7d7ab7232e953569e1100c442a20",
+      "expected_root": "0xa29a0d5de3c707a9126e0883eba73558bfe7d7ab7232e953569e1100c442a20",
+      "id": "tc05_two_row_tree",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x0a29a0d5de3c707a9126e0883eba73558bfe7d7ab7232e953569e1100c442a20",
+      "expected_root": "0xa29a0d5de3c707a9126e0883eba73558bfe7d7ab7232e953569e1100c442a20",
+      "id": "tc06_row_order",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x0777270c9cf07fd64ad79778886b07e013103a2995819c3c474b6863cd58cfbf",
+      "expected_root": "0x777270c9cf07fd64ad79778886b07e013103a2995819c3c474b6863cd58cfbf",
+      "id": "tc07_int32_max",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x25ae16e8446a9703b6fe3e4a019489f23d5bfe6b25f396f42d5715ef758e337d",
+      "expected_root": "0x25ae16e8446a9703b6fe3e4a019489f23d5bfe6b25f396f42d5715ef758e337d",
+      "id": "tc08_int32_min",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x1a399c0010c29257c32610b8f1aafd557aac8d7c492ff552bdfec7a8859f892a",
+      "expected_root": "0x1a399c0010c29257c32610b8f1aafd557aac8d7c492ff552bdfec7a8859f892a",
+      "id": "tc09_q16_pos_boundary",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x2c766a7b24e2234a0d90be79caa55ff898ddc39862c918a259476aaab9191fb1",
+      "expected_root": "0x2c766a7b24e2234a0d90be79caa55ff898ddc39862c918a259476aaab9191fb1",
+      "id": "tc10_q16_neg_boundary",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x1038c7045c40ce9ca5a42fe7ecdd61e04655caf31c2b143697ac723a762b0836",
+      "expected_root": "0x1038c7045c40ce9ca5a42fe7ecdd61e04655caf31c2b143697ac723a762b0836",
+      "id": "tc11_identical_rows",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x0687f9d753f660bfd700b2cd5d6b9b589404dde0be98b24873f34e2ceef120eb",
+      "expected_root": "0x687f9d753f660bfd700b2cd5d6b9b589404dde0be98b24873f34e2ceef120eb",
+      "id": "tc12_single_bit_mutation",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x1bfde9612fddc23486093e6307464a8f132e5e0afdb9e864e8a04250ad03c34b",
+      "expected_root": "0x1bfde9612fddc23486093e6307464a8f132e5e0afdb9e864e8a04250ad03c34b",
+      "id": "tc13_label_mutation",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x2500910c7516c3be3999addc88b26891fbffae4e397f62dc9f7bc255c26bbb9e",
+      "expected_root": "0x2500910c7516c3be3999addc88b26891fbffae4e397f62dc9f7bc255c26bbb9e",
+      "id": "tc14_same_data_diff_rowid",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x2771530416e4fede1548622419368cf9eec8af1233242017af0a56e00a382fbf",
+      "expected_root": "0x2771530416e4fede1548622419368cf9eec8af1233242017af0a56e00a382fbf",
+      "id": "tc15_missing_vs_zero",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x17dff9a8f32d546595d89fed0779eeada99b6d8bbb42c00bf59d683ee605d716",
+      "expected_root": "0x17dff9a8f32d546595d89fed0779eeada99b6d8bbb42c00bf59d683ee605d716",
+      "id": "tc16_four_row_tree",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x237bb66cfbe531de601193ced52e235df9c62e815998f2fa1a3fed20d32effb0",
+      "expected_root": "0x237bb66cfbe531de601193ced52e235df9c62e815998f2fa1a3fed20d32effb0",
+      "id": "tc17_timestamp_distinct",
+      "kind": "positive",
+      "status": "PASS"
+    },
+    {
+      "actual_error": "NON_FINITE_FEATURE",
+      "expected_error": "NON_FINITE_FEATURE",
+      "id": "neg01_nan_reject",
+      "kind": "negative",
+      "status": "PASS"
+    },
+    {
+      "actual_error": "NON_FINITE_FEATURE",
+      "expected_error": "NON_FINITE_FEATURE",
+      "id": "neg02_positive_infinity_reject",
+      "kind": "negative",
+      "status": "PASS"
+    },
+    {
+      "actual_error": "NON_FINITE_FEATURE",
+      "expected_error": "NON_FINITE_FEATURE",
+      "id": "neg03_negative_infinity_reject",
+      "kind": "negative",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x11fade6bcd2f2d6e231fa3d7b9c37b969a15fe693435cae96a622e89455f484c",
+      "expected_root": "0x11fade6bcd2f2d6e231fa3d7b9c37b969a15fe693435cae96a622e89455f484c",
+      "id": "tc18_large_generated",
+      "kind": "generated",
+      "status": "PASS"
+    },
+    {
+      "actual_root": "0x2cf799b67dffcd9f0967312f94373a79cb29dec9f8027297a88622e4efb466f1",
+      "expected_root": "0x2cf799b67dffcd9f0967312f94373a79cb29dec9f8027297a88622e4efb466f1",
+      "id": "tc19_capacity_root",
+      "kind": "generated",
+      "status": "PASS"
+    }
+  ],
+  "implementation": "rust",
+  "schema_sha256": "81814bd387b45aaf5394f454efeb98709911a1a53b8d897cee1ab713f62936f5",
+  "summary": {
+    "failed": 0,
+    "passed": 22
+  }
+}

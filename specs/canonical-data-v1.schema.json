@@ -1,0 +1,35 @@
+{
+  "schema_name": "DDTM-CANONICAL-V1",
+  "schema_version": 1,
+  "row_layout": "row-layout-v1",
+  "poseidon_parameters": "poseidon2-bn254-v1",
+  "domain_tags": "domain-tags-v1",
+  "error_codes": "error-codes-v1",
+  "feature_count": 128,
+  "merkle_capacity": 131072,
+  "max_data_rows": 100000,
+  "quantization": {
+    "format": "Q16.16",
+    "scale_power": 16,
+    "scale": 65536,
+    "rounding": "ties_to_even",
+    "non_finite_policy": "reject",
+    "lower_q16": -2147483648,
+    "upper_q16": 2147483647,
+    "lower_real": -32768.0,
+    "upper_real": 32767.9999847412109375
+  },
+  "label_encoding": {
+    "minus_one": -1,
+    "plus_one": 1,
+    "padding_label": -1
+  },
+  "valid_flag": {
+    "data_row": 1,
+    "padding_row": 0
+  },
+  "missing_feature": {
+    "canonical_q16_value": 0,
+    "mask_bit": "set"
+  }
+}

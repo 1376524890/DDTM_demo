@@ -1,0 +1,10 @@
+{
+  "tag_version": "domain-tags-v1",
+  "derivation": "tag = int(SHA-256(ascii_name)) mod field_modulus, where field_modulus is the BN254 scalar field modulus from poseidon2-bn254-v1.json",
+  "tags": {
+    "DDTM_ROW_V1": "domain tag for a data-row leaf; binds schema hash, row index and the 18 packed row field elements",
+    "DDTM_PADDING_V1": "domain tag for a padding leaf; binds schema hash and leaf index",
+    "DDTM_NODE_V1": "domain tag for an internal Merkle node; binds the tree level and the two child nodes (level participation prevents cross-level structural ambiguity)",
+    "DDTM_SCHEMA_V1": "reserved domain tag for schema-commitment leaves (not used by the v1 data root)"
+  }
+}

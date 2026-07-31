@@ -1,0 +1,14 @@
+{
+  "code_version": "error-codes-v1",
+  "description": "Canonical error codes emitted by every language's canonicalizer. Negative test vectors assert the exact code; cross-language consistency requires identical codes.",
+  "codes": {
+    "NON_FINITE_FEATURE": "Input contains NaN, +Inf or -Inf. Such values are REJECTED outright; only ordinary finite numbers are clamped to the schema bounds.",
+    "ROW_SIZE_MISMATCH": "Binary row is not exactly 548 bytes.",
+    "RESERVED_NONZERO": "The 2-byte reserved field is not zero.",
+    "INVALID_LABEL": "label is not in {-1, +1} for a valid data row.",
+    "INVALID_VALID_FLAG": "valid is not in {0, 1}.",
+    "FEATURE_OUT_OF_RANGE": "A stored feature falls outside the signed int32 range (corruption).",
+    "INVALID_ROW_ID": "row_id is negative or, where an ordering is asserted, does not equal the physical index.",
+    "INVALID_MASK_SIZE": "missing_mask is not exactly 16 bytes."
+  }
+}

@@ -1,69 +1,84 @@
-# Canonical Data Format v1
+# Canonical Data Format v1 (DDTM-CANONICAL-V1)
 
-## Shape
+This is the **single source of truth** for the deterministic data layer. Every
+language (Python, Go, Rust, gnark) MUST produce byte-identical row encodings,
+identical Poseidon2 leaves, and an identical Merkle `dataRoot` for the same
+inputs. The normative artifacts live next to this document:
 
-- Maximum rows: 100,000.
-- Merkle capacity: 131,072 (`2^17`).
-- Logical feature dimension: 1-128.
-- Physical feature dimension: exactly 128.
-- Binary label: `-1` or `+1`.
+| Artifact | Purpose |
+|---|---|
+| `canonical-data-v1.schema.json` | Frozen schema; its **raw bytes** define the SchemaHash |
+| `row-layout-v1.json` | Exact 548-byte row layout |
+| `poseidon2-bn254-v1.json` | Pinned Poseidon2 BN254 width-4 constants + KAT |
+| `domain-tags-v1.json` | Domain-separation tags |
+| `error-codes-v1.json` | Canonical rejection codes |
 
-## Row fields
+> The `schema_sha256` is `SHA-256` of the raw UTF-8 / LF bytes of
+> `canonical-data-v1.schema.json`. It is split into `schemaHi` (first 16 bytes,
+> big-endian) and `schemaLo` (last 16 bytes). No language may reformat the file
+> before hashing.
 
-| Field | Type | Constraint |
-|---|---|---|
-| version | uint16 | exactly 1 |
-| row_id | uint64 | equals zero-based physical row index |
-| valid | uint8 | 0 or 1 |
-| label | int8 | -1 or +1 when valid; 0 when padding |
-| timestamp | uint64 | Unix seconds |
-| missing_mask | 16 bytes | bit k denotes missing feature k |
-| features | 128 x int32 | Q16.16 fixed-point |
+## 1. Row layout (548 bytes, little-endian)
 
-## Quantization
+| Offset | Size | Field | Constraint |
+|---:|---:|---|---|
+| 0 | 8 | `row_id : uint64` | `>= 0`; data row == physical index; padding == leaf index |
+| 8 | 8 | `timestamp : uint64` | `>= 0`; Unix seconds; `0` for padding |
+| 16 | 512 | `features[128] : int32` | Q16.16 fixed-point |
+| 528 | 16 | `missing_mask[16]` | bit `k` set ⇒ feature `k` missing |
+| 544 | 1 | `label : int8` | data: `-1` or `+1`; padding: `-1` |
+| 545 | 1 | `valid : uint8` | data: `1`; padding: `0` |
+| 546 | 2 | `reserved : uint16` | MUST be `0` |
 
-For a schema-defined offset `o`, scale `s > 0`, lower bound `l`, and upper bound `u`:
+## 2. Quantization: IEEE-754 float32 → Q16.16
 
-```
-q = round_half_to_even((clip(x,l,u)-o)/s * 2^16)
-```
+1. Read the **float32 bit pattern** (`NaN`/`+Inf`/`-Inf` ⇒ **`NON_FINITE_FEATURE`**, rejected — never clamped).
+2. Decode sign/exponent/mantissa into the exact integer value `mantissa * 2^e`.
+3. Convert to Q16.16 by a **ties-to-even** multiply/shift, then clamp to
+   `[lower_q16, upper_q16] = [-2^31, 2^31-1]`.
 
-`q` must fit signed int32. Missing values use `q=0` and must set the corresponding mask bit.
+Implementations MUST use the integer bit decomposition; language defaults such
+as `math.Round` are NOT ties-to-even and are forbidden. A missing feature uses
+`q16 = 0` and sets the corresponding mask bit.
 
-## Field packing
-
-Seven signed int32 values are converted to unsigned offset representation and packed into one field element:
-
-```
-u_k = uint64(int64(q_k) + 2^31)
-packed = sum(u_k << (32*k)), k=0..6
-```
-
-The top bits remain zero, so packed values are below `2^224` and safely below the BN254 scalar modulus.
-
-## Leaf hash
-
-```
-leaf_i = Poseidon2(
-  TAG_ROW_V1,
-  schema_hash,
-  dataset_version,
-  row_id,
-  valid,
-  label_encoded,
-  timestamp,
-  missing_mask_lo,
-  missing_mask_hi,
-  packed_feature_0, ... packed_feature_18
-)
-```
-
-`label_encoded` is 0 for padding, 1 for -1, and 2 for +1.
-
-## Tree hash
+## 3. Schema hash and domain tags
 
 ```
-node = Poseidon2(TAG_NODE_V1, level, left, right)
+schemaDigest = SHA-256(canonical-data-v1.schema.json raw bytes)
+schemaHi = int.from_bytes(schemaDigest[0:16],  "big")
+schemaLo = int.from_bytes(schemaDigest[16:32], "big")
+
+TAG_X = int.from_bytes(SHA-256("DDTM_X_V1"), "big") mod p
 ```
 
-Padding leaves are deterministic hashes of `(TAG_PADDING_V1, schema_hash, dataset_version, index)`.
+## 4. Field packing (row → 18 field elements)
+
+The 548-byte row blob is split into 31-byte little-endian chunks:
+`ceil(548/31) = 18` elements. 31 bytes fits below the BN254 scalar, so each
+chunk is a unique field element with no modular-reduction ambiguity.
+
+## 5. Poseidon2 sponge `H_P`
+
+Poseidon2 BN254 **width 4** (8 full + 56 partial rounds, s-box `x^5`), with the
+pinned constants from `poseidon2-bn254-v1.json`. `H_P(tag, elements)` absorbs
+the message `[tag, len(elements), *elements]` through a rate-3 sponge (initial
+state all zero, final block zero-padded) and squeezes element 0. The explicit
+arity field prevents length-extension ambiguity.
+
+## 6. Leaves and nodes
+
+```
+row_leaf_i     = H_P(TAG_ROW,     [schemaHi, schemaLo, i, r0 .. r17])   # arity 21
+padding_leaf_i = H_P(TAG_PADDING, [schemaHi, schemaLo, i])              # arity 3
+node(level,L,R)= H_P(TAG_NODE,    [level, L, R])                       # arity 3
+```
+
+The tree has depth 17 (capacity `2^17 = 131072`). Real rows fill the low
+indices; the remainder is `padding_leaf`. `level` participates in the node hash
+to remove cross-level ambiguity.
+
+## 7. Negative inputs
+
+`NaN`, `+Inf`, `-Inf` are rejected with `NON_FINITE_FEATURE`. Negative test
+vectors do not produce a `.bin`; they assert the canonicalizer rejects them with
+the recorded code.

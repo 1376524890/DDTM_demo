@@ -1,0 +1,28 @@
+{
+  "layout_version": "row-layout-v1",
+  "total_bytes": 548,
+  "endianness": "little",
+  "fields": [
+    {"name": "row_id", "offset": 0, "size": 8, "ctype": "uint64", "constraint": "row_id >= 0; for data rows equals zero-based physical index; for padding rows equals Merkle leaf index"},
+    {"name": "timestamp", "offset": 8, "size": 8, "ctype": "uint64", "constraint": "timestamp >= 0; Unix seconds; 0 for padding rows"},
+    {"name": "features", "offset": 16, "size": 512, "ctype": "int32[128]", "constraint": "Q16.16 fixed-point; each element in int32 range; missing feature canonical value == 0"},
+    {"name": "missing_mask", "offset": 528, "size": 16, "ctype": "uint8[16]", "constraint": "bit k set means feature k is missing; all 0xff for padding rows"},
+    {"name": "label", "offset": 544, "size": 1, "ctype": "int8", "constraint": "data rows: label in {-1, +1}; padding rows: -1"},
+    {"name": "valid", "offset": 545, "size": 1, "ctype": "uint8", "constraint": "data rows: 1; padding rows: 0"},
+    {"name": "reserved", "offset": 546, "size": 2, "ctype": "uint16", "constraint": "reserved == 0; MUST be rejected if non-zero"}
+  ],
+  "padding_row": {
+    "row_id": "<leaf index>",
+    "timestamp": 0,
+    "features": "all zero",
+    "missing_mask": "all 0xff",
+    "label": -1,
+    "valid": 0,
+    "reserved": 0
+  },
+  "field_packing": {
+    "description": "The 548-byte row blob is chunked into 31-byte little-endian integers, producing ceil(548/31)=18 field elements. 31 bytes < 31-byte BN254 field capacity, so each chunk maps to a unique field element without modular reduction ambiguity.",
+    "chunk_bytes": 31,
+    "element_count": 18
+  }
+}

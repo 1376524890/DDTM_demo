@@ -1,15 +1,12 @@
-// Command export-poseidon-params dumps the exact BN254 Poseidon2 width-4
-// parameters used by gnark-crypto v0.20.1, together with known-answer-test
-// (KAT) vectors. The output JSON is the single source of truth consumed by
-// the Python and Rust reference implementations, so that every language runs
-// the identical permutation and therefore the identical Merkle root.
+// Command export-poseidon-params 导出 gnark-crypto v0.20.1 所用的 BN254 Poseidon2
+// width-4 精确参数，连同已知答案测试（KAT）向量。输出的 JSON 是 Python 与 Rust 参考
+// 实现共同消费的唯一真相来源，使每种语言运行完全相同的置换、进而得到完全相同的
+// Merkle 根。
 //
-// We deliberately pin width=4. gnark-crypto only hard-codes audited
-// constants for t in {4,8,12,16}; t=2,3 are derived at runtime via Keccak and
-// would force every reimplementation to reproduce gnark-crypto's Keccak-based
-// key schedule. Width 4 uses the hardcoded, audited constants and is the
-// smallest such width, minimising the constant surface that must be kept in
-// sync across languages.
+// 我们刻意钉定 width=4。gnark-crypto 仅对 t∈{4,8,12,16} 硬编码了经审计的常量；
+// t=2,3 在运行时经 Keccak 派生，会迫使每个重实现都复刻 gnark-crypto 基于 Keccak
+// 的密钥排程。width 4 使用硬编码、经审计的常量，且是其中最小的宽度，把跨语言必须
+// 保持同步的常量面降到最小。
 package main
 
 import (
@@ -22,7 +19,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/poseidon2"
 )
 
-// ParamFile is the on-disk representation of the frozen Poseidon2 instance.
+// ParamFile 是冻结的 Poseidon2 实例在磁盘上的表示。
 type ParamFile struct {
 	Protocol       string     `json:"protocol"`
 	Version        int        `json:"version"`
@@ -39,14 +36,14 @@ type ParamFile struct {
 	ParameterSource string    `json:"parameter_source"`
 }
 
-// KAT is a single known-answer-test vector for the permutation.
+// KAT 是置换的一条已知答案测试向量。
 type KAT struct {
 	Input  []string `json:"input"`
 	Output []string `json:"output"`
 }
 
-// elementHex renders an fr.Element as a 0x-prefixed big-endian canonical
-// integer string (matching fr.Element.Bytes() ordering).
+// elementHex 把 fr.Element 渲染为 0x 前缀的大端规范整数字符串
+// （与 fr.Element.Bytes() 的字节序一致）。
 func elementHex(e fr.Element) string {
 	b := e.Bytes()
 	return "0x" + new(big.Int).SetBytes(b[:]).Text(16)
@@ -75,11 +72,11 @@ func katFor(input []string) KAT {
 
 func main() {
 	const width = 4
-	// NewParameters returns the exported parameter struct (Width, RoundKeys,
-	// DiagM1, ...). It reads the hardcoded audited constants for t=4.
+	// NewParameters 返回导出的参数结构体（Width、RoundKeys、DiagM1……）。
+	// 它读取 t=4 的硬编码经审计常量。
 	params := poseidon2.NewParameters(width, 8, 56)
 
-	// BN254 scalar field modulus.
+	// BN254 标量域模数。
 	modulus := fr.Modulus()
 
 	out := ParamFile{
@@ -108,8 +105,8 @@ func main() {
 		}
 	}
 
-	// KAT vectors: a spread of representative inputs. These let the Python
-	// and Rust reimplementations prove they reproduce gnark-crypto exactly.
+	// KAT 向量：一组有代表性的输入。它们让 Python 与 Rust 重实现证明自己能精确
+	// 重现 gnark-crypto。
 	out.KAT = []KAT{
 		katFor([]string{"0x0", "0x0", "0x0", "0x0"}),
 		katFor([]string{"0x1", "0x2", "0x3", "0x4"}),

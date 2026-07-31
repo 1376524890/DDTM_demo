@@ -1,4 +1,4 @@
-"""Load and validate ``g0-default.json`` into a typed ExperimentConfig."""
+"""把 ``g0-default.json`` 加载并校验为类型化的 ExperimentConfig。"""
 from __future__ import annotations
 
 import json
@@ -13,7 +13,7 @@ from .models import (
 
 
 def load_config(path: str | Path) -> ExperimentConfig:
-    """Read the single JSON config and build a validated ExperimentConfig."""
+    """读取唯一 JSON 配置并构造一个已校验的 ExperimentConfig。"""
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
 
     config = ExperimentConfig(

@@ -9,7 +9,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 )
 
-// Domain tag source names (domain-tags-v1).
+// 域标签来源名（domain-tags-v1）。
 var domainNames = []string{
 	"DDTM_ROW_V1",
 	"DDTM_PADDING_V1",
@@ -17,7 +17,7 @@ var domainNames = []string{
 	"DDTM_SCHEMA_V1",
 }
 
-// SchemaDigest returns SHA-256 of the raw canonical schema file bytes.
+// SchemaDigest 返回规范化 schema 文件原始字节的 SHA-256。
 func SchemaDigest(path string) ([]byte, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -27,7 +27,7 @@ func SchemaDigest(path string) ([]byte, error) {
 	return sum[:], nil
 }
 
-// SchemaHalves returns (hi, lo) as two 128-bit big-endian field elements.
+// SchemaHalves 返回 (hi, lo)——两个 128 位大端域整数。
 func SchemaHalves(path string) (fr.Element, fr.Element, error) {
 	digest, err := SchemaDigest(path)
 	if err != nil {
@@ -39,7 +39,7 @@ func SchemaHalves(path string) (fr.Element, fr.Element, error) {
 	return hi, lo, nil
 }
 
-// SchemaSHA256Hex returns the hex encoding of the schema digest.
+// SchemaSHA256Hex 返回 schema 摘要的十六进制编码。
 func SchemaSHA256Hex(path string) (string, error) {
 	d, err := SchemaDigest(path)
 	if err != nil {
@@ -48,9 +48,9 @@ func SchemaSHA256Hex(path string) (string, error) {
 	return hex.EncodeToString(d), nil
 }
 
-// DomainTags returns SHA-256(name) mod p for every tag name.
+// DomainTags 返回每个标签名的 SHA-256(name) mod p。
 func DomainTags(modulus *big.Int) map[string]fr.Element {
-	_ = modulus // modulus implied by fr.Element
+	_ = modulus // 模数已由 fr.Element 隐含
 	tags := make(map[string]fr.Element, len(domainNames))
 	for _, name := range domainNames {
 		sum := sha256.Sum256([]byte(name))

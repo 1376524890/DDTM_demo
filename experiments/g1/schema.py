@@ -1,9 +1,8 @@
-"""Schema hash and domain-separation tags (canonical-data-v1).
+"""SchemaHash 与域分离标签（canonical-data-v1）。
 
-The SchemaHash is the SHA-256 of the *raw bytes* of the frozen schema file —
-no language may reformat the JSON before hashing. It is split into two 128-bit
-halves so it fits cleanly into BN254 field elements. Domain tags are
-``SHA-256(name) mod p``.
+SchemaHash 是冻结的 schema 文件*原始字节*的 SHA-256——任何语言都不得在哈希前
+重新格式化该 JSON。它被拆成两半 128 位整数，以便干净地装入 BN254 域元素。域标签
+为 ``SHA-256(name) mod p``。
 """
 from __future__ import annotations
 
@@ -22,12 +21,12 @@ DOMAIN_NAMES = (
 
 
 def schema_digest(path: Path = SCHEMA_PATH) -> bytes:
-    """Raw 32-byte SHA-256 of the canonical schema file bytes."""
+    """规范化 schema 文件原始字节的 32 字节 SHA-256。"""
     return hashlib.sha256(path.read_bytes()).digest()
 
 
 def schema_halves(path: Path = SCHEMA_PATH) -> tuple[int, int]:
-    """Return ``(schemaHi, schemaLo)`` as two 128-bit big-endian integers."""
+    """返回 ``(schemaHi, schemaLo)``——两个 128 位大端整数。"""
     digest = schema_digest(path)
     schema_hi = int.from_bytes(digest[:16], "big")
     schema_lo = int.from_bytes(digest[16:], "big")
@@ -39,7 +38,7 @@ def schema_sha256_hex(path: Path = SCHEMA_PATH) -> str:
 
 
 def domain_tags(modulus: int) -> dict[str, int]:
-    """Compute every domain tag as ``SHA-256(name) mod modulus``."""
+    """把每个域标签计算为 ``SHA-256(name) mod modulus``。"""
     return {
         name: int.from_bytes(hashlib.sha256(name.encode("ascii")).digest(), "big")
         % modulus

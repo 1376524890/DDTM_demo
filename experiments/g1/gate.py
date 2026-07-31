@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""G1 cross-language consistency gate.
+"""G1 跨语言一致性 gate。
 
-Reads the manifest (Python's golden values) and the Go / Rust / gnark result
-files, and asserts every implementation agrees: each case must PASS (gnark's
-negative cases are SKIP because quantization is off-circuit, which is allowed),
-and every reported Merkle root must match the manifest's expected root.
+读取清单（Python 的 golden 值）与 Go / Rust / gnark 的结果文件，断言每个实现都一
+致：每个用例必须 PASS（gnark 的负向用例为 SKIP，因为量化离线，这是允许的），并且
+每一个上报的 Merkle 根都必须与清单的预期根一致。
 """
 from __future__ import annotations
 
@@ -52,18 +51,18 @@ def gate(manifest_path: Path, go: Path, rust: Path, gnark: Path) -> dict:
                 summary[impl]["fail"] += 1
                 ok = False
                 notes.append(f"{impl}:{status}")
-            # Root agreement (skip negative cases which have no root).
+            # 根一致（跳过没有根的负向用例）。
             if case_def["kind"] != "negative":
                 want = case_def.get("expected_data_root")
                 actual = res.get("actual_root")
                 if want and actual and _hex_norm(want) != _hex_norm(actual):
                     ok = False
                     notes.append(f"{impl}:root")
-        # gnark negative cases are allowed to be SKIP (off-circuit).
+        # gnark 负向用例允许 SKIP（离线）。
         if case_def["kind"] == "negative":
             gnark_status = results.get("gnark", {}).get("status")
             if gnark_status == "SKIP":
-                ok = ok  # acceptable
+                ok = ok  # 可接受
         per_case_status[cid] = "PASS" if ok else "FAIL"
         if not ok:
             mismatches.append(f"{cid}: {', '.join(notes)}")
@@ -96,11 +95,11 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
-    print("G1 gate:", "PASS" if result["passed"] else "FAIL")
+    print("G1 gate：", "PASS" if result["passed"] else "FAIL")
     for impl, counts in result["summary"].items():
         print(f"  {impl:6s}: pass={counts['pass']} fail={counts['fail']} skip={counts['skip']}")
     if result["mismatches"]:
-        print("  mismatches:")
+        print("  不匹配：")
         for m in result["mismatches"]:
             print("   -", m)
     if not result["passed"]:

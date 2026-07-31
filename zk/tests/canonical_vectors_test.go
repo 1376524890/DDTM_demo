@@ -15,7 +15,7 @@ import (
 	"github.com/consensys/gnark/test"
 )
 
-// repoRoot walks up to the directory containing specs/canonical-data-v1.md.
+// repoRoot 向上查找含有 specs/canonical-data-v1.md 的目录。
 func repoRoot() string {
 	dir, _ := os.Getwd()
 	for i := 0; i < 8; i++ {
@@ -47,7 +47,7 @@ type manifest struct {
 	Cases     []manifestCase `json:"cases"`
 }
 
-// packRow chunks a 548-byte blob into 18 little-endian field elements.
+// packRow 把 548 字节 blob 拆成 18 个小端域元素。
 func packRow(blob []byte) []*big.Int {
 	out := make([]*big.Int, 0, 18)
 	for off := 0; off < len(blob); off += 31 {
@@ -81,8 +81,8 @@ func schemaHalves(path string) (*big.Int, *big.Int) {
 	return hi, lo
 }
 
-// TestCanonicalVectors runs the RowCommitmentCircuit on the small positive
-// vectors and checks the in-circuit leaf matches the manifest's golden leaf.
+// TestCanonicalVectors 在小型正向向量上运行 RowCommitmentCircuit，检查电路内
+// 叶子是否与清单的 golden leaf 一致。
 func TestCanonicalVectors(t *testing.T) {
 	root := repoRoot()
 	pc, err := circuits.LoadPoseidonConstants()
@@ -134,13 +134,13 @@ func TestCanonicalVectors(t *testing.T) {
 			}
 		}
 
-		// gnark test harness: compile + solve (BN254 only — the pinned
-		// Poseidon2 constants are field-specific).
+		// gnark 测试框架：compile + solve（仅 BN254——钉定的 Poseidon2
+		// 常量是域特定的）。
 		assert := test.NewAssert(t)
 		assert.SolvingSucceeded(&circuit, &assignment, test.WithCurves(bn254.ID))
 		t.Logf("vector %s: leaf %s satisfied in-circuit", c.ID, shortHex(c.ExpectedLeaves[0]))
 		checked++
-		// The first few vectors fully exercise the wiring; keep it fast.
+		// 前几个向量足以充分演练电路接线；保持快速。
 		if checked >= 3 {
 			break
 		}

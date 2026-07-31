@@ -1,1 +1,5 @@
-numpy==2.2.6
+# G0/G1 实验与跨语言数据层所需 Python 依赖
+# 仅两件：gmpy2 用于加速 Poseidon2 大整数运算（无之则回退纯 Python，更慢）；
+# pytest 用于运行 experiments/tests/ 下的测试套件。
+gmpy2>=2.1
+pytest>=8

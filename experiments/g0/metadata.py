@@ -1,8 +1,7 @@
-"""Reproducibility metadata: pin every input that affects a release report.
+"""可复现性元数据：钉死每一项会影响 release 报告的输入。
 
-A release run (``--release``) refuses to proceed on a DIRTY tree and records
-the SHA-256 of the config, the optimizer source and the dataset, so a report
-can be re-derived from a named commit with named inputs.
+release 运行（``--release``）在 DIRTY 工作树上会拒绝继续，并记录 config、
+optimizer 源码与数据集的 SHA-256，使报告可从一个具名提交 + 具名输入重新推导。
 """
 from __future__ import annotations
 
@@ -14,7 +13,7 @@ from typing import Any
 
 
 def run_checked(command: list[str], cwd: Path) -> str:
-    """Run a git command and return stripped stdout, raising on failure."""
+    """运行一个 git 命令并返回去尾空白后的 stdout，失败则抛错。"""
     result = subprocess.run(
         command,
         cwd=cwd,
@@ -26,7 +25,7 @@ def run_checked(command: list[str], cwd: Path) -> str:
 
 
 def sha256_file(path: Path) -> str:
-    """SHA-256 of a file's raw bytes, streamed in 1 MiB chunks."""
+    """以 1 MiB 分块流式计算文件原始字节的 SHA-256。"""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -41,13 +40,13 @@ def collect_metadata(
     dataset_path: Path | None,
     release_mode: bool,
 ) -> dict[str, Any]:
-    """Collect git + file hashes + host info.
+    """收集 git + 文件哈希 + 主机信息。
 
-    In ``release_mode`` a DIRTY working tree is a hard error: a formal report
-    must be reproducible from a named commit, which requires a clean tree.
+    ``release_mode`` 下 DIRTY 工作树是硬错误：正式报告必须可由一个具名提交重现，
+    这要求工作树干净。
 
-    ``dataset_path`` may be ``None`` — G0 is an analytical experiment with no
-    mandatory dataset; when present the hash is recorded for reproducibility.
+    ``dataset_path`` 可为 ``None``——G0 是解析实验，无强制数据集；存在时记录其哈希
+    以便复现。
     """
     commit = run_checked(["git", "rev-parse", "HEAD"], repository)
     dirty_output = run_checked(["git", "status", "--porcelain"], repository)

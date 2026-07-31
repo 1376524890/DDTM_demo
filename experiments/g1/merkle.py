@@ -1,13 +1,11 @@
-"""Merkle tree over canonical rows using the Poseidon2 sponge.
+"""基于 Poseidon2 sponge 的规范行 Merkle 树。
 
-A row's 548-byte blob is packed into 18 field elements (31-byte little-endian
-chunks). The row leaf binds the schema hash, the row index and the packed
-elements; padding leaves bind only the schema hash and index; internal nodes
-bind the level and the two children. The tree has depth 17 (capacity 2^17).
+一行的 548 字节 blob 被打包成 18 个域元素（31 字节小端分块）。行叶子绑定 schema
+哈希、行索引与这些打包元素；padding 叶子只绑定 schema 哈希与索引；内部节点绑定
+层级与两个孩子。树深度为 17（容量 2^17）。
 
-Large trees (full 131072 capacity) are built with a process pool: the leaf
-layer and every node layer are independent within a layer, so they parallelise
-cleanly across CPU cores.
+大树（完整 131072 容量）用进程池构建：叶子层与每个节点层在层内彼此独立，因此可以
+干净地跨 CPU 核并行。
 """
 from __future__ import annotations
 
@@ -23,13 +21,12 @@ PACKED_ELEMENT_COUNT = 18  # ceil(548 / 31)
 TREE_DEPTH = 17
 TREE_CAPACITY = 1 << TREE_DEPTH
 
-# Above this many leaves we spread the (embarrassingly parallel) per-layer work
-# across worker processes.
+# 超过这么多叶子时，把（高度可并行的）逐层工作分散到 worker 进程。
 _PARALLEL_THRESHOLD = 4096
 
 
 def pack_row_fields(blob: bytes) -> list[int]:
-    """Pack a 548-byte row into 18 field elements (31-byte LE chunks)."""
+    """把 548 字节行打包成 18 个域元素（31 字节小端分块）。"""
     if len(blob) != ROW_BYTES:
         raise ValueError("Expected 548-byte row")
     return [
@@ -45,7 +42,7 @@ def row_leaf(
     schema_lo: int,
     tag_row: int,
 ) -> int:
-    """Data-row leaf: H_P(TAG_ROW, [schemaHi, schemaLo, index, r0..r17])."""
+    """数据行叶子：H_P(TAG_ROW, [schemaHi, schemaLo, index, r0..r17])。"""
     elements = [schema_hi, schema_lo, index, *pack_row_fields(blob)]
     return hash_poseidon(tag_row, elements)
 
@@ -56,7 +53,7 @@ def padding_leaf(
     schema_lo: int,
     tag_padding: int,
 ) -> int:
-    """Padding leaf: H_P(TAG_PADDING, [schemaHi, schemaLo, index])."""
+    """padding 叶子：H_P(TAG_PADDING, [schemaHi, schemaLo, index])。"""
     return hash_poseidon(tag_padding, [schema_hi, schema_lo, index])
 
 
@@ -66,15 +63,15 @@ def node_hash(
     right: int,
     tag_node: int,
 ) -> int:
-    """Internal node: H_P(TAG_NODE, [level, left, right])."""
+    """内部节点：H_P(TAG_NODE, [level, left, right])。"""
     return hash_poseidon(tag_node, [level, left, right])
 
 
-# --- Worker functions (module-level so they pickle for the process pool). ---
+# --- worker 函数（模块级，以便能被进程池 pickle）---
 
 
 def _leaf_chunk_worker(args):
-    """Compute leaves [lo, hi) for the data/padding boundary at ``data_count``."""
+    """为 data/padding 边界 ``data_count`` 计算 [lo, hi) 的叶子。"""
     lo, hi, data_count, blobs, schema_hi, schema_lo, tag_row, tag_padding = args
     out = []
     for index in range(lo, hi):
@@ -86,7 +83,7 @@ def _leaf_chunk_worker(args):
 
 
 def _node_chunk_worker(args):
-    """Hash the (left, right) pairs in one slice of a node layer."""
+    """哈希某个节点层的一个切片中的 (left, right) 对。"""
     level, slice_pairs, tag_node = args
     return [
         node_hash(level, left, right, tag_node) for left, right in slice_pairs
@@ -94,7 +91,7 @@ def _node_chunk_worker(args):
 
 
 def _chunks(total: int, chunk: int):
-    """Yield (lo, hi) bounds splitting [0, total) into ``chunk``-sized pieces."""
+    """以 ``chunk`` 大小切分 [0, total)，产出 (lo, hi) 边界。"""
     for lo in range(0, total, chunk):
         yield lo, min(lo + chunk, total)
 
@@ -108,14 +105,14 @@ def build_root(
     tag_node: int,
     capacity: int = TREE_CAPACITY,
 ) -> int:
-    """Build the data root for ``row_blobs`` padded up to ``capacity`` leaves."""
+    """为 ``row_blobs``（padding 到 ``capacity`` 叶子）构建数据根。"""
     if len(row_blobs) > capacity:
         raise ValueError(f"row count {len(row_blobs)} exceeds capacity {capacity}")
 
     row_blobs = list(row_blobs)
     use_parallel = capacity >= _PARALLEL_THRESHOLD and os.cpu_count() and os.cpu_count() > 1
 
-    # Layer 0: data leaves then padding leaves.
+    # 第 0 层：数据叶 + padding 叶。
     if use_parallel:
         leaves = _parallel_leaves(
             row_blobs, capacity, schema_hi, schema_lo, tag_row, tag_padding
@@ -130,7 +127,7 @@ def build_root(
             for i in range(len(row_blobs), capacity)
         )
 
-    # Reduce pairwise up to the root; level participates in every node hash.
+    # 两两归约到根；层级参与每一个节点哈希。
     level = 0
     while len(leaves) > 1:
         pairs = list(zip(leaves[0::2], leaves[1::2]))
@@ -144,7 +141,7 @@ def build_root(
 
 
 def _parallel_leaves(blobs, capacity, schema_hi, schema_lo, tag_row, tag_padding):
-    """Spread the leaf layer across worker processes."""
+    """把叶子层分散到 worker 进程。"""
     workers = min(os.cpu_count() or 1, 8)
     chunk = max(1, capacity // (workers * 4))
     jobs = [
@@ -159,7 +156,7 @@ def _parallel_leaves(blobs, capacity, schema_hi, schema_lo, tag_row, tag_padding
 
 
 def _parallel_nodes(level, pairs, tag_node):
-    """Spread one node layer across worker processes."""
+    """把一个节点层分散到 worker 进程。"""
     workers = min(os.cpu_count() or 1, 8)
     chunk = max(1, len(pairs) // (workers * 4))
     jobs = [
@@ -170,4 +167,3 @@ def _parallel_nodes(level, pairs, tag_node):
         for part in pool.map(_node_chunk_worker, jobs):
             out.extend(part)
     return out
-

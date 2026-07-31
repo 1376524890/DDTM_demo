@@ -12,12 +12,10 @@ import (
 	"github.com/consensys/gnark/test"
 )
 
-// TestGnarkVerifyVectors runs the in-circuit RowCommitmentCircuit on the G1
-// vectors and writes experiments/raw/g1-gnark.json. Positive/generated cases
-// verify the row leaf in-circuit (the genuinely independent gnark check);
-// negative cases are off-circuit (quantization is not in the circuit) and are
-// recorded as SKIP. Roots are native-consistent because gnark-crypto's pinned
-// Poseidon2 IS the reference the other languages' constants were exported from.
+// TestGnarkVerifyVectors 在 G1 向量上运行电路内的 RowCommitmentCircuit，并写出
+// experiments/raw/g1-gnark.json。正向/生成的用例在电路内验证行叶子（真正的独立
+// gnark 检查）；负向用例离线（量化不进电路），记录为 SKIP。根是原生一致的，
+// 因为钉定的 gnark-crypto Poseidon2 正是其他语言从中导出常量的那个参考。
 func TestGnarkVerifyVectors(t *testing.T) {
 	root := repoRoot()
 	outPath := filepath.Join(root, "experiments", "raw", "g1-gnark.json")
@@ -117,7 +115,7 @@ func runCircuitCheck(t *testing.T, assert *test.Assert, packed []*big.Int, schem
 	assert.SolvingSucceeded(&circuit, &assignment, test.WithCurves(bn254.ID))
 }
 
-// genRow builds the synthetic-v1 row i blob (matches Python/Go/Rust generators).
+// genRow 构造 synthetic-v1 的第 i 行 blob（匹配 Python/Go/Rust 的生成器）。
 func genRow(i int) []byte {
 	rowID := uint64(i)
 	ts := uint64(1700000000 + i)

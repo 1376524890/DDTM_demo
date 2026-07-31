@@ -1,8 +1,7 @@
-"""High-level reference facade: rows → encoded blob → leaves → data root.
+"""高层参考门面：行 → 编码 blob → 叶子 → 数据根。
 
-This is the single Python implementation that the Go, Rust and gnark verifiers
-must reproduce bit-for-bit. It wires quantization, the row codec, the schema
-hash, the domain tags and the Poseidon2 Merkle tree together.
+这是 Go、Rust、gnark 验证器必须逐位重现的唯一 Python 实现。它把量化、行编解码、
+schema 哈希、域标签与 Poseidon2 Merkle 树串联起来。
 """
 from __future__ import annotations
 
@@ -12,14 +11,14 @@ from . import merkle, poseidon, quantize, row_codec, schema
 
 
 class CanonicalizationError(Exception):
-    """Carries a canonical error code (see specs/error-codes-v1.json)."""
+    """携带一个规范错误码（见 specs/error-codes-v1.json）。"""
 
     def __init__(self, code: str, message: str = "") -> None:
         super().__init__(message or code)
         self.code = code
 
 
-# Frozen schema + domain tags, computed once from the spec files.
+# 冻结的 schema + 域标签，由规范文件一次性算出。
 SCHEMA_HI, SCHEMA_LO = schema.schema_halves()
 SCHEMA_SHA256 = schema.schema_sha256_hex()
 _TAGS = schema.domain_tags(poseidon.MODULUS)
@@ -29,9 +28,9 @@ TAG_NODE = _TAGS["DDTM_NODE_V1"]
 
 
 def quantize_features(values: Sequence[float]) -> tuple[int, ...]:
-    """Quantize a list of finite floats to clamped Q16.16 int32.
+    """把一列有限浮点数量化为裁剪后的 Q16.16 int32。
 
-    Raises :class:`CanonicalizationError` (``NON_FINITE_FEATURE``) on NaN/Inf.
+    遇到 NaN/Inf 抛出 :class:`CanonicalizationError`（``NON_FINITE_FEATURE``）。
     """
     try:
         return tuple(quantize.quantize(v) for v in values)
@@ -47,7 +46,7 @@ def encode_row(
     label: int,
     valid: int,
 ) -> bytes:
-    """Quantize (if floats) and encode a row to its 548-byte canonical blob."""
+    """量化（若是浮点）并把一行编码为其 548 字节规范 blob。"""
     if features and isinstance(features[0], float):
         qfeatures = quantize_features(features)
     else:
@@ -64,7 +63,7 @@ def encode_row(
 
 
 def row_leaf_for_blob(index: int, blob: bytes) -> int:
-    """Compute the row leaf for one already-encoded blob."""
+    """为单个已编码 blob 计算行叶子。"""
     return merkle.row_leaf(index, blob, SCHEMA_HI, SCHEMA_LO, TAG_ROW)
 
 
@@ -73,7 +72,7 @@ def padding_leaf_for(index: int) -> int:
 
 
 def data_root(row_blobs: Sequence[bytes], capacity: int = merkle.TREE_CAPACITY) -> int:
-    """Compute the data root for a list of encoded blobs."""
+    """为一列已编码 blob 计算数据根。"""
     return merkle.build_root(
         row_blobs,
         SCHEMA_HI,
@@ -86,5 +85,5 @@ def data_root(row_blobs: Sequence[bytes], capacity: int = merkle.TREE_CAPACITY) 
 
 
 def hex0x(value: int) -> str:
-    """Render a field element as a 0x-prefixed lower-case hex string."""
+    """把域元素渲染为 0x 前缀的小写十六进制字符串。"""
     return "0x" + format(value, "x")

@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// Row layout constants (row-layout-v1), little-endian, 548 bytes total.
+// 行布局常量（row-layout-v1），小端，共 548 字节。
 const (
 	RowSize        = 548
 	FeatureCount   = 128
@@ -13,7 +13,7 @@ const (
 	ReservedOffset = 546
 )
 
-// Row is a decoded canonical row. Features are Q16.16 int32 values.
+// Row 是一行已解码的规范行。Features 是 Q16.16 的 int32。
 type Row struct {
 	RowID       uint64
 	Timestamp   uint64
@@ -23,7 +23,7 @@ type Row struct {
 	Valid       uint8
 }
 
-// Encode serializes a validated row to exactly 548 bytes.
+// Encode 把一行已校验的行序列化为恰好 548 字节。
 func (r *Row) Encode() ([]byte, error) {
 	if err := r.Validate(); err != nil {
 		return nil, err
@@ -37,11 +37,11 @@ func (r *Row) Encode() ([]byte, error) {
 	copy(out[528:544], r.MissingMask[:])
 	out[544] = byte(r.Label)
 	out[545] = r.Valid
-	// reserved stays zero.
+	// reserved 保持为零。
 	return out, nil
 }
 
-// Decode parses 548 bytes into a validated row.
+// Decode 把 548 字节解析为一行已校验的行。
 func DecodeRow(blob []byte) (*Row, error) {
 	if len(blob) != RowSize {
 		return nil, fmt.Errorf("expected %d bytes, got %d", RowSize, len(blob))
@@ -64,7 +64,7 @@ func DecodeRow(blob []byte) (*Row, error) {
 	return r, nil
 }
 
-// Validate checks the field constraints.
+// Validate 校验字段约束。
 func (r *Row) Validate() error {
 	if r.Valid > 1 {
 		return fmt.Errorf("INVALID_VALID_FLAG")
@@ -75,7 +75,7 @@ func (r *Row) Validate() error {
 	return nil
 }
 
-// PaddingRow builds the deterministic padding row placed at leafIndex.
+// PaddingRow 构造放在 leafIndex 处的确定性 padding 行。
 func PaddingRow(leafIndex uint64) *Row {
 	return &Row{
 		RowID:       leafIndex,

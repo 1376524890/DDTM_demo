@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Generate the canonical G1 test-vector manifest.
+"""生成规范化的 G1 测试向量清单。
 
-Python is the **golden** generator: it encodes every positive case, computes
-the Poseidon2 row leaves and the Merkle data root, and writes ``manifest.json``
-plus the ``.bin`` blobs. Negative cases (NaN / ±Inf) record only the expected
-rejection code — no blob is emitted. Large "generated" cases store the
-deterministic generator parameters and the expected root instead of a giant
-binary.
+Python 是 **golden** 生成器：它编码每一个正向用例，计算 Poseidon2 行叶子与 Merkle
+数据根，写出 ``manifest.json`` 与 ``.bin`` blob。负向用例（NaN / ±Inf）只记录预期
+的拒绝码——不输出 blob。大型「生成」用例存储确定性生成器参数与预期根，而非一个
+巨大的二进制。
 
-Each small positive case uses a small tree capacity (the leaf / node primitives
-are capacity-agnostic, so a capacity-8 tree exercises the same code as a
-capacity-131072 tree). Only the scale cases use the full 131072 capacity.
+每个小型正向用例使用小的树容量（叶子 / 节点原语与容量无关，因此容量为 8 的树与
+容量为 131072 的树走的是同一段代码）。只有规模用例使用完整 131072 容量；为让各语言
+都跑得快，本实现默认用 8192（算法完全相同，仅深度不同；生产用 131072 同路径）。
 """
 from __future__ import annotations
 
@@ -36,7 +34,7 @@ def _blob_sha256(blob: bytes) -> str:
 
 
 def _row(row_id, timestamp, features, mask, label, valid) -> bytes:
-    """Build an encoded blob from already-int32 features."""
+    """从已是 int32 的特征构造一个已编码 blob。"""
     return encode_row(
         CanonicalRow(
             row_id=row_id,
@@ -50,17 +48,17 @@ def _row(row_id, timestamp, features, mask, label, valid) -> bytes:
 
 
 def _q(value: float) -> int:
-    """Quantize a single float (used for boundary cases)."""
+    """量化单个浮点（用于边界用例）。"""
     return R.quantize_features([value])[0]
 
 
 def generated_features(i: int) -> list[int]:
-    """Deterministic synthetic-v1 feature vector (re-implemented in every lang)."""
+    """synthetic-v1 的确定性特征向量（每种语言都重新实现同样的公式）。"""
     return [((i + 1) * (j + 1)) & 0xFFFF for j in range(128)]
 
 
 def build_positive_cases() -> list[dict]:
-    """Define every small positive case as (id, capacity, [blobs])."""
+    """把每个小型正向用例定义为 (id, capacity, [blobs])。"""
     raw = []
 
     def add(case_id, capacity, blobs, note=""):
@@ -118,7 +116,7 @@ def build_positive_cases() -> list[dict]:
 
 
 def build_negative_definitions() -> list[dict]:
-    """Write the negative-case input definitions and return manifest entries."""
+    """写出负向用例的输入定义并返回清单条目。"""
     DEFINITIONS_DIR.mkdir(parents=True, exist_ok=True)
     cases = [
         ("neg01_nan_reject", "NaN", float("nan")),
@@ -153,7 +151,7 @@ def build_negative_definitions() -> list[dict]:
 
 
 def materialize_positive(case: dict) -> dict:
-    """Encode blobs, compute leaves + root, write .bin, return manifest entry."""
+    """编码 blob、计算叶子 + 根、写 .bin、返回清单条目。"""
     blobs = case["blobs"]
     capacity = case["capacity"]
     blob_all = b"".join(blobs)
@@ -177,7 +175,7 @@ def materialize_positive(case: dict) -> dict:
 
 
 def materialize_generated(case_id, row_count, capacity, seed) -> dict:
-    """Generate a large synthetic dataset, compute its root (no .bin stored)."""
+    """生成一个大型合成数据集，计算其根（不存 .bin）。"""
     blobs = [
         _row(i, 1700000000 + i, generated_features(i), MASK_ZERO,
               1 if i % 2 == 0 else -1, 1)
@@ -200,27 +198,27 @@ def materialize_generated(case_id, row_count, capacity, seed) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--large-rows", type=int, default=8000,
-                        help="row count for the tc18 large/generated case")
+                        help="tc18 大型/生成用例的行数")
     parser.add_argument("--capacity-rows", type=int, default=1000,
-                        help="data row count for the tc19 capacity case")
+                        help="tc19 容量用例的数据行数")
     parser.add_argument("--capacity", type=int, default=8192,
-                        help="Merkle tree capacity for the large/generated cases "
-                             "(production uses 131072 via the identical code path)")
+                        help="大型/生成用例的 Merkle 树容量"
+                             "（生产用 131072，走相同代码路径）")
     args = parser.parse_args()
 
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 
-    print("Encoding positive cases...")
+    print("编码正向用例...")
     cases = [materialize_positive(c) for c in build_positive_cases()]
 
-    print("Writing negative definitions...")
+    print("写负向定义...")
     cases.extend(build_negative_definitions())
 
-    print(f"Generating tc18 large case ({args.large_rows} rows, cap {args.capacity})...")
+    print(f"生成 tc18 大型用例（{args.large_rows} 行，cap {args.capacity}）...")
     cases.append(materialize_generated(
         "tc18_large_generated", args.large_rows, args.capacity, seed=20260731))
 
-    print(f"Generating tc19 capacity case ({args.capacity_rows} rows, cap {args.capacity})...")
+    print(f"生成 tc19 容量用例（{args.capacity_rows} 行，cap {args.capacity}）...")
     cases.append(materialize_generated(
         "tc19_capacity_root", args.capacity_rows, args.capacity, seed=20260731))
 
@@ -242,8 +240,8 @@ def main() -> None:
     pos = sum(1 for c in cases if c["kind"] == "positive")
     neg = sum(1 for c in cases if c["kind"] == "negative")
     gen = sum(1 for c in cases if c["kind"] == "generated")
-    print(f"\nmanifest written: {manifest_path}")
-    print(f"cases: {pos} positive, {neg} negative, {gen} generated (total {len(cases)})")
+    print(f"\n清单已写入：{manifest_path}")
+    print(f"用例：{pos} 正向、{neg} 负向、{gen} 生成（共 {len(cases)}）")
 
 
 if __name__ == "__main__":

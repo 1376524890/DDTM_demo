@@ -1,17 +1,16 @@
-//! verify-vectors: Rust re-implementation of the DDTM-CANONICAL-V1 data layer.
+//! verify-vectors：DDTM-CANONICAL-V1 数据层的 Rust 重新实现。
 //!
-//! Reads the G1 manifest, independently re-derives every row leaf and Merkle
-//! root using a from-scratch Poseidon2 width-4 permutation (constants pinned to
-//! gnark-crypto v0.20.1) over raw crypto-bigint U256 field arithmetic
-//! (split_mul + wide remainder — Montgomery form is avoided because of an
-//! aliasing defect in crypto-bigint 0.6.1's MontyForm self-multiplication).
+//! 读取 G1 清单，用从零编写的 Poseidon2 width-4 置换（常量钉定为 gnark-crypto
+//! v0.20.1）在原始 crypto-bigint U256 域算术（split_mul + 宽余数）上独立重新推导
+//! 每一行叶子与 Merkle 根。之所以避开 Montgomery 形式，是因为 crypto-bigint 0.6.1
+//! 的 MontyForm 自乘存在别名缺陷。
 
 use crypto_bigint::{Encoding, NonZero, U256};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf, sync::OnceLock};
 
-type Fe = U256; // canonical reduced field element
+type Fe = U256; // 已取模的规范域元素
 
 const ROW_SIZE: usize = 548;
 const FEATURE_COUNT: usize = 128;
@@ -19,8 +18,8 @@ const MASK_SIZE: usize = 16;
 const LOWER_Q16: i32 = i32::MIN;
 const UPPER_Q16: i32 = i32::MAX;
 
-// Field modulus loaded once from the pinned poseidon params file (single source
-// of truth — never hardcode it, BN254 scalar-field constants are easy to mistype).
+// 域模数从钉定的 poseidon 参数文件一次性加载（唯一真相来源——切勿硬编码，
+// BN254 标量域常量很容易抄错）。
 static MODULUS: OnceLock<U256> = OnceLock::new();
 
 fn modulus() -> U256 {
@@ -32,7 +31,7 @@ fn nz() -> NonZero<U256> {
 }
 
 // ---------------------------------------------------------------------------
-// Field helpers (raw U256 arithmetic)
+// 域运算辅助（原始 U256 算术）
 // ---------------------------------------------------------------------------
 
 fn fe_add(a: &Fe, b: &Fe) -> Fe {
@@ -45,7 +44,7 @@ fn fe_square(a: &Fe) -> Fe {
     fe_mul(a, a)
 }
 
-/// Parse a 0x-prefixed hex integer into a reduced field element.
+/// 把 0x 前缀的十六进制整数解析为已取模的域元素。
 fn fe_from_hex(s: &str) -> Fe {
     let h = s.trim_start_matches("0x");
     let padded = format!("{h:0>64}");
@@ -58,8 +57,8 @@ fn fe_from_be_bytes(b: [u8; 32]) -> Fe {
 }
 
 fn fe_from_le_bytes(b: &[u8]) -> Fe {
-    // Interpret b as a little-endian integer. Reverse into a 32-byte buffer,
-    // right-aligned (so the natural MSB lands at the correct power of 256).
+    // 把 b 解释为小端整数：反转后右对齐放进 32 字节缓冲（使自然的 MSB 落在正确的
+    // 256 的幂次上）。
     let n = b.len();
     let mut padded = [0u8; 32];
     for i in 0..n {
@@ -88,7 +87,7 @@ fn hex_eq(a: &str, b: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Poseidon2 width-4 permutation + sponge
+// Poseidon2 width-4 置换 + sponge
 // ---------------------------------------------------------------------------
 
 struct Poseidon {
@@ -103,8 +102,7 @@ impl Poseidon {
         let raw = fs::read_to_string(path)?;
         let v: Value = serde_json::from_str(&raw)?;
 
-        // Initialise the field modulus from the pinned params (single source of
-        // truth shared with Python/Go/gnark).
+        // 从钉定参数初始化域模数（与 Python/Go/gnark 共享的唯一真相来源）。
         let modulus_hex = v["modulus"].as_str().unwrap().trim_start_matches("0x");
         let _ = MODULUS.set(U256::from_be_hex(&format!("{modulus_hex:0>64}")));
 
@@ -117,7 +115,7 @@ impl Poseidon {
         let partial = v["partial_rounds"].as_u64().unwrap() as usize;
         let p = Poseidon { diag, round_keys, full_rounds: full, partial_rounds: partial };
 
-        // KAT self-check.
+        // KAT 自检。
         for k in v["kat"].as_array().unwrap() {
             let inp: Vec<String> = k["input"].as_array().unwrap()
                 .iter().map(|x| x.as_str().unwrap().to_string()).collect();
@@ -156,7 +154,7 @@ impl Poseidon {
         }
     }
 
-    /// H_P(tag, elements): rate-3 sponge over the width-4 permutation.
+    /// H_P(tag, elements)：width-4 置换之上的 rate-3 sponge。
     fn hash(&self, tag: &Fe, elements: &[Fe]) -> Fe {
         let mut msg: Vec<Fe> = Vec::with_capacity(2 + elements.len());
         msg.push(*tag);
@@ -221,7 +219,7 @@ fn parse_fe_array(v: &Value) -> [Fe; 4] {
 }
 
 // ---------------------------------------------------------------------------
-// Quantization: IEEE-754 f32 -> Q16.16
+// 量化：IEEE-754 f32 -> Q16.16
 // ---------------------------------------------------------------------------
 
 const ERR_NON_FINITE: &str = "NON_FINITE_FEATURE";
@@ -265,7 +263,7 @@ fn round_div_pow2_even(numerator: i128, shift: u32) -> i128 {
 }
 
 // ---------------------------------------------------------------------------
-// Row codec (548 bytes, little-endian)
+// 行编解码（548 字节，小端）
 // ---------------------------------------------------------------------------
 
 struct Row {
@@ -300,7 +298,7 @@ fn pack_row_fields(blob: &[u8]) -> Vec<Fe> {
 }
 
 // ---------------------------------------------------------------------------
-// Schema + domain tags + Merkle
+// Schema + 域标签 + Merkle
 // ---------------------------------------------------------------------------
 
 struct Context {
@@ -385,7 +383,7 @@ fn encode_generated_row(i: i64) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
-// Manifest verification
+// 清单校验
 // ---------------------------------------------------------------------------
 
 #[derive(serde::Serialize)]

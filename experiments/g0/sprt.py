@@ -1,10 +1,9 @@
-"""Exact SPRT evaluation by integer-state dynamic programming.
+"""用整数状态动态规划精确评估 SPRT。
 
-The log-likelihood ratio after ``samples`` observations with ``failures``
-anomalies is a deterministic function of the *integer* pair ``(samples,
-failures)`` — so we use that pair as the DP state key instead of a noisy
-floating LLR. This simultaneously yields the exact stopping distribution,
-``E[T]``, and ``E[ceil(T / batch_size)]`` from the same pass.
+观测 ``samples`` 个样本、其中 ``failures`` 个异常后的对数似然比 LLR，是整数对
+``(samples, failures)`` 的确定性函数——所以我们用这对整数作为 DP 的状态键，而
+不是用一个带噪声的浮点 LLR。这样一次遍历即可同时得到精确的停止分布、
+``E[T]`` 与 ``E[ceil(T / batch_size)]``。
 """
 from __future__ import annotations
 
@@ -15,11 +14,10 @@ from .models import OperatingPoint, SprtPolicy
 
 
 def sprt_constants(policy: SprtPolicy) -> tuple[float, float, float, float]:
-    """Return (lower, upper, hit_increment, clean_increment) for the policy.
+    """返回策略的 (lower, upper, hit_increment, clean_increment)。
 
-    ``lower``/``upper`` are the Wald accept/reject log boundaries; the two
-    increments are the per-sample LLR contributions of an anomaly and a clean
-    observation respectively.
+    ``lower`` / ``upper`` 是 Wald 接受/拒绝的对数边界；两个 increment 分别是一个
+    异常样本与一个干净样本对 LLR 的贡献。
     """
     policy.validate()
 
@@ -36,7 +34,7 @@ def state_llr(
     hit_increment: float,
     clean_increment: float,
 ) -> float:
-    """LLR of state ``(samples, failures)`` under H1 vs H0."""
+    """状态 ``(samples, failures)`` 在 H1 对 H0 下的 LLR。"""
     clean = samples - failures
     return failures * hit_increment + clean * clean_increment
 
@@ -45,19 +43,18 @@ def evaluate_operating_point(
     contamination: float,
     policy: SprtPolicy,
 ) -> OperatingPoint:
-    """Evaluate the SPRT at one contamination level via exact DP.
+    """用精确 DP 评估某个污染水平下的 SPRT。
 
-    Probability mass flows over integer ``(samples, failures)`` states. A state
-    that crosses a boundary (or hits ``max_samples``) is removed from the
-    active set and its mass is added to the appropriate outcome and to the
-    expected-sample / expected-batch accumulators.
+    概率质量在整数 ``(samples, failures)`` 状态上流动。越过边界（或达到
+    ``max_samples``）的状态会从活跃集合移除，其质量被加到对应结果，并累加进
+    期望样本数 / 期望批数。
     """
     if not 0.0 <= contamination <= 1.0:
         raise ValueError("contamination must be in [0, 1]")
 
     lower, upper, hit_increment, clean_increment = sprt_constants(policy)
 
-    # Active (not-yet-stopped) state mass: (samples, failures) -> probability.
+    # 活跃（尚未停止）状态的质量：(samples, failures) -> 概率。
     active: dict[tuple[int, int], float] = {(0, 0): 1.0}
 
     accept_probability = 0.0
@@ -67,18 +64,18 @@ def evaluate_operating_point(
     expected_batches = 0.0
 
     def record_stop(samples: int, mass: float) -> None:
-        """Account a stopped trajectory of length ``samples`` with weight."""
+        """计入一条长度为 ``samples``、权重为 mass 的停止轨迹。"""
         nonlocal expected_samples, expected_batches
         expected_samples += samples * mass
-        # E[ceil(T/batch)] comes straight from the stopping distribution —
-        # NOT from ceil(E[T]/batch). This is why we DP over stopping times.
+        # E[ceil(T/batch)] 直接来自停止分布——不是 ceil(E[T]/batch)。
+        # 这正是我们要按停止时间做 DP 的原因。
         expected_batches += math.ceil(samples / policy.batch_size) * mass
 
     for _ in range(policy.max_samples):
         next_active: dict[tuple[int, int], float] = defaultdict(float)
 
         for (samples, failures), state_mass in active.items():
-            # Bernoulli transition: clean (outcome 0) vs anomaly (outcome 1).
+            # 伯努利转移：干净（outcome 0）对异常（outcome 1）。
             transitions = (
                 (0, 1.0 - contamination),
                 (1, contamination),
@@ -101,7 +98,7 @@ def evaluate_operating_point(
                     reject_probability += mass
                     record_stop(new_samples, mass)
                 elif new_samples == policy.max_samples:
-                    # Reached the truncation budget without a decision.
+                    # 达到截断预算仍未决断。
                     inconclusive_probability += mass
                     record_stop(new_samples, mass)
                 else:
@@ -111,7 +108,7 @@ def evaluate_operating_point(
         if not active:
             break
 
-    # Any residual mass is, by construction, the inconclusive outcome.
+    # 按构造，任何残余质量都属于 INCONCLUSIVE 结果。
     inconclusive_probability += sum(active.values())
 
     total = (

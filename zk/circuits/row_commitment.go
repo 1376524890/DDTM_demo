@@ -11,11 +11,10 @@ import (
 	"github.com/consensys/gnark/frontend"
 )
 
-// RowCommitmentCircuit proves that a row's 18 packed field elements, together
-// with the schema hash and row index, hash (under the pinned Poseidon2 width-4
-// sponge H_P) to a publicly committed leaf. The Poseidon2 permutation is
-// implemented in-circuit from the pinned gnark-crypto constants, so gnark is a
-// genuine fourth independent implementation alongside Python/Go/Rust.
+// RowCommitmentCircuit 证明：一行的 18 个打包域元素，连同 schema 哈希与行索引，
+// 在钉定的 Poseidon2 width-4 sponge H_P 下哈希为一个公开承诺的叶子。Poseidon2 置
+// 换在电路内从钉定的 gnark-crypto 常量实现，因此 gnark 是与 Python/Go/Rust 并列的
+// 真正第四方独立实现。
 type RowCommitmentCircuit struct {
 	Index     frontend.Variable `json:"index"`
 	Packed    [18]frontend.Variable
@@ -24,13 +23,13 @@ type RowCommitmentCircuit struct {
 	TagRow    frontend.Variable
 	Expected  frontend.Variable `gnark:",public"`
 
-	// Pinned constants (round keys + diagonal) injected as witnesses so the
-	// circuit does not hardcode them. The prover supplies the canonical params.
+	// 钉定的常量（轮密钥 + 对角线）作为 witness 注入，使电路不把它们硬编码。
+	// prover 提供规范参数。
 	Diag      [4]frontend.Variable
 	RoundKeys [64][4]frontend.Variable
 }
 
-// Define wires up the in-circuit Poseidon2 sponge and asserts the leaf.
+// Define 连接电路内的 Poseidon2 sponge 并断言叶子。
 func (c *RowCommitmentCircuit) Define(api frontend.API) error {
 	// message = [tag, arity=21, schemaHi, schemaLo, index, packed...]
 	msg := make([]frontend.Variable, 0, 2+3+18)
@@ -43,7 +42,7 @@ func (c *RowCommitmentCircuit) Define(api frontend.API) error {
 	return nil
 }
 
-// hpSponge is the in-circuit H_P: rate-3 sponge over the width-4 permutation.
+// hpSponge 是电路内的 H_P：width-4 置换之上的 rate-3 sponge。
 func hpSponge(api frontend.API, msg []frontend.Variable, diag [4]frontend.Variable, rk [64][4]frontend.Variable) frontend.Variable {
 	var state [4]frontend.Variable
 	for i := 0; i < 4; i++ {
@@ -64,13 +63,13 @@ func hpSponge(api frontend.API, msg []frontend.Variable, diag [4]frontend.Variab
 	return state[0]
 }
 
-// permuteCircuit is the width-4 Poseidon2 permutation in-circuit (d=5, 8 full +
-// 56 partial rounds), mirroring gnark-crypto exactly.
+// permuteCircuit 是 circuit 内的 width-4 Poseidon2 置换（d=5, 8 full +
+// 56 partial 轮），完全镜像 gnark-crypto。
 func permuteCircuit(api frontend.API, s [4]frontend.Variable, diag [4]frontend.Variable, rk [64][4]frontend.Variable) [4]frontend.Variable {
 	const hf = 4
 	const partial = 56
 	s = externalCircuit(api, s)
-	// first 4 full rounds
+	// 前 4 个 full 轮
 	for i := 0; i < hf; i++ {
 		s = addRoundKeyCircuit(api, s, rk[i])
 		for j := 0; j < 4; j++ {
@@ -78,13 +77,13 @@ func permuteCircuit(api frontend.API, s [4]frontend.Variable, diag [4]frontend.V
 		}
 		s = externalCircuit(api, s)
 	}
-	// 56 partial rounds
+	// 56 个 partial 轮
 	for i := hf; i < hf+partial; i++ {
 		s[0] = api.Add(s[0], rk[i][0])
 		s[0] = sboxCircuit(api, s[0])
 		s = internalCircuit(api, s, diag)
 	}
-	// last 4 full rounds
+	// 后 4 个 full 轮
 	for i := hf + partial; i < 2*hf+partial; i++ {
 		s = addRoundKeyCircuit(api, s, rk[i])
 		for j := 0; j < 4; j++ {
@@ -102,7 +101,7 @@ func sboxCircuit(api frontend.API, x frontend.Variable) frontend.Variable {
 }
 
 func externalCircuit(api frontend.API, s [4]frontend.Variable) [4]frontend.Variable {
-	// M4 matrix (linear: only adds/doubles, no general mul).
+	// M4 矩阵（纯线性，只有加法/倍乘，没有通用乘法）。
 	t0 := api.Add(s[0], s[1])
 	t1 := api.Add(s[2], s[3])
 	two_s1 := api.Add(s[1], s[1])
@@ -133,15 +132,14 @@ func addRoundKeyCircuit(api frontend.API, s [4]frontend.Variable, rk [4]frontend
 	return s
 }
 
-// PoseidonConstants holds the pinned constants parsed from the spec file, used
-// to build circuit witnesses.
+// PoseidonConstants 持有从规范文件解析的钉定常量，用于构造电路 witness。
 type PoseidonConstants struct {
 	Diag      [4]*big.Int
 	RoundKeys [64][4]*big.Int
 	Modulus   *big.Int
 }
 
-// LoadPoseidonConstants reads the pinned params JSON relative to the repo root.
+// LoadPoseidonConstants 读取相对于仓库根的钉定参数 JSON。
 func LoadPoseidonConstants() (*PoseidonConstants, error) {
 	path := findSpecFile("poseidon2-bn254-v1.json")
 	raw, err := os.ReadFile(path)
@@ -171,7 +169,7 @@ func LoadPoseidonConstants() (*PoseidonConstants, error) {
 	return pc, nil
 }
 
-// FeToBig converts a fr.Element to a canonical big.Int.
+// FeToBig 把 fr.Element 转换为规范 big.Int。
 func FeToBig(e fr.Element) *big.Int { return e.BigInt(new(big.Int)) }
 
 func mustParseHex(s string) *big.Int {

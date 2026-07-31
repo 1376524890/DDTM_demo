@@ -1,8 +1,6 @@
-// Command verify-vectors reads the G1 manifest and independently re-derives
-// every row leaf and Merkle root in Go, comparing against the manifest's
-// golden values (which the Python reference produced). Negative cases are
-// re-quantized and must be rejected with the recorded error code. Generated
-// cases are re-materialised from the synthetic-v1 generator and re-hashed.
+// Command verify-vectors 读取 G1 清单，用 Go 独立重新推导每一行叶子与 Merkle 根，
+// 并与清单的 golden 值（由 Python 参考实现产出）比对。负向用例被重新量化，必须以
+// 记录的错误码被拒绝。生成用例由 synthetic-v1 生成器重新物化并重新哈希。
 package main
 
 import (
@@ -19,7 +17,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 )
 
-// Manifest shapes (mirrors experiments/vectors/manifest.json).
+// 清单结构（对应 experiments/vectors/manifest.json）。
 type manifestCase struct {
 	ID             string   `json:"id"`
 	Kind           string   `json:"kind"`
@@ -66,7 +64,7 @@ type summary struct {
 	Failed int `json:"failed"`
 }
 
-// negativeDefinition mirrors experiments/vectors/definitions/<id>.json.
+// negativeDefinition 对应 experiments/vectors/definitions/<id>.json。
 type negativeDefinition struct {
 	ID  string `json:"id"`
 	Row struct {
@@ -78,7 +76,7 @@ type negativeDefinition struct {
 
 func hex0x(x fr.Element) string { return canonical.HexElement(x) }
 
-// repoRoot walks up to the directory containing specs/canonical-data-v1.md.
+// repoRoot 向上查找含有 specs/canonical-data-v1.md 的目录。
 func repoRoot() string {
 	dir, _ := os.Getwd()
 	for i := 0; i < 8; i++ {
@@ -102,7 +100,7 @@ func main() {
 	poseidonPath := flag.String("poseidon", filepath.Join(root, "specs", "poseidon2-bn254-v1.json"), "poseidon params")
 	flag.Parse()
 
-	// Load pinned Poseidon2 + schema context.
+	// 加载钉定的 Poseidon2 + schema 上下文。
 	p, err := canonical.LoadPoseidon(*poseidonPath)
 	if err != nil {
 		die("poseidon load: %v", err)
@@ -253,7 +251,7 @@ func verifyGenerated(ctx *canonical.Context, c manifestCase) caseResult {
 		ExpectedRoot: c.ExpectedRoot, ActualRoot: got}
 }
 
-// --- helpers ---
+// --- 辅助函数 ---
 
 func sentinelToFloat(name string) float32 {
 	switch name {

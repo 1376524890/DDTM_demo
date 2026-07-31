@@ -1,16 +1,16 @@
-"""Canonical 548-byte row codec (row-layout-v1), little-endian.
+"""规范化的 548 字节行编解码（row-layout-v1），小端。
 
-Layout:
+布局：
 
-    offset 0   row_id     uint64
-    offset 8   timestamp  uint64
-    offset 16  features   int32[128]   (512 bytes)
-    offset 528 missing_mask uint8[16]
-    offset 544 label      int8
-    offset 545 valid      uint8
-    offset 546 reserved   uint16  (== 0)
+    偏移 0   row_id     uint64
+    偏移 8   timestamp  uint64
+    偏移 16  features   int32[128]   （512 字节）
+    偏移 528 missing_mask uint8[16]
+    偏移 544 label      int8
+    偏移 545 valid      uint8
+    偏移 546 reserved   uint16  （== 0）
 
-Encode and decode are exact inverses; both validate the field constraints.
+编码与解码互为精确逆运算；两者都校验字段约束。
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ VALID_LABELS = (-1, 1)
 
 @dataclass(frozen=True)
 class CanonicalRow:
-    """A validated canonical row. ``features`` are already-quantized int32."""
+    """一行已校验的规范行。``features`` 是已量化的 int32。"""
 
     row_id: int
     timestamp: int
@@ -54,7 +54,7 @@ class CanonicalRow:
 
 
 def encode_row(row: CanonicalRow) -> bytes:
-    """Serialize a canonical row to exactly 548 bytes."""
+    """把一行规范行序列化为恰好 548 字节。"""
     row.validate()
 
     output = bytearray(ROW_SIZE)
@@ -75,7 +75,7 @@ def encode_row(row: CanonicalRow) -> bytes:
 
 
 def decode_row(blob: bytes) -> CanonicalRow:
-    """Parse 548 bytes into a validated CanonicalRow."""
+    """把 548 字节解析为一行已校验的 CanonicalRow。"""
     if len(blob) != ROW_SIZE:
         raise ValueError(f"Expected {ROW_SIZE} bytes, got {len(blob)}")
 
@@ -105,7 +105,7 @@ def decode_row(blob: bytes) -> CanonicalRow:
 
 
 def make_padding_row(leaf_index: int) -> CanonicalRow:
-    """Build the deterministic padding row placed at ``leaf_index``."""
+    """构造放在 ``leaf_index`` 处的确定性 padding 行。"""
     return CanonicalRow(
         row_id=leaf_index,
         timestamp=0,

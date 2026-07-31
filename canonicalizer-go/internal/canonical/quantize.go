@@ -5,17 +5,17 @@ import (
 	"math"
 )
 
-// Q16.16 storage bounds (signed int32 range).
+// Q16.16 存储边界（有符号 int32 范围）。
 const (
 	LowerQ16 = -2147483648
 	UpperQ16 = 2147483647
 )
 
-// ErrNonFinite is returned for NaN / ±Inf inputs. Maps to NON_FINITE_FEATURE.
+// ErrNonFinite 在遇到 NaN / ±Inf 时返回。映射为 NON_FINITE_FEATURE。
 var ErrNonFinite = errors.New("NON_FINITE_FEATURE")
 
-// roundDivPow2Even divides numerator by 2^shift with ties-to-even rounding,
-// operating on the magnitude and re-applying the sign.
+// roundDivPow2Even 用 ties-to-even 舍入把 numerator 除以 2^shift，在幅值上运算后
+// 再重新套用符号。
 func roundDivPow2Even(numerator, shift int) int {
 	if shift <= 0 {
 		return numerator << uint(-shift)
@@ -40,8 +40,8 @@ func roundDivPow2Even(numerator, shift int) int {
 	return quotient
 }
 
-// F32BitsToQ16 converts an IEEE-754 float32 bit pattern to a clamped Q16.16
-// int32. NaN/±Inf (exp == 0xFF) are rejected.
+// F32BitsToQ16 把一个 IEEE-754 float32 位模式转换为裁剪后的 Q16.16 int32。
+// NaN/±Inf（exp == 0xFF）被拒绝。
 func F32BitsToQ16(bits uint32) (int32, error) {
 	sign := (bits >> 31) & 1
 	exponent := (bits >> 23) & 0xFF
@@ -52,13 +52,13 @@ func F32BitsToQ16(bits uint32) (int32, error) {
 	}
 
 	var mantissa int64
-	var shift int // shift to apply after the Q16 scaling
+	var shift int // Q16 缩放后施加的移位
 	if exponent == 0 {
-		// subnormal: value = fraction * 2^-149
+		// 非正规数：value = fraction * 2^-149
 		mantissa = int64(fraction)
 		shift = -149 + 16
 	} else {
-		// normal: mantissa with implicit 1, value = mantissa * 2^(exp-150)
+		// 正规数：带隐式 1 的 mantissa，value = mantissa * 2^(exp-150)
 		mantissa = int64(1<<23) | int64(fraction)
 		shift = int(exponent) - 150 + 16
 	}
@@ -81,7 +81,7 @@ func F32BitsToQ16(bits uint32) (int32, error) {
 	return int32(quantized), nil
 }
 
-// Quantize narrows a float to float32 and converts to clamped Q16.16 int32.
+// Quantize 把一个浮点数收窄为 float32，再转换为裁剪后的 Q16.16 int32。
 func Quantize(value float32) (int32, error) {
 	return F32BitsToQ16(math.Float32bits(value))
 }

@@ -15,8 +15,8 @@ const (
 	TreeCapacity = 1 << TreeDepth
 )
 
-// Context bundles the frozen schema halves + domain tags + poseidon instance
-// so every leaf/node computation uses identical inputs.
+// Context 把冻结的 schema 两半 + 域标签 + poseidon 实例绑在一起，使每个叶子/节点
+// 计算都用相同的输入。
 type Context struct {
 	P          *Poseidon
 	SchemaHi   fr.Element
@@ -26,10 +26,7 @@ type Context struct {
 	TagNode    fr.Element
 }
 
-// PackRowFields splits a 548-byte blob into 18 field elements. Each chunk is
-// interpreted as a little-endian integer (matching the Python reference's
-// int.from_bytes(..., "little")); the final 21-byte chunk is taken at natural
-// length (no zero padding — for little-endian the missing high bytes are 0).
+// PackRowFields 把 548 字节 blob 拆成 18 个域元素（31 字节小端）。
 func PackRowFields(blob []byte) ([]fr.Element, error) {
 	if len(blob) != rowBytes {
 		return nil, fmt.Errorf("expected %d-byte row", rowBytes)
@@ -41,7 +38,7 @@ func PackRowFields(blob []byte) ([]fr.Element, error) {
 			end = len(blob)
 		}
 		chunk := blob[offset:end]
-		rev := make([]byte, len(chunk)) // reverse: little-endian -> big-endian for SetBytes
+		rev := make([]byte, len(chunk)) // 反转：小端 → 大端，供 SetBytes 使用
 		for i := range chunk {
 			rev[i] = chunk[len(chunk)-1-i]
 		}
@@ -82,7 +79,7 @@ func (c *Context) NodeHash(level int, left, right fr.Element) fr.Element {
 	return c.P.HashPoseidon(c.TagNode, []fr.Element{lvl, left, right})
 }
 
-// BuildRoot builds the Merkle root for blobs padded up to capacity leaves.
+// BuildRoot 为 blobs（padding 到 capacity 叶子）构建 Merkle 根。
 func (c *Context) BuildRoot(blobs [][]byte, capacity int) (fr.Element, error) {
 	if len(blobs) > capacity {
 		return fr.Element{}, fmt.Errorf("row count %d exceeds capacity %d", len(blobs), capacity)
@@ -111,8 +108,8 @@ func (c *Context) BuildRoot(blobs [][]byte, capacity int) (fr.Element, error) {
 	return leaves[0], nil
 }
 
-// GeneratedFeatures reproduces the synthetic-v1 deterministic feature vector.
-// Must match Python experiments/g1/generate_vectors.generated_features.
+// GeneratedFeatures 重现 synthetic-v1 的确定性特征向量。
+// 必须与 Python experiments/g1/generate_vectors.generated_features 一致。
 func GeneratedFeatures(i int) [FeatureCount]int32 {
 	var out [FeatureCount]int32
 	for j := 0; j < FeatureCount; j++ {
@@ -121,7 +118,7 @@ func GeneratedFeatures(i int) [FeatureCount]int32 {
 	return out
 }
 
-// EncodeGeneratedRow builds the encoded blob for synthetic-v1 row i.
+// EncodeGeneratedRow 为 synthetic-v1 的第 i 行构造已编码 blob。
 func EncodeGeneratedRow(i int) ([]byte, error) {
 	row := &Row{
 		RowID:       uint64(i),
@@ -137,7 +134,7 @@ func EncodeGeneratedRow(i int) ([]byte, error) {
 	return row.Encode()
 }
 
-// HexElement renders a field element as 0x-prefixed lowercase canonical hex.
+// HexElement 把域元素渲染为 0x 前缀的小写规范十六进制。
 func HexElement(e fr.Element) string {
 	bi := e.BigInt(new(big.Int))
 	return "0x" + bi.Text(16)

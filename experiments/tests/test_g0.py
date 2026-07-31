@@ -1,9 +1,8 @@
-"""G0 test suite — the convergence and credibility gate for the baseline.
+"""G0 测试套件——基线的收敛性与可信性 gate。
 
-Covers the ten checks named in the plan: SPRT boundaries, probability
-conservation, expected samples, expected batches, minimum bond, cost
-reconstruction, inconclusive-not-settled semantics, three-run determinism,
-dirty-release rejection and invalid-configuration rejection.
+覆盖计划中点名的十项检查：SPRT 边界、概率守恒、期望样本数、期望批数、最低保证金、
+成本重构、INCONCLUSIVE 不结算语义、三次运行确定性、拒绝 dirty release、拒绝非法
+配置。
 """
 from __future__ import annotations
 
@@ -38,7 +37,7 @@ def evaluation(config):
     return Evaluation(config)
 
 
-# --- Analytic SPRT boundary values for tau=(0.05,0.10), alpha=0.01, beta=0.05.
+# --- tau=(0.05,0.10)、alpha=0.01、beta=0.05 下的解析 SPRT 边界值。
 EXPECTED_LOWER = -2.9856819377004893
 EXPECTED_UPPER = 4.553876891600541
 
@@ -55,21 +54,21 @@ def test_probability_conservation(evaluation):
 
 
 def test_expected_samples(evaluation):
-    # Pure-good data is accepted fast; E[T] is small and positive.
+    # 纯好数据被快速接受；E[T] 较小且为正。
     good = evaluation.at_good
     assert 0.0 < good.expected_samples <= config_max_samples(evaluation)
-    # E[T] >= 1 (at least one sample is drawn before any decision).
+    # E[T] >= 1（任何决断前至少抽 1 个样本）。
     for p in evaluation.points:
         assert p.expected_samples >= 0.0
 
 
 def config_max_samples(evaluation):
-    # helper to read max_samples from the policy indirectly via operating points
-    return 10_000  # generous upper bound; real cap is policy.max_samples
+    # 间接从 operating points 读 max_samples 上界的辅助函数
+    return 10_000  # 宽松上界；真正的上限是 policy.max_samples
 
 
 def test_expected_batches(evaluation):
-    # E[ceil(T/64)] must respect ceil arithmetic: batches >= samples/64.
+    # E[ceil(T/64)] 必须满足 ceil 算术：batches >= samples/64。
     for p in evaluation.points:
         if p.expected_samples > 0:
             ratio = p.expected_samples / 64.0
@@ -81,7 +80,7 @@ def test_minimum_bond(config):
     detection = evaluation_of_bad(config).reject_probability
     bond = minimum_bond(detection, config.economics)
     assert bond > 0.0
-    # Bond covers g_max + safety_margin scaled by inverse detection.
+    # 保证金覆盖 g_max + safety_margin，并按检测概率倒数放大。
     assert bond == pytest.approx(
         max(0.0, (config.economics.g_max + config.economics.safety_margin)
          / detection - config.economics.price)
@@ -98,9 +97,9 @@ def test_cost_reconstruction(evaluation):
 
 
 def test_inconclusive_not_settled(config):
-    """Residual loss depends only on accept_probability at the bad boundary."""
+    """残差损失只依赖坏质量边界的 accept_probability。"""
     at_bad = evaluate_operating_point(config.sprt.tau_bad, config.sprt)
-    # Reconstruct cost with the bond we actually use.
+    # 用我们实际使用的保证金重构成本。
     from experiments.g0.jabo import minimum_bond
 
     bond = minimum_bond(at_bad.reject_probability, config.economics)
@@ -110,8 +109,8 @@ def test_inconclusive_not_settled(config):
         bond,
         config.economics,
     )
-    # The loss term equals loss_if_missed * P(accept | tau_bad); inconclusive
-    # mass is excluded, so bumping inconclusive mass would NOT change the loss.
+    # 损失项等于 loss_if_missed * P(accept | tau_bad)；inconclusive 质量被排除，
+    # 因此即使抬升 inconclusive 质量也不会改变损失。
     assert cost.residual_loss == pytest.approx(
         config.economics.loss_if_missed * at_bad.accept_probability
     )
@@ -124,14 +123,14 @@ def test_three_run_determinism(config):
 
 
 def test_dirty_release_rejected(config, monkeypatch, tmp_path):
-    """A DIRTY tree must abort a --release run (simulated via a fake git status)."""
+    """DIRTY 工作树必须中止一次 --release 运行（用伪造的 git status 模拟）。"""
     import experiments.g0.metadata as metadata_mod
 
     real_run_checked = metadata_mod.run_checked
 
     def fake_run_checked(command, cwd):
         if command == ["git", "status", "--porcelain"]:
-            return " M some_dirty_file.py\n"  # non-empty => DIRTY
+            return " M some_dirty_file.py\n"  # 非空 ⇒ DIRTY
         return real_run_checked(command, cwd)
 
     monkeypatch.setattr(metadata_mod, "run_checked", fake_run_checked)
@@ -146,7 +145,7 @@ def test_dirty_release_rejected(config, monkeypatch, tmp_path):
 
 
 def test_invalid_configuration_rejected():
-    # tau_good >= tau_bad is invalid.
+    # tau_good >= tau_bad 非法。
     bad = SprtPolicy(
         tau_good=0.10, tau_bad=0.10, alpha=0.01, beta=0.05,
         batch_size=64, max_samples=1536,
@@ -154,7 +153,7 @@ def test_invalid_configuration_rejected():
     with pytest.raises(ValueError):
         bad.validate()
 
-    # negative economic value is invalid.
+    # 负的经济数值非法。
     with pytest.raises(ValueError):
         EconomicPolicy(
             price=-1.0, g_max=1.0, loss_if_missed=1.0, cost_per_row=1.0,
@@ -164,11 +163,11 @@ def test_invalid_configuration_rejected():
 
 
 def test_run_emits_full_report(config):
-    """The public run() returns gate + metadata + structured results."""
+    """公开的 run() 返回 gate + 元数据 + 结构化结果。"""
     result = run(config, release=False)
     assert result["gate"]["probability_conservation_error"] < 1e-12
     assert result["gate"]["cost_reconstruction_error"] < 1e-9
     assert result["gate"]["three_run_max_difference"] < 1e-12
-    # Tree status is commit-state dependent; just require a valid value.
+    # 工作树状态取决于提交状态；这里只要求是合法值。
     assert result["metadata"]["working_tree"] in {"CLEAN", "DIRTY"}
     assert result["metadata"]["config_sha256"]

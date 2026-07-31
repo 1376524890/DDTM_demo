@@ -1,10 +1,8 @@
-"""Typed configuration and result dataclasses for the G0 experiment.
+"""G0 实验的类型化配置与结果数据类。
 
-A single :class:`ExperimentConfig` is the unique source of parameters for the
-SPRT evaluator, the JABO objective, the reproducibility metadata and the report
-generator. There is no second place where ``tau_good`` or ``cost_per_row`` may
-be read from — this is what makes the experiment reproducible and the report
-auditable.
+唯一的 :class:`ExperimentConfig` 是 SPRT 评估器、JABO 目标函数、可复现性元数据
+与报告生成器共同读取的参数来源。这里不存在第二个可以读取 ``tau_good`` 或
+``cost_per_row`` 的地方——这正是实验可复现、报告可审计的根本原因。
 """
 from __future__ import annotations
 
@@ -14,11 +12,10 @@ from typing import Any
 
 
 class InconclusiveAction(str, Enum):
-    """What the settlement layer does when the SPRT cannot decide.
+    """SPRT 无法决断时结算层的处理方式。
 
-    The only supported policy is to block settlement: an inconclusive batch is
-    neither accepted nor settled, so it never counts as a successful delivery
-    and therefore never counts as a missed delivery in the loss term.
+    唯一支持的策略是阻止结算：一个 INCONCLUSIVE 批次既不被接受、也不被结算，
+    因此它永远不会被计为一次成功交付，也就永远不会计入漏检损失项。
     """
 
     BLOCK_SETTLEMENT = "block_settlement"
@@ -26,7 +23,7 @@ class InconclusiveAction(str, Enum):
 
 @dataclass(frozen=True)
 class SprtPolicy:
-    """Truncated Wald SPRT parameters."""
+    """截断 Wald SPRT 的参数。"""
 
     tau_good: float
     tau_bad: float
@@ -50,7 +47,7 @@ class SprtPolicy:
 
 @dataclass(frozen=True)
 class EconomicPolicy:
-    """JABO economic constants."""
+    """JABO 经济常量。"""
 
     price: float
     g_max: float
@@ -70,7 +67,7 @@ class EconomicPolicy:
 
 @dataclass(frozen=True)
 class ExperimentConfig:
-    """The single, validated configuration object consumed by all G0 stages."""
+    """G0 各阶段共同消费的唯一、经过校验的配置对象。"""
 
     sprt: SprtPolicy
     economics: EconomicPolicy
@@ -87,11 +84,11 @@ class ExperimentConfig:
 
 @dataclass(frozen=True)
 class OperatingPoint:
-    """SPRT behaviour at a single contamination level.
+    """某个污染水平下的 SPRT 行为。
 
-    ``expected_batches`` is :math:`E[\\lceil T/\\mathrm{batch\\_size}\\rceil]`
-    computed directly from the stopping distribution — not ``E[T]`` divided by
-    the batch size.
+    ``expected_batches`` 是直接由停止分布算出的
+    :math:`E[\\lceil T/\\mathrm{batch\\_size}\\rceil]`，而不是 ``E[T]`` 除以
+    批大小。
     """
 
     contamination: float
@@ -104,10 +101,10 @@ class OperatingPoint:
 
 @dataclass(frozen=True)
 class CostBreakdown:
-    """JABO objective cost and every additive component.
+    """JABO 目标成本及其每一个可加分量。
 
-    ``objective_cost`` MUST equal the sum of the four additive components
-    (row + proof + capital + residual); this is asserted by the G0 gate.
+    ``objective_cost`` 必须等于四个可加分量（行 + 证明 + 资本 + 残差）之和；
+    这一点由 G0 gate 断言。
     """
 
     honest_boundary_contamination: float
@@ -121,7 +118,7 @@ class CostBreakdown:
 
 
 def to_plain(obj: Any) -> Any:
-    """Recursively convert dataclasses/enums to JSON-serialisable structures."""
+    """把数据类/枚举递归转换为可 JSON 序列化的结构。"""
     if isinstance(obj, Enum):
         return obj.value
     if hasattr(obj, "__dataclass_fields__"):

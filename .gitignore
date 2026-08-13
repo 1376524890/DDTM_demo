@@ -1,0 +1,36 @@
+# ============================================================
+# VALOR-v1 .gitignore
+# 分层忽略规则：先忽略广泛模式，再局部豁免
+# ============================================================
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.so
+
+# ---- 实验数据（大文件，不入库）----
+data/raw/
+data/prepared/
+*.npz
+*.parquet
+*.arff
+
+# ---- 实验输出（可再生成）----
+raw/
+reports/figures/
+*.png
+*.pdf
+logs/
+
+# ---- 本地配置（含密钥）----
+.env
+configs/local/
+
+# ---- 编辑器/系统 ----
+.DS_Store
+*.swp
+.idea/
+.vscode/

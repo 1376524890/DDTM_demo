@@ -1,0 +1,10 @@
+{
+  "name": "covertype",
+  "source": "https://archive.ics.uci.edu/ml/machine-learning-databases/covtype/covtype.data.gz",
+  "sha256": null,
+  "license": "CC BY 4.0 (UCI)",
+  "n_raw": 581012,
+  "d_raw": 54,
+  "split_seed": 7,
+  "_comment": "真实数据按自身维度进入；sha256 在下载后填充（D6）。"
+}

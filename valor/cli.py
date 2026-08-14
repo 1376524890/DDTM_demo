@@ -133,6 +133,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--run-dir", required=True
     )
 
+    # ---- gate（Phase 门禁，检查单 T）----
+    gg = sub.add_parser("gate", help="Phase Gate 检查")
+    ggsub = gg.add_subparsers(dest="cmd", required=True)
+    ggsub.add_parser("phase0", help="Phase 0 验收 Gate").add_argument(
+        "--config", required=True
+    )
+
     return parser
 
 
@@ -149,6 +156,16 @@ def main(argv=None) -> int:
 
     if args.command == "transaction" and args.cmd == "run":
         return cmd_transaction_run(args.config)
+
+    # gate phase0：输出机器可读 JSON（检查单 T）
+    if args.command == "gate" and args.cmd == "phase0":
+        import json as _json
+
+        from .gate import run_phase0_gate
+
+        result = run_phase0_gate(args.config)
+        print(_json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["status"] == "PASS" else 1
 
     # 其余业务命令：Phase 尚未实现，但 --config/--run-dir 已由 argparse 强制
     phase_map = {

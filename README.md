@@ -38,7 +38,13 @@ python -m pip install -e ".[dev]"
 python -m valor --version
 python -m valor transaction run --config configs/example.transaction.json
 
-# 测试
+# Phase 0 验收 Gate（检查单 T：输出机器可读 JSON，8 大硬 Gate）
+python -m valor gate phase0 --config tests/fixtures/phase0_valid.json
+
+# 业务默认值静态扫描（检查单 H）
+python scripts/check_business_defaults.py --root valor
+
+# 测试（unit + property）
 python -m pytest
 ```
 

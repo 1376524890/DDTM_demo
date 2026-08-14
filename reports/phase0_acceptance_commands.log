@@ -1,0 +1,86 @@
+# VALOR Phase 0 自动验收命令输出 (checklist S)  2026-08-14T10:35:03Z
+
+## 1. install -e .
+[notice] A new release of pip is available: 26.1.2 -> 26.2.1
+[notice] To update, run: /home/gb/DDTM_demo/.venv/bin/python -m pip install --upgrade pip
+rc=0
+
+## 2. import valor
+0.2.0
+
+## 3. CLI --version
+VALOR 0.2.0
+
+## 4. CLI --help
+usage: valor [-h] [--version]
+             {quality,node,audit,valuation,transaction,experiment,report,gate} ...
+
+
+## 5. pytest fail-closed
+..........                                                               [100%]
+10 passed in 0.04s
+
+## 6. pytest unit
+.................................................................        [100%]
+65 passed in 0.22s
+
+## 7. pytest property
+...................                                                      [100%]
+19 passed in 0.07s
+
+## 8. default scan
+OK: 未发现业务默认值。
+rc=0
+
+## 9. empty config
+配置校验失败: [root] 缺失必需参数: transaction（禁止无来源默认值）
+rc=1
+
+## 10. no config
+usage: valor transaction run [-h] --config CONFIG
+valor transaction run: error: the following arguments are required: --config
+rc=2
+
+## 11. gate phase0
+{
+  "phase": "0",
+  "status": "PASS",
+  "hard_gates": {
+    "G_R": true,
+    "G_T": true,
+    "G_C": true,
+    "G_P": true,
+    "G_U": true,
+    "G_F": true,
+    "G_H": true,
+    "G_Test": true
+  },
+  "hard_gate_all": true,
+  "checks": {
+    "repository": "PASS",
+    "package_import": "PASS",
+    "core_types": "PASS",
+    "canonicalization": "PASS",
+    "hashing": "PASS",
+    "parameter_schema": "PASS",
+    "parameter_provenance": "PASS",
+    "fail_closed": "PASS",
+    "unit_safety": "PASS",
+    "config_schema": "PASS",
+    "config_hash_reproducible": "PASS",
+    "serialization_roundtrip": "PASS",
+    "rights_schema": "PASS",
+    "asset_schema": "PASS",
+    "no_business_defaults": "PASS",
+    "negative_tests": "PASS",
+    "property_tests": "PASS"
+  },
+  "evidence": {
+    "valor_version": "0.2.0",
+    "git_commit": "a6e89e212e7324e96533543f6988984edd085860",
+    "git_dirty": true,
+    "config_hash": null,
+    "schema_version": "1"
+  }
+}
+GATE_RC=0

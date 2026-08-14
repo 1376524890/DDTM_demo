@@ -40,3 +40,39 @@
 - **规范依据**：§53 配置目录含 `schemas/`；§5 fail-closed。
 - **决策**：提供 JSON Schema 文件（draft-07）校验配置结构；运行时再用类型化 loader 校验单位与来源。空业务配置（缺必需参数）在加载时即抛错，无法进入 transaction。
 - **影响**：满足 Phase 0 验收「空业务配置不能运行 transaction」。
+
+## Phase 0 强化决策（验收检查单 A–U）
+
+### D107 类型化 ID 系统（检查单 E）
+- 定义 `ValorID` 基类 + `AssetID/VersionID/TransactionID/SellerID/BuyerID/AuditorID/PolicyID/CalibrationID/RightsID/EventID`。
+- 随机 ID 用 `secrets.token_hex`，内容寻址 ID 用 content_hash，语义分离；不同类型 ID 不相等。
+- canonicalize 对 ValorID 输出 `{id_type, value}`，保证不同 ID 类型哈希不同。
+
+### D108 ResolvedParameter 补 dtype 与严格校验（检查单 B1）
+- 增加 `dtype` 字段（缺省由 value 推断）；`version_hash` 用 `validate_hash`（小写 hex）校验；
+  `source_ref` 用统一 URI schema（`params/refs.py`）校验；`resolved_at` 强制 UTC。
+
+### D109 参数模式门禁 TEST/EXPERIMENT/PRODUCTION（检查单 B2）
+- `validate_source_mode()`：TEST 允许 `TEST_FIXTURE`，EXPERIMENT/PRODUCTION 拒绝。
+
+### D110 ComputedValue/MechanismResult 与输入参数分离（检查单 B3）
+- 机制输出带 `derived_from`/`input_hashes`/`formula_ref`；config 无法直接填机制输出绕过公式。
+
+### D111 canonical 一次性冻结规则（检查单 C）
+- Unicode NFC、datetime UTC、Decimal 定点、set 确定性排序、tuple/list→list、None→null、
+  float 禁 NaN/Inf、类型化 ID、schema version="1"；不支持类型显式抛错。
+
+### D112 单位维度系统（检查单 F）
+- `KnownUnits` + `UNIT_DIMENSION`；区分 money/rate/duration/time/count/ratio/probability/hash；
+  `assert_compatible` 拦截维度不兼容（含"年利率×小时"）。
+
+### D113 错误模型补全（检查单 M）
+- 新增 `INVALID_SCHEMA/INVALID_HASH/INVALID_ID/CANONICALIZATION_ERROR/INVALID_RIGHTS/
+  CONFIG_VERSION_UNSUPPORTED/INVALID_SOURCE_KIND/INVALID_SOURCE_REF/PARAMETER_CONFLICT`。
+
+### D114 config schema 版本 + 未知字段拒绝 + config hash（检查单 I）
+- `SUPPORTED_CONFIG_SCHEMA_VERSION="1"`，不支持抛 `CONFIG_VERSION_UNSUPPORTED`；
+  unknown field 拒绝；`H_config=H(Canonicalize(Config))` 可复现，key 重排不变。
+
+### D115 `valor gate phase0` 机器可读 Gate（检查单 T/U）
+- 17 项 checks + 8 大硬 Gate 落为可执行函数，输出机器可读 JSON；任一项 FAIL → status FAIL。

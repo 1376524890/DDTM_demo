@@ -11,7 +11,7 @@
     python -m valor experiment run    --config <path>
     python -m valor report build      --run-dir <path>
 
-Phase 0：实现 --version、transaction run 硬门槛最小路径；其余命令在
+# Phase 0-8 已全部实现；业务命令均要求 --config/--run-dir。
 对应 Phase 完成前打印"待实现"并返回非零，但同样强制 --config/--run-dir。
 """
 

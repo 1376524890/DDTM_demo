@@ -106,3 +106,34 @@
 ### D121 cleanlab>=2.x API 适配
 - 使用 `cleanlab.count.compute_confident_joint(labels, probs)` 与
   `cleanlab.filter.find_label_issues(labels, probs)`（2.9 签名）。
+
+## Phase 2–8 决策（分布式 / Audit-VOI / 估值 / 责任定价 / 用途 / 状态机 / 实验）
+
+### D122 分布式节点用独立进程（进程管理器方案，§17）
+- 无 docker，用 `subprocess` 拉起多个独立 FastAPI 节点进程；HTTP 派发任务/证据/
+  challenge；调度器完成 VCG 分配→BFT 证书→聚合（§48 Q1）。
+
+### D123 Reverse VCG 用组合枚举保证精确最优
+- 小委员会规模用 `itertools.combinations` 求精确最小成本委员会，保证
+  AllocationOptimalityGap=0（§72）；删除 winner 无替补 → COUNTERFACTUAL_INFEASIBLE（§18）。
+
+### D124 Audit-VOI 用认证动作目录 + VOI 停止规则
+- action 似然 Λ_j 由校准数据估计（§21.2）；MV_A/VOI 按 §24/§25，max≤0 → STOP。
+
+### D125 检测认证用有限 certified cells + Beta 保守下界
+- p̲_B^sys = min_h Q_{α_D}[Beta(a_D+TP_h,b_D+FN_h)]（§22）；样本量按 §67 搜索。
+
+### D126 定价/责任全按 §30/§31/§38–§41 公式
+- B_S^*/B_S^pre/C_B^cap、P_max/P_min、M_T<0→NO_TRADE、P*=P_min+β_bar M_T。
+
+### D127 结算资金流按终态（§43）+ double-entry 守恒（§42）
+- TRADE/NO_TRADE/SELLER_BREACH/BUYER_BREACH 各自资金流；Ledger 校验守恒。
+
+### D128 反馈仅 ground-truth-eligible 事件更新 posterior（§45/§46）
+- GroundTruthEligibilityGate；PASS 不⇒TN；Beta posterior 更新。
+
+### D129 全流程交易编排（run.py）
+- 把主链各阶段串成一次可运行交易，输出全部数值与成交决策（Phase 8 capstone）。
+
+### D130 实验统计规范（§66）
+- mean/median+CI、Wilson 比例区间、Holm 校正、paired t/Wilcoxon。

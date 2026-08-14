@@ -86,6 +86,60 @@ class ConfigError(VALORError):
     code = "CONFIG"
 
 
+class InvalidSchemaError(VALORError):
+    """配置/对象 schema 非法（检查单 M INVALID_SCHEMA）。"""
+
+    code = "INVALID_SCHEMA"
+
+
+class InvalidHashError(VALORError):
+    """哈希格式非法（长度/字符不符合要求，检查单 M/D INVALID_HASH）。"""
+
+    code = "INVALID_HASH"
+
+
+class InvalidIDError(VALORError):
+    """ID 格式非法（检查单 E/M INVALID_ID）。"""
+
+    code = "INVALID_ID"
+
+
+class CanonicalizationError(VALORError):
+    """canonical 序列化遇到不支持/不确定类型（检查单 M CANONICALIZATION_ERROR）。"""
+
+    code = "CANONICALIZATION_ERROR"
+
+
+class InvalidRightsError(VALORError):
+    """权利束字段非法 / 相互矛盾（检查单 M/K INVALID_RIGHTS）。"""
+
+    code = "INVALID_RIGHTS"
+
+
+class ConfigVersionUnsupportedError(VALORError):
+    """配置 schema 版本不受支持（检查单 M/I CONFIG_VERSION_UNSUPPORTED）。"""
+
+    code = "CONFIG_VERSION_UNSUPPORTED"
+
+
+class InvalidSourceKindError(VALORError):
+    """参数来源类型非法 / 与当前模式冲突（检查单 B2 INVALID_SOURCE_KIND）。"""
+
+    code = "INVALID_SOURCE_KIND"
+
+
+class InvalidSourceRefError(VALORError):
+    """参数证据引用 source_ref 格式/方案非法（检查单 O）。"""
+
+    code = "INVALID_SOURCE_REF"
+
+
+class ParameterConflictError(VALORError):
+    """同名参数来源/单位/值冲突（检查单 Q#20/#21）。"""
+
+    code = "PARAMETER_CONFLICT"
+
+
 # 便于按 code 字符串引用的别名（对齐规范 §5.3 返回文本）
 UNRESOLVED_PARAMETER = "UNRESOLVED_PARAMETER"
 OUT_OF_CERTIFIED_RANGE = "OUT_OF_CERTIFIED_RANGE"
@@ -94,3 +148,12 @@ UNIT_MISMATCH = "UNIT_MISMATCH"
 PROFILE_OUT_OF_CERTIFIED_RANGE = "PROFILE_OUT_OF_CERTIFIED_RANGE"
 INFEASIBLE_SECURITY = "INFEASIBLE_SECURITY"
 COUNTERFACTUAL_INFEASIBLE = "COUNTERFACTUAL_INFEASIBLE"
+INVALID_SCHEMA = "INVALID_SCHEMA"
+INVALID_HASH = "INVALID_HASH"
+INVALID_ID = "INVALID_ID"
+CANONICALIZATION_ERROR = "CANONICALIZATION_ERROR"
+INVALID_RIGHTS = "INVALID_RIGHTS"
+CONFIG_VERSION_UNSUPPORTED = "CONFIG_VERSION_UNSUPPORTED"
+INVALID_SOURCE_KIND = "INVALID_SOURCE_KIND"
+INVALID_SOURCE_REF = "INVALID_SOURCE_REF"
+PARAMETER_CONFLICT = "PARAMETER_CONFLICT"

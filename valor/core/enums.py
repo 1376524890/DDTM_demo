@@ -13,11 +13,24 @@ from __future__ import annotations
 from enum import Enum
 
 
+class ConfigMode(str, Enum):
+    """配置/参数使用模式（检查单 B2）。
+
+    决定 TEST_FIXTURE 来源是否被允许：
+    - TEST：测试模式，允许 TEST_FIXTURE
+    - EXPERIMENT / PRODUCTION：禁止 TEST_FIXTURE（规范 §5.3）
+    """
+
+    TEST = "TEST"
+    EXPERIMENT = "EXPERIMENT"
+    PRODUCTION = "PRODUCTION"
+
+
 class ParamSource(str, Enum):
     """ResolvedParameter 的允许来源类型（规范 §5.1）。
 
     任何核心参数必须来自下列之一；TEST_FIXTURE 仅允许用于测试 fixture，
-    不得进入 experiment/production schema（规范 §5.3）。
+    不得进入 experiment/production schema（规范 §5.3，检查单 B2 冻结）。
     """
 
     OBSERVED_DATA = "OBSERVED_DATA"  # 由观测数据得到

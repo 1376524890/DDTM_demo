@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VALOR 质量复现配置",
+  "description": "Reference Reproduction Gate（Phase 1）配置。所有业务字段显式，禁止无来源默认值。",
+  "type": "object",
+  "required": ["schema_version", "dataset", "reproduction"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1" },
+    "dataset": {
+      "type": "object",
+      "required": ["name", "seed", "base_train_frac", "seller_pool_frac", "valuation_validation_frac"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "seed": { "type": "integer" },
+        "base_train_frac": { "type": "number", "minimum": 0, "maximum": 1 },
+        "seller_pool_frac": { "type": "number", "minimum": 0, "maximum": 1 },
+        "valuation_validation_frac": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "reproduction": {
+      "type": "object",
+      "required": ["n_batches", "rows_per_batch"],
+      "additionalProperties": false,
+      "properties": {
+        "n_batches": { "type": "integer", "minimum": 1 },
+        "rows_per_batch": { "type": "integer", "minimum": 1 },
+        "floating_tolerance": { "type": "number", "minimum": 0 },
+        "injections": { "type": "array", "items": { "type": "object" } },
+        "params_by_algorithm": { "type": "object" }
+      }
+    }
+  }
+}

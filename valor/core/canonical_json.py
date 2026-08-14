@@ -92,13 +92,35 @@ def _canonical_decimal(value: decimal.Decimal) -> str:
     return s
 
 
+def _canonicalize_numpy(obj: Any) -> Any | None:
+    """numpy 标量/数组 → 确定性原生类型；非 numpy 类型返回 None。"""
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.ndarray):
+        return canonicalize(obj.tolist())
+    if isinstance(obj, (np.str_, np.bytes_)):
+        return str(obj)
+    return None
+
+
 def canonicalize(obj: Any) -> Any:
     """把任意对象递归转换为「可确定性 JSON 化的原生结构」。
 
     支持：dataclass、enum、dict、list/tuple、set/frozenset、bytes、Decimal、
-    datetime/date、标量。所有不确定性来源（set 迭代、object address、repr、
-    locale 浮点、时区）在此处被消除。
+    datetime/date、numpy 标量/数组、标量。所有不确定性来源（set 迭代、
+    object address、repr、locale 浮点、时区）在此处被消除。
     """
+    npv = _canonicalize_numpy(obj)
+    if npv is not None:
+        return npv
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         if hasattr(obj, "to_plain") and callable(getattr(obj, "to_plain")):
             return canonicalize(obj.to_plain())

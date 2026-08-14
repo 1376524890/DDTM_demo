@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "dataset": {
+    "name": "breast_cancer",
+    "seed": 0,
+    "base_train_frac": 0.5,
+    "seller_pool_frac": 0.3,
+    "valuation_validation_frac": 0.1
+  },
+  "reproduction": {
+    "n_batches": 3,
+    "rows_per_batch": 50,
+    "injections": [
+      { "kind": "label_flip", "fraction": 0.2, "seed": 1 }
+    ],
+    "floating_tolerance": 1e-5,
+    "params_by_algorithm": {
+      "confident_learning": { "threshold_method": "mean", "floating_tolerance": 0.1, "min_gt_recall": 0.2 },
+      "ks_shift": { "alpha_shift": 0.05, "floating_tolerance": 1e-6 },
+      "categorical_shift": { "alpha_shift": 0.05, "floating_tolerance": 1e-3 },
+      "mmd": { "target_pvalue_resolution": 0.05, "n_permutations": 50, "floating_tolerance": 1e-4 },
+      "metadata_claim_audit": { "claims": { "c1": { "predicate": "max_missing_rate", "column": "mean radius", "declared": 0.0 } } }
+    }
+  }
+}

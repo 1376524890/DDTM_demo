@@ -157,6 +157,12 @@ def main(argv=None) -> int:
     if args.command == "transaction" and args.cmd == "run":
         return cmd_transaction_run(args.config)
 
+    # quality reproduce（Phase 1）：Reference Reproduction Gate
+    if args.command == "quality" and args.cmd == "reproduce":
+        from .quality.reproduce_cli import run_quality_reproduce
+
+        return run_quality_reproduce(args.config)
+
     # gate phase0：输出机器可读 JSON（检查单 T）
     if args.command == "gate" and args.cmd == "phase0":
         import json as _json

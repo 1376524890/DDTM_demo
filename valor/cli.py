@@ -18,10 +18,10 @@ Phase 0：实现 --version、transaction run 硬门槛最小路径；其余命�
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from . import __version__
-from .config import load_transaction_config
 
 
 def cmd_version() -> int:
@@ -37,28 +37,27 @@ def _add_cmd(sub, name: str, help_: str) -> argparse.ArgumentParser:
 
 
 def cmd_transaction_run(config_path: str) -> int:
-    """交易最小路径（Phase 0）：加载配置 → 资格/合规硬门槛。
+    """全流程交易（Phase 8）：主链 Entitlement→…→结算/反馈，输出全部数值。"""
+    import json
+    import os
 
-    空业务配置在此处即抛 ConfigError，无法运行 transaction（Phase 0 验收）。
-    """
-    from .config import ConfigError
+    from .run import run_full_transaction
 
-    try:
-        conf = load_transaction_config(config_path)
-    except ConfigError as e:
-        print(f"配置校验失败: {e}", file=sys.stderr)
-        return 1
-    from .asset import Compliant, Entitled
+    cfg = json.loads(open(config_path, encoding="utf-8").read())
+    result = run_full_transaction(cfg)
+    os.makedirs("raw", exist_ok=True)
+    with open("raw/run_result.json", "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    # 生成报告与价格边界图
+    from .report import build_report
+    from .plotting import plot_price_bounds
 
-    Entitled(
-        grant_authority=conf.grant_authority,
-        version_revoked=conf.version_revoked,
-    ).enforce()
-    Compliant(
-        buyer_eligible=conf.buyer_eligible,
-        menu_conflict=conf.menu_conflict,
-    ).enforce()
-    print(f"交易 {conf.tx_id} 资格与合规硬门槛通过（Phase 0 骨架）")
+    build_report("raw/run_result.json", "reports/full_transaction.md")
+    pr = result.get("pricing", {})
+    if pr.get("p_max") is not None and pr.get("p_min") is not None:
+        plot_price_bounds(pr["p_max"], pr["p_min"], result.get("decision", ""),
+                          "reports/figures/price_bounds.png")
+    print(f"成交决策: {result.get('decision')}")
     return 0
 
 
@@ -162,6 +161,22 @@ def main(argv=None) -> int:
         from .quality.reproduce_cli import run_quality_reproduce
 
         return run_quality_reproduce(args.config)
+
+    # report build（Phase 8）
+    if args.command == "report" and args.cmd == "build":
+        from .report import build_report
+
+        run_dir = args.run_dir
+        return build_report(
+            os.path.join(run_dir, "run_result.json"),
+            os.path.join(run_dir, "report.md"),
+        )
+
+    # experiment run（Phase 8）
+    if args.command == "experiment" and args.cmd == "run":
+        from .experiment import run_experiments
+
+        return run_experiments(args.config)
 
     # gate phase0：输出机器可读 JSON（检查单 T）
     if args.command == "gate" and args.cmd == "phase0":

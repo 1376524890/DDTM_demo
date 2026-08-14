@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from valor.core.errors import UnresolvedParameterError
+from valor.core.errors import (
+    ParameterConflictError,
+    UnresolvedParameterError,
+)
 
 from .models import ParameterManifest, ResolvedParameter
 
@@ -28,7 +31,26 @@ class ParameterResolver:
             self._by_name.update(manifest.by_name())
 
     def register(self, param: ResolvedParameter) -> None:
-        """注册一个已解析参数。"""
+        """注册一个已解析参数。
+
+        若同名参数已存在且来源/单位/值冲突 → 抛 PARAMETER_CONFLICT
+        （检查单 Q#20/#21：同名参数来源/unit 冲突必须被拒绝）。
+        """
+        existing = self._by_name.get(param.name)
+        if existing is not None:
+            conflicts = []
+            if existing.source_kind != param.source_kind:
+                conflicts.append(
+                    f"来源 {existing.source_kind.value} vs {param.source_kind.value}"
+                )
+            if existing.unit != param.unit:
+                conflicts.append(f"单位 {existing.unit} vs {param.unit}")
+            if existing.value != param.value:
+                conflicts.append(f"值 {existing.value!r} vs {param.value!r}")
+            if conflicts:
+                raise ParameterConflictError(
+                    f"[{param.name}] 同名参数冲突: " + "; ".join(conflicts)
+                )
         self._by_name[param.name] = param
 
     def register_many(self, params: Iterable[ResolvedParameter]) -> None:

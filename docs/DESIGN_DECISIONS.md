@@ -76,3 +76,33 @@
 
 ### D115 `valor gate phase0` 机器可读 Gate（检查单 T/U）
 - 17 项 checks + 8 大硬 Gate 落为可执行函数，输出机器可读 JSON；任一项 FAIL → status FAIL。
+
+## Phase 1 决策（数据管线 + 质量 primitive + 复现 Gate B）
+
+### D116 数据管线四角色划分与候选批次（规范 §55/§56）
+- `valor/data/split_roles.py`：BaseTrain/SellerPool/ValuationValidation/FinalEvaluation 四角色互斥（`assert_disjoint`）。
+- `valor/data/transaction_batches.py`：`CandidateBatch` 为交易单位（§56），K 与行数由 config 显式提供。
+- `valor/data/download.py`：默认用 sklearn 内置真实公开二分类数据集（breast_cancer/digits），离线安全、可复现。
+
+### D117 受控注入 InjectionSpec（规范 §15.4）
+- `InjectionKind` 覆盖 9 类：missingness/schema_violation/exact_duplicate/near_duplicate/
+  label_flip/covariate_shift/label_shift/metadata_false_claim/committed_dataset_replacement。
+- `InjectionSpec.seed` 为 required（无默认值，满足 fail-closed + 默认值扫描）。
+
+### D118 质量 primitive 复现等价规则（规范 §15.1–15.3）
+- deterministic：canonical output 哈希完全一致（structural/exact_duplicates/metadata）。
+- floating：仅比较 reference 与 native 共同数值指标，绝对+相对容差（ks/categorical/mmd）。
+- stochastic/model-based（confident_learning）：cleanlab reference 与 native(mean-threshold)
+  版本语义等价——仅比较 error-rate 共享指标 + 注入 ground-truth 召回阈值（§10）。
+
+### D119 Gate B 控制 distributed_enabled（规范 §14/§15）
+- 复现 Gate 通过前 `distributed_enabled=False`；全算法通过后才置 True。
+- ground-truth 召回阈值仅在该算法针对的错误类型确实被注入（positive>0）时启用。
+
+### D120 canonical 支持 numpy 标量/数组
+- canonicalize 增加 numpy integer/float/bool/ndarray 处理（质量指标含 np.int64 等），
+  保证跨实现输出哈希可比较。
+
+### D121 cleanlab>=2.x API 适配
+- 使用 `cleanlab.count.compute_confident_joint(labels, probs)` 与
+  `cleanlab.filter.find_label_issues(labels, probs)`（2.9 签名）。

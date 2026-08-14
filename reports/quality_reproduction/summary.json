@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "dataset": "breast_cancer",
+  "gate_passed": {
+    "categorical_shift": true,
+    "confident_learning": true,
+    "exact_duplicates": true,
+    "ks_shift": true,
+    "metadata_claim_audit": true,
+    "mmd": true,
+    "structural": true
+  },
+  "distributed_enabled": [
+    "structural",
+    "exact_duplicates",
+    "confident_learning",
+    "ks_shift",
+    "categorical_shift",
+    "mmd",
+    "metadata_claim_audit"
+  ],
+  "repro": {
+    "valor_version": "0.2.0",
+    "git_commit": "5afe56522e14f008b43f51bea77816a8b5760180",
+    "git_dirty": true,
+    "python_version": "3.14.6",
+    "platform": "Linux-5.4.96-17-kr9a0-aarch64-with-glibc2.36",
+    "dependency_lock_hash": "ec8a2fa3c46d854f2988c5c405b4a27ba0b25051d2816b8f119718d914336935",
+    "config_hash": null,
+    "schema_version": "1",
+    "timestamp_utc": "2026-08-14T11:34:49.584725+00:00"
+  }
+}

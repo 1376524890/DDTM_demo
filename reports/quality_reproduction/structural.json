@@ -1,0 +1,35 @@
+{
+  "certificate_id": "cert-structural",
+  "algorithm_id": "structural",
+  "reference_impl_hash": "fbbcdff7079348e921ef29a998f26fe8428192d1fdb4cc7ccc5904db6db13b5d",
+  "native_impl_hash": "631c878bbf4b1f7c704796e67c6ef5dda119ef03e6197b2967162c814a579c12",
+  "reference_dataset_hashes": [
+    "aa0ba34f0784afbc6a8e588595c1a0dbfa9c2971909f39ad10f0291fe87b22ce"
+  ],
+  "injection_spec_hashes": [],
+  "parameter_manifest_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "metric_comparison": [
+    {
+      "passed": true,
+      "metric": "output_hash",
+      "reference_value": 0.0,
+      "native_value": 0.0,
+      "tolerance": null,
+      "detail": {
+        "ref_hash": "0f321e1d6de7f924e436705c8282e6ed1046a356c7d0dafac6a86c012bb151ec",
+        "native_hash": "0f321e1d6de7f924e436705c8282e6ed1046a356c7d0dafac6a86c012bb151ec",
+        "equal": true
+      }
+    }
+  ],
+  "runtime_comparison": {
+    "note": "single-process reference reproduction"
+  },
+  "statistical_equivalence_result": {
+    "rule": "deterministic",
+    "passed": true,
+    "ground_truth": {}
+  },
+  "created_at": "2026-08-14T11:34:43.596469+00:00",
+  "passed": true
+}

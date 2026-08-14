@@ -11,9 +11,9 @@ Entitlement → QualityReference → DistributedQualityAudit → V̲_{D,R}^{gros
 ```
 
 ## 当前进度
-- **Phase 0 已完成**：`pyproject.toml`、`valor/core`、`valor/params`、`valor/asset`、`valor/rights`、`configs/schemas`、`tests/unit/test_parameter_fail_closed.py`。
-- 验收：空业务配置无法运行 transaction；核心 dataclass 可序列化 / canonicalize / hash。
-- 后续 Phase 1–8 见规范 §70。
+- **Phase 0 已完成**：`pyproject.toml`、`valor/core`、`valor/params`、`valor/asset`、`valor/rights`、`configs/schemas`、`tests/unit`、`tests/property`。验收 Gate：`python -m valor gate phase0` 全 PASS。
+- **Phase 1 已完成**：数据管线（四角色/候选批次/注入）+ 质量 primitive（structural/duplicates/confident_learning/ks/categorical/mmd/metadata）reference/native + Reference Reproduction Gate（Gate B）。7 个 primitive 全部复现等价并通过 Gate B。
+- 后续 Phase 2–8 见规范 §70。
 
 ## 目录结构
 ```
@@ -37,6 +37,9 @@ python -m pip install -e ".[dev]"
 # CLI（规范 §71）
 python -m valor --version
 python -m valor transaction run --config configs/example.transaction.json
+
+# Phase 1：质量 primitive 复现 Gate（写 reports/quality_reproduction/*.json）
+python -m valor quality reproduce --config configs/quality/reproduce.json
 
 # Phase 0 验收 Gate（检查单 T：输出机器可读 JSON，8 大硬 Gate）
 python -m valor gate phase0 --config tests/fixtures/phase0_valid.json

@@ -1,0 +1,52 @@
+{
+  "certificate_id": "cert-confident_learning",
+  "algorithm_id": "confident_learning",
+  "reference_impl_hash": "5de8722e5497bf237b1a4b411fa19ca42b8ae6b7f943bd9f7f92080a33ee7790",
+  "native_impl_hash": "86052a61eff2df7bb01c563113b5456921bf69be08b0072553a8261373af9f17",
+  "reference_dataset_hashes": [
+    "aa0ba34f0784afbc6a8e588595c1a0dbfa9c2971909f39ad10f0291fe87b22ce"
+  ],
+  "injection_spec_hashes": [],
+  "parameter_manifest_hash": "6ef5d74541fc6a82132eac60443398957d0b8142622e42571b8ea36bf4cd3673",
+  "metric_comparison": [
+    {
+      "passed": true,
+      "metric": "estimated_label_error_rate",
+      "reference_value": 0.18,
+      "native_value": 0.175,
+      "tolerance": 0.1,
+      "detail": {
+        "abs_diff": 0.0050000000000000044,
+        "rel_tolerance": 0.1
+      }
+    },
+    {
+      "passed": true,
+      "metric": "issue_rate",
+      "reference_value": 0.16,
+      "native_value": 0.14,
+      "tolerance": 0.1,
+      "detail": {
+        "abs_diff": 0.01999999999999999,
+        "rel_tolerance": 0.1
+      }
+    }
+  ],
+  "runtime_comparison": {
+    "note": "single-process reference reproduction"
+  },
+  "statistical_equivalence_result": {
+    "rule": "floating",
+    "passed": true,
+    "ground_truth": {
+      "tp": 4,
+      "fp": 3,
+      "fn": 6,
+      "tn": 37,
+      "precision": 0.5714285714285714,
+      "recall": 0.4
+    }
+  },
+  "created_at": "2026-08-14T11:34:43.596469+00:00",
+  "passed": true
+}

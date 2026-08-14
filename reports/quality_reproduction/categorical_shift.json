@@ -1,0 +1,67 @@
+{
+  "certificate_id": "cert-categorical_shift",
+  "algorithm_id": "categorical_shift",
+  "reference_impl_hash": "753a8270441a1953b809fb600cc1d423593db07a308a5b78387e9c21803e42d4",
+  "native_impl_hash": "6289ab986da75a003b7fa46bd0d1b5f096cb6f8ae518d619a5ce6e8cb97582d5",
+  "reference_dataset_hashes": [
+    "aa0ba34f0784afbc6a8e588595c1a0dbfa9c2971909f39ad10f0291fe87b22ce"
+  ],
+  "injection_spec_hashes": [],
+  "parameter_manifest_hash": "3475c0f0f3d62ea010837d4124811d68c30eb5bc0e553326413a69877ef6ea54",
+  "metric_comparison": [
+    {
+      "passed": true,
+      "metric": "alpha_shift",
+      "reference_value": 0.05,
+      "native_value": 0.05,
+      "tolerance": 0.001,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 0.001
+      }
+    },
+    {
+      "passed": true,
+      "metric": "chi2_statistic",
+      "reference_value": 98.29608187134504,
+      "native_value": 98.29608187134504,
+      "tolerance": 0.001,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 0.09829608187134505
+      }
+    },
+    {
+      "passed": true,
+      "metric": "n_categories",
+      "reference_value": 101.0,
+      "native_value": 101.0,
+      "tolerance": 0.001,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 0.101
+      }
+    },
+    {
+      "passed": true,
+      "metric": "p_value",
+      "reference_value": 0.5294734570821137,
+      "native_value": 0.5294734570821137,
+      "tolerance": 0.001,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 0.001
+      }
+    }
+  ],
+  "runtime_comparison": {
+    "note": "single-process reference reproduction"
+  },
+  "statistical_equivalence_result": {
+    "rule": "floating",
+    "passed": true,
+    "ground_truth": {}
+  },
+  "created_at": "2026-08-14T11:34:43.596469+00:00",
+  "passed": true
+}

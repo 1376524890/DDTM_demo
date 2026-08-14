@@ -1,0 +1,42 @@
+{
+  "certificate_id": "cert-exact_duplicates",
+  "algorithm_id": "exact_duplicates",
+  "reference_impl_hash": "a679fbb07312a7d8cfbab23b2caf86fd4fc9125fd38a794beabe24d6e542d4ca",
+  "native_impl_hash": "f863ee99cd0745af6109720e8bfbb8ca48ba9c7901474f2163b61b41ae9f1126",
+  "reference_dataset_hashes": [
+    "aa0ba34f0784afbc6a8e588595c1a0dbfa9c2971909f39ad10f0291fe87b22ce"
+  ],
+  "injection_spec_hashes": [],
+  "parameter_manifest_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "metric_comparison": [
+    {
+      "passed": true,
+      "metric": "output_hash",
+      "reference_value": 0.0,
+      "native_value": 0.0,
+      "tolerance": null,
+      "detail": {
+        "ref_hash": "c8e528d345fe42e78c56086062b725c75b40887e4f2f343c8a7fc81f73d6a2eb",
+        "native_hash": "c8e528d345fe42e78c56086062b725c75b40887e4f2f343c8a7fc81f73d6a2eb",
+        "equal": true
+      }
+    }
+  ],
+  "runtime_comparison": {
+    "note": "single-process reference reproduction"
+  },
+  "statistical_equivalence_result": {
+    "rule": "deterministic",
+    "passed": true,
+    "ground_truth": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "tn": 50,
+      "precision": 0.0,
+      "recall": 0.0
+    }
+  },
+  "created_at": "2026-08-14T11:34:43.596469+00:00",
+  "passed": true
+}

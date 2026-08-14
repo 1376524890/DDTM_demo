@@ -12,12 +12,21 @@ README.md                                            # 项目入口说明
 .gitignore                                           # 分层忽略规则
 
 valor/               # 机制实现 + 实验代码（Python 包）
+├── core/            # 枚举/货币/哈希/canonical/错误/ID/复现元数据
+├── params/          # ResolvedParameter 参数溯源 + fail-closed 解析
+├── asset/           # 数据资产/承诺/资格/合规
+├── rights/          # 权利束/ODRL/兼容/支配/机会成本
+├── data/            # 数据管线（下载/预处理/四角色/候选批次/注入/ground truth）
+├── quality/         # 质量 primitive（reference/native/calibration）+ 复现 Gate
+│   ├── native/      #   structural/duplicates/confident_learning/ks/categorical/mmd/metadata
+│   ├── reference/   #   deequ/cleanlab/scipy_stats adapter
+│   └── calibration/ #   primitive 似然/检测曲线
 configs/             # 实验配置（JSON + JSON Schema；参数显式无默认值）
-docs/                # 项目文档（本文件 + VERSION_CONTROL_SPEC + DESIGN_DECISIONS）
+docs/                # 项目文档（本文件 + VERSION_CONTROL_SPEC + DESIGN_DECISIONS + PHASE0_ACCEPTANCE）
 scripts/             # 一键复现 / 编排脚本
 data/                # 数据集（raw/prepared 不入库）
 raw/                 # 实验原始结果（gitignore，可再生成）
-reports/             # 实验报告（figures 不入库）
+reports/             # 实验报告（figures 不入库；quality_reproduction 复现报告入库）
 tests/               # 测试（unit/property/reproduction/distributed/integration/attacks/e2e）
 ```
 

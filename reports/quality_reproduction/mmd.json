@@ -1,0 +1,67 @@
+{
+  "certificate_id": "cert-mmd",
+  "algorithm_id": "mmd",
+  "reference_impl_hash": "3269f74394d93b00c40da984a2b317db59839182872585ba363233950169db31",
+  "native_impl_hash": "a852bd4d72045198a9cd3c5fa299d47998373849273b7f883433d3c49d422bc5",
+  "reference_dataset_hashes": [
+    "aa0ba34f0784afbc6a8e588595c1a0dbfa9c2971909f39ad10f0291fe87b22ce"
+  ],
+  "injection_spec_hashes": [],
+  "parameter_manifest_hash": "a6012529ad4f257b48aaa9140b4c7c325e483e313e275f7097bcdba026e3388a",
+  "metric_comparison": [
+    {
+      "passed": true,
+      "metric": "bandwidth",
+      "reference_value": 435.1126372111036,
+      "native_value": 435.1126372111036,
+      "tolerance": 0.0001,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 0.04351126372111037
+      }
+    },
+    {
+      "passed": true,
+      "metric": "mmd_u2",
+      "reference_value": 0.010648076308650722,
+      "native_value": 0.010648076308650722,
+      "tolerance": 0.0001,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 0.0001
+      }
+    },
+    {
+      "passed": true,
+      "metric": "n_candidate",
+      "reference_value": 50.0,
+      "native_value": 50.0,
+      "tolerance": 0.0001,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 0.005
+      }
+    },
+    {
+      "passed": true,
+      "metric": "n_reference",
+      "reference_value": 57.0,
+      "native_value": 57.0,
+      "tolerance": 0.0001,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 0.0057
+      }
+    }
+  ],
+  "runtime_comparison": {
+    "note": "single-process reference reproduction"
+  },
+  "statistical_equivalence_result": {
+    "rule": "floating",
+    "passed": true,
+    "ground_truth": {}
+  },
+  "created_at": "2026-08-14T11:34:43.596469+00:00",
+  "passed": true
+}

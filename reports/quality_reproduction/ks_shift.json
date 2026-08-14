@@ -1,0 +1,78 @@
+{
+  "certificate_id": "cert-ks_shift",
+  "algorithm_id": "ks_shift",
+  "reference_impl_hash": "9efbf3078d5ed8047a9bb520ed689f2f1f43248d87b6a81063e3325758049edb",
+  "native_impl_hash": "bceb0d5155d4b354fc67afa1385c9f627f8db4445f217cfc60c0a444df4fdd5c",
+  "reference_dataset_hashes": [
+    "aa0ba34f0784afbc6a8e588595c1a0dbfa9c2971909f39ad10f0291fe87b22ce"
+  ],
+  "injection_spec_hashes": [],
+  "parameter_manifest_hash": "6b668c26534c36c3d67599986dee2611c6351c78233acba4889e8768e52660b3",
+  "metric_comparison": [
+    {
+      "passed": true,
+      "metric": "alpha_shift",
+      "reference_value": 0.05,
+      "native_value": 0.05,
+      "tolerance": 1e-06,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 1e-06
+      }
+    },
+    {
+      "passed": true,
+      "metric": "ks_statistic",
+      "reference_value": 0.17403508771929832,
+      "native_value": 0.17403508771929832,
+      "tolerance": 1e-06,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 1e-06
+      }
+    },
+    {
+      "passed": true,
+      "metric": "n_candidate",
+      "reference_value": 50.0,
+      "native_value": 50.0,
+      "tolerance": 1e-06,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 4.9999999999999996e-05
+      }
+    },
+    {
+      "passed": true,
+      "metric": "n_reference",
+      "reference_value": 57.0,
+      "native_value": 57.0,
+      "tolerance": 1e-06,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 5.6999999999999996e-05
+      }
+    },
+    {
+      "passed": true,
+      "metric": "p_value",
+      "reference_value": 0.3420131080168848,
+      "native_value": 0.3420131080168848,
+      "tolerance": 1e-06,
+      "detail": {
+        "abs_diff": 0.0,
+        "rel_tolerance": 1e-06
+      }
+    }
+  ],
+  "runtime_comparison": {
+    "note": "single-process reference reproduction"
+  },
+  "statistical_equivalence_result": {
+    "rule": "floating",
+    "passed": true,
+    "ground_truth": {}
+  },
+  "created_at": "2026-08-14T11:34:43.596469+00:00",
+  "passed": true
+}

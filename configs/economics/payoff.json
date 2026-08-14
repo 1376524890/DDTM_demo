@@ -1,8 +1,0 @@
-{
-  "currency": "CU",
-  "r_tn": 0.0,
-  "r_fp": -1.0,
-  "r_fn": -5.0,
-  "r_tp": 2.0,
-  "_comment": "cost-sensitive payoff（D7），行=true label，列=predicted。单位 [CU]。"
-}

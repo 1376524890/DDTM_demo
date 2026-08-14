@@ -4,9 +4,11 @@
   "title": "VALOR Phase 0 交易配置",
   "description": "交易资格/合规硬门槛所需的配置结构。所有业务字段 required，禁止无来源默认值（规范 §5）。",
   "type": "object",
-  "required": ["transaction", "asset", "entitlement", "compliance"],
+  "required": ["schema_version", "transaction", "asset", "entitlement", "compliance"],
   "additionalProperties": false,
   "properties": {
+    "schema_version": { "type": "string", "const": "1" },
+    "mode": { "type": "string", "enum": ["TEST", "EXPERIMENT", "PRODUCTION"] },
     "transaction": {
       "type": "object",
       "required": ["tx_id", "seller_id", "buyer_id"],

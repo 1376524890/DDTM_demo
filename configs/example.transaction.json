@@ -1,4 +1,6 @@
 {
+  "schema_version": "1",
+  "mode": "PRODUCTION",
   "transaction": {
     "tx_id": "tx-example-001",
     "seller_id": "seller-001",

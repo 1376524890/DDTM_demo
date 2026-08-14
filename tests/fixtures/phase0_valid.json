@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "mode": "PRODUCTION",
+  "transaction": {
+    "tx_id": "tx-phase0-gate",
+    "seller_id": "seller-p0",
+    "buyer_id": "buyer-p0"
+  },
+  "asset": {
+    "asset_id": "asset-p0",
+    "version_id": "v1",
+    "data_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "metadata_commitment": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "entitlement": {
+    "grant_authority": true,
+    "version_revoked": false
+  },
+  "compliance": {
+    "buyer_eligible": true,
+    "menu_conflict": false
+  }
+}

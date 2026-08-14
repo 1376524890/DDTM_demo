@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from valor.core.enums import DeliveryMode
-from valor.core.errors import EntitlementError
+from valor.core.errors import EntitlementError, InvalidRightsError
 from valor.rights import (
     Compatible,
     DominanceChecker,
@@ -45,9 +45,18 @@ def test_bundle_requires_fields_no_default():
 
 
 def test_bundle_not_applicable_consistency():
-    # 使用可选字段时不应同时声明 not_applicable_reason
-    with pytest.raises(ValueError):
+    # 使用可选字段时不应同时声明 not_applicable_reason（检查单 K）
+    with pytest.raises(InvalidRightsError):
         _bundle(privacy_budget=1.0, not_applicable_reason="n/a")
+
+
+def test_bundle_negative_budget_and_times():
+    # 负 privacy budget 拒绝（检查单 K）
+    with pytest.raises(InvalidRightsError):
+        _bundle(privacy_budget=-0.5)
+    # t1 < t0 拒绝
+    with pytest.raises(InvalidRightsError):
+        _bundle(t0="2025-12-31", t1="2025-01-01")
 
 
 def test_odrl_profile_maps_exclusivity():

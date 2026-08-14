@@ -79,3 +79,8 @@ class Money:
     def to_plain(self) -> dict:
         """返回 JSON 原生表示。"""
         return {"amount": self.amount, "unit": self.unit}
+
+    @classmethod
+    def from_plain(cls, d: dict) -> "Money":
+        """从 to_plain 结果重建（round-trip）。"""
+        return cls(d["amount"], d["unit"])

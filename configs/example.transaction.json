@@ -1,0 +1,21 @@
+{
+  "transaction": {
+    "tx_id": "tx-example-001",
+    "seller_id": "seller-001",
+    "buyer_id": "buyer-001"
+  },
+  "asset": {
+    "asset_id": "asset-001",
+    "version_id": "v1",
+    "data_commitment": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "metadata_commitment": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "entitlement": {
+    "grant_authority": true,
+    "version_revoked": false
+  },
+  "compliance": {
+    "buyer_eligible": true,
+    "menu_conflict": false
+  }
+}

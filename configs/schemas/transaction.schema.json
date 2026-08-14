@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://valor.local/schemas/transaction.schema.json",
+  "title": "VALOR Phase 0 交易配置",
+  "description": "交易资格/合规硬门槛所需的配置结构。所有业务字段 required，禁止无来源默认值（规范 §5）。",
+  "type": "object",
+  "required": ["transaction", "asset", "entitlement", "compliance"],
+  "additionalProperties": false,
+  "properties": {
+    "transaction": {
+      "type": "object",
+      "required": ["tx_id", "seller_id", "buyer_id"],
+      "additionalProperties": false,
+      "properties": {
+        "tx_id": { "type": "string" },
+        "seller_id": { "type": "string" },
+        "buyer_id": { "type": "string" }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "required": ["asset_id", "version_id", "data_commitment", "metadata_commitment"],
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": { "type": "string" },
+        "version_id": { "type": "string" },
+        "data_commitment": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "metadata_commitment": { "type": "string", "minLength": 64, "maxLength": 64 }
+      }
+    },
+    "entitlement": {
+      "type": "object",
+      "required": ["grant_authority", "version_revoked"],
+      "additionalProperties": false,
+      "properties": {
+        "grant_authority": { "type": "boolean" },
+        "version_revoked": { "type": "boolean" }
+      }
+    },
+    "compliance": {
+      "type": "object",
+      "required": ["buyer_eligible", "menu_conflict"],
+      "additionalProperties": false,
+      "properties": {
+        "buyer_eligible": { "type": "boolean" },
+        "menu_conflict": { "type": "boolean" }
+      }
+    }
+  }
+}

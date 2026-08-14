@@ -52,6 +52,17 @@ class AssetVersion:
             "data_summary": self.data_summary,
         }
 
+    @classmethod
+    def from_plain(cls, d: dict) -> "AssetVersion":
+        return cls(
+            asset_id=d["asset_id"],
+            version_id=d["version_id"],
+            data_commitment=d["data_commitment"],
+            metadata_commitment=d["metadata_commitment"],
+            provenance_ref=d.get("provenance_ref"),
+            data_summary=d.get("data_summary", {}),
+        )
+
 
 @dataclass(frozen=True)
 class DataAsset:
@@ -71,3 +82,12 @@ class DataAsset:
             "asset_id": self.asset_id,
             "versions": [v.to_plain() for v in self.versions],
         }
+
+    @classmethod
+    def from_plain(cls, d: dict) -> "DataAsset":
+        return cls(
+            asset_id=d["asset_id"],
+            versions=tuple(
+                AssetVersion.from_plain(v) for v in d["versions"]
+            ),
+        )

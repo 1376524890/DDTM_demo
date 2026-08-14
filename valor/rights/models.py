@@ -52,19 +52,41 @@ class RightsBundle:
     not_applicable_reason: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.access_mode, DeliveryMode):
-            object.__setattr__(self, "access_mode", DeliveryMode(self.access_mode))
+        from valor.core.errors import InvalidRightsError
+
+        # 无效枚举拒绝（检查单 K：无效枚举被拒绝，用机器可读错误而非 ValueError）
+        try:
+            if not isinstance(self.access_mode, DeliveryMode):
+                object.__setattr__(self, "access_mode", DeliveryMode(self.access_mode))
+        except ValueError as e:
+            raise InvalidRightsError(
+                f"无效 access_mode 枚举: {self.access_mode!r}"
+            ) from e
+        # 负值/时间矛盾拒绝（检查单 K）
         if self.q < 0:
-            raise ValueError(f"q（最大使用次数）不能为负: {self.q}")
+            raise InvalidRightsError(f"q（最大使用次数）不能为负: {self.q}")
         if self.t0 > self.t1:
-            raise ValueError(f"权利有效期非法: t0={self.t0} > t1={self.t1}")
-        # 若任一可选字段被使用，必须提供 not_applicable_reason 之外的明确值
+            raise InvalidRightsError(f"权利有效期非法: t0={self.t0} > t1={self.t1}")
+        if self.privacy_budget is not None and self.privacy_budget < 0:
+            raise InvalidRightsError(
+                f"privacy_budget 不能为负: {self.privacy_budget}"
+            )
+        # 矛盾权利：差分隐私预算仅适用于 API/Compute 查询；DOWNLOAD 不适用（§3.2）
+        if (
+            self.privacy_budget is not None
+            and self.access_mode == DeliveryMode.DOWNLOAD_TRACEABLE
+        ):
+            raise InvalidRightsError(
+                "矛盾权利: privacy_budget 仅适用于 API/COMPUTE 查询，"
+                "与 DOWNLOAD_TRACEABLE 冲突"
+            )
+        # 可选字段已使用则不得同时声明 not_applicable_reason（§54.4）
         used_optional = any(
             x is not None
             for x in (self.privacy_budget, self.retention, self.delete_duty)
         )
         if used_optional and self.not_applicable_reason is not None:
-            raise ValueError(
+            raise InvalidRightsError(
                 "可选字段已使用，不应同时声明 not_applicable_reason"
             )
 
@@ -90,6 +112,26 @@ class RightsBundle:
             "delete_duty": self.delete_duty,
             "not_applicable_reason": self.not_applicable_reason,
         }
+
+    @classmethod
+    def from_plain(cls, d: dict) -> "RightsBundle":
+        """从 to_plain 结果重建（round-trip）。"""
+        return cls(
+            r_class=d["r_class"],
+            access_mode=DeliveryMode(d["access_mode"]),
+            t0=d["t0"],
+            t1=d["t1"],
+            q=d["q"],
+            purposes=frozenset(d["purposes"]),
+            scope=d["scope"],
+            exclusivity=d["exclusivity"],
+            redistribution=d["redistribution"],
+            derivative=d["derivative"],
+            privacy_budget=d.get("privacy_budget"),
+            retention=d.get("retention"),
+            delete_duty=d.get("delete_duty"),
+            not_applicable_reason=d.get("not_applicable_reason"),
+        )
 
 
 @dataclass(frozen=True)

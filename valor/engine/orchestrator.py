@@ -186,7 +186,7 @@ class TransactionOrchestrator:
                   formula_output={"binding_hash": binding.binding_hash})
 
         # ---- Entitlement / compliance（阶段 12）----
-        ent_pass = True  # 场景默认合规；可在 scenario 注入
+        ent_pass = sc.entitlement_pass  # 场景控制（C 场景可置 False）
         self._stage("entitlement", {"pass": ent_pass})
         self._log(ledger, stage="ENTITLEMENT", event_type="GATE",
                   formula_id="ENTITLED",
@@ -322,8 +322,9 @@ class TransactionOrchestrator:
 
         sm = TransactionStateMachine()
         terminal = sm.resolve(StateMachineInput(
-            entitled=True, compliant=True, breach_during_audit=False,
-            price_decision=clearance.decision, buyer_breach=False))
+            entitled=ent_pass, compliant=True,
+            breach_during_audit=sc.seller_breach,
+            price_decision=clearance.decision, buyer_breach=sc.buyer_misuse))
         ledger_bal = Ledger()
         for acc, amt in {"E_B^P": sc.buyer["w_b_rem"], "E_S^A": audit_pay_s,
                          "E_B^A": audit_pay_b, "B_S^pre": b_s_pre}.items():

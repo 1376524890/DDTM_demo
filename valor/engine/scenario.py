@@ -134,6 +134,13 @@ class CapstoneScenario:
     feedback: dict[str, Any] = field(default_factory=lambda: {
         "event_type": "CONTROLLED_CANARY", "theta_s_a": 1.0, "theta_s_b": 1.0,
     })
+    # 场景分支控制（P12 五场景 C0-C4）
+    #   seller_breach: 审计阶段发现卖方违约（→ SELLER_BREACH）
+    #   buyer_misuse:  交易后买方违规使用（→ BUYER_BREACH）
+    #   entitlement_pass: 资格/合规门（False → NO_TRADE_HARD_GATE）
+    seller_breach: bool = False
+    buyer_misuse: bool = False
+    entitlement_pass: bool = True
 
     def to_plain(self) -> dict[str, Any]:
         return {
@@ -160,6 +167,9 @@ class CapstoneScenario:
             "usage": self.usage,
             "usage_requests": self.usage_requests,
             "feedback": self.feedback,
+            "seller_breach": self.seller_breach,
+            "buyer_misuse": self.buyer_misuse,
+            "entitlement_pass": self.entitlement_pass,
         }
 
     @property

@@ -19,10 +19,10 @@ def test_clean_vs_covariate_shift():
 
     det_clean = RealQualityEvidence(
         reference_df=ref, candidate_df=clean, y_candidate=y,
-        row_sample=400, compress_dim=16).detect()
+        row_sample=400, compress_dim=16).detect_primitive("ks_shift")
     det_shift = RealQualityEvidence(
         reference_df=ref, candidate_df=shifted, y_candidate=y,
-        row_sample=400, compress_dim=16).detect()
+        row_sample=400, compress_dim=16).detect_primitive("ks_shift")
 
     assert det_clean.outcome == "PASS"
     assert det_shift.outcome == "QUALITY_FAIL"

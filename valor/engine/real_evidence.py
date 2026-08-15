@@ -53,6 +53,7 @@ class RealQualityEvidence:
         y_candidate: pd.Series,
         alpha_shift: float = 0.01,
         label_error_threshold: float = 0.28,
+        dup_threshold: float = 0.05,
         row_sample: int = 2000,
         compress_dim: int = 64,
     ) -> None:
@@ -61,6 +62,7 @@ class RealQualityEvidence:
         self.y_candidate = y_candidate
         self.alpha_shift = alpha_shift
         self.label_error_threshold = label_error_threshold
+        self.dup_threshold = dup_threshold
         self.row_sample = row_sample
         self.compress_dim = compress_dim
 
@@ -81,10 +83,15 @@ class RealQualityEvidence:
     def _compress(X: pd.DataFrame, dim: int = 64) -> pd.DataFrame:
         arr = X.to_numpy(dtype=float)
         n = arr.shape[0]
-        blocks = np.array_split(np.arange(arr.shape[1]), dim)
+        n_feat = arr.shape[1]
+        dim = max(1, min(dim, n_feat))  # 防空 slice
+        blocks = np.array_split(np.arange(n_feat), dim)
         out = np.zeros((n, dim))
         for j, b in enumerate(blocks):
-            out[:, j] = arr[:, b].mean(axis=1)
+            if len(b) == 0:
+                out[:, j] = 0.0
+            else:
+                out[:, j] = arr[:, b].mean(axis=1)
         return pd.DataFrame(out)
 
     # ---- 分布漂移检测（KS）----
@@ -123,7 +130,7 @@ class RealQualityEvidence:
         except Exception:  # noqa: BLE001  label 检测失败不阻断（漂移检测为主）
             return 0.0, False
 
-    # ---- 生成真实 outcome ----
+    # ---- 生成真实 outcome（综合多 primitive）----
     def detect(self) -> RealEvidenceResult:
         n_sig, total, min_p = self._drift_check()
         label_err, label_flagged = self._label_check()
@@ -137,33 +144,100 @@ class RealQualityEvidence:
             label_error_rate=label_err, label_flagged=label_flagged,
         )
 
+    # ---- 单一 primitive 独立检测（供节点独立执行，产生真实分歧）----
+    def detect_primitive(self, primitive: str) -> RealEvidenceResult:
+        """按指定 primitive 独立检测。
+
+        primitives:
+            - "ks_shift"   ：分布漂移（reference vs candidate）
+            - "confident_learning"：label 内部一致性
+            - "duplicates" ：整行重复（不依赖 reference）
+        """
+        if primitive == "ks_shift":
+            n_sig, total, min_p = self._drift_check()
+            outcome = "QUALITY_FAIL" if n_sig >= 1 else "PASS"
+            return RealEvidenceResult(
+                outcome=outcome, n_significant_drift=n_sig,
+                total_drift_features=total, min_pvalue=min_p,
+                label_error_rate=0.0, label_flagged=False)
+        if primitive == "confident_learning":
+            label_err, label_flagged = self._label_check()
+            outcome = "QUALITY_FAIL" if label_flagged else "PASS"
+            return RealEvidenceResult(
+                outcome=outcome, n_significant_drift=0,
+                total_drift_features=0, min_pvalue=1.0,
+                label_error_rate=label_err, label_flagged=label_flagged)
+        if primitive == "duplicates":
+            dup_rate = self._duplicate_check()
+            outcome = "QUALITY_FAIL" if dup_rate > self.dup_threshold else "PASS"
+            return RealEvidenceResult(
+                outcome=outcome, n_significant_drift=0,
+                total_drift_features=0, min_pvalue=1.0,
+                label_error_rate=0.0, label_flagged=False)
+        raise ValueError(f"未知 primitive: {primitive}")
+
+    # ---- 重复检测（候选内部整行重复率）----
+    def _duplicate_check(self) -> float:
+        from valor.quality.native.duplicates import run_exact_duplicates
+
+        n = min(len(self.candidate_df), self.row_sample)
+        out = run_exact_duplicates(self.candidate_df.iloc[:n])
+        return float(out.metrics.get("exact_duplicate_rate", 0.0))
+
+
+# 每个节点分配的检测 primitive（可配置；不同 primitive 对同一数据可能给出不同判定，
+# 从而产生真实的分歧，由分布式 quorum-by-result 裁决）
+DEFAULT_NODE_PRIMITIVES = [
+    "ks_shift", "ks_shift", "confident_learning",
+    "duplicates", "ks_shift", "confident_learning", "duplicates",
+]
+
 
 def make_real_evidence_provider(
     *,
     reference_df: pd.DataFrame,
     candidate_df: pd.DataFrame,
     y_candidate: pd.Series,
+    node_primitives: list[str] | None = None,
     **kwargs,
 ) -> Callable[[str, Any], dict]:
-    """构造 evidence provider：所有节点基于同一真实检测返回相同 outcome。
+    """构造 evidence provider：各节点独立运行不同质量 primitive，产生真实（可能分歧）evidence。
 
-    分布式审计中，诚实节点对同一 committed data 运行同一 primitive 应得到一致
-    结果（确定性 primitive）。因此用真实检测结果作为每个节点的一致 evidence。
+    论文机制：诚实节点对同一 committed data 运行**各自被分配的 primitive**，可能
+    因 primitive 视角不同产生分歧，最终由分布式 quorum-by-result（同一结果 ≥ q 个一致）
+    裁决。这取代了"所有节点返回同一结果"的简化。
     """
     detector = RealQualityEvidence(
         reference_df=reference_df, candidate_df=candidate_df,
         y_candidate=y_candidate, **kwargs,
     )
-    result = detector.detect()
-    outcome = result.outcome
+    primitives = node_primitives or DEFAULT_NODE_PRIMITIVES
+    # 每个节点按其 id 的稳定 hash 分配 primitive（对任意 node_id 稳健）
+    node_results: dict[str, RealEvidenceResult] = {}
+
+    def _primitive_for(node_id: str) -> str:
+        from valor.core.hashing import sha256_hex
+
+        h = int(sha256_hex(node_id.encode("utf-8"))[:8], 16)
+        return primitives[h % len(primitives)]
+
+    combined = detector.detect()
 
     def provider(node_id: str, task) -> dict:
+        res = node_results.get(node_id)
+        if res is None:
+            res = detector.detect_primitive(_primitive_for(node_id))
+            node_results[node_id] = res
         return {"evidence_id": f"evt-{task.task_id}-{node_id}",
-                "result": outcome,
-                "quality_metrics": result.to_plain()}
+                "result": res.outcome,
+                "quality_metrics": res.to_plain()}
 
-    provider.real_result = result  # 附带检测结果供审计 trace 引用
+    provider.real_result = combined  # 附带综合检测结果供审计 trace 引用
+    provider.node_results = node_results
     return provider
 
 
-__all__ = ["RealQualityEvidence", "RealEvidenceResult", "make_real_evidence_provider"]
+__all__ = [
+    "RealQualityEvidence", "RealEvidenceResult", "make_real_evidence_provider",
+    "DEFAULT_NODE_PRIMITIVES",
+]

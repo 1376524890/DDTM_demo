@@ -53,6 +53,14 @@ class CalibrationConfig:
     # 注入比例（受控，非拍脑袋）
     missingness_fraction: float = 0.1
     duplicate_fraction: float = 0.05
+    # ---- 真实估值校准参数（C1：替代 len(sub) 代理量）----
+    y_historical: pd.Series | None = None  # 历史池标签（用于训练估值）
+    model_factory=None  # 估值模型工厂（默认 LogisticRegression）
+    payoff_matrix: list[list[float]] | None = None  # 买方任务 payoff（多分类）
+    deployment_scale: int | None = None  # N_b
+    n_pseudo_trades: int = 5  # 伪历史交易次数
+    base_frac: float = 0.5
+    candidate_frac: float = 0.2
 
     def __post_init__(self) -> None:
         from valor.core.hashing import content_hash
@@ -119,16 +127,18 @@ def run_offline_calibration(
 
     df = config.historical_pool
 
-    # ---- 1. 估值校准：pseudo-historical residuals ----
+    # ---- 1. 估值校准：真实 pseudo-historical residuals（C1）----
     vc = ValuationCalibrator(alpha_v=config.alpha_v)
-    # 伪历史：用不同 seed 重采样子池作为"历史交易"，V̂ 与 V^real 有已知偏差
-    rng = np.random.default_rng(config.seed)
-    n = len(df)
-    for k in range(5):
-        sub = df.iloc[rng.integers(0, n, size=max(50, n // 3))]
-        predicted = float(len(sub))  # 简化代理量（演示用）
-        realized = predicted * (1 + rng.normal(0, 0.05))
-        vc.add(realized, predicted)
+    if config.y_historical is not None and config.payoff_matrix is not None:
+        residuals = _real_pseudo_historical_residuals(config)
+        for r_ in residuals:
+            vc.add(r_["realized"], r_["predicted"])
+    else:
+        # 无标签/payoff 时无法真实估值 → fail closed（不再用 len(sub) 代理量）
+        raise ValueError(
+            "估值校准需要 y_historical + payoff_matrix + deployment_scale（C1 真实实现，"
+            "禁止用数据量代理量）"
+        )
     valuation_art = vc.freeze(
         dataset_hash=config.dataset_hash, trainer_hash=config.trainer_hash,
         buyer_context_family=config.buyer_context_family, seed=config.seed)
@@ -180,6 +190,94 @@ def run_offline_calibration(
     })
     arts.write_json("calibration_bundle.json", bundle.to_plain())
     return bundle
+
+
+def _real_pseudo_historical_residuals(config: CalibrationConfig) -> list[dict]:
+    """真实伪历史 residual：在历史池内做多次伪交易，真实训练估值。
+
+    每次伪历史交易：
+        1. 从历史池切分 base / candidate / eval（角色隔离，§55）
+        2. V̂（predicted）= 用模型训练 base vs base+candidate，在 eval 上按
+           payoff 算 U 差（Data-VOI 估计）
+        3. V^real（realized）= 用 oracle 重训练（更多迭代/更可信）在另一份
+           eval 上算 U 差（事后真实）
+        4. residual = V^real - V̂
+
+    这替代了原来的 `predicted = len(sub)` 简化代理量，使 residual 反映真实
+    模型估值误差（C1 真实实现）。
+    """
+    import numpy as np
+
+    from valor.valuation.economic_mapping import (
+        PayoffMatrix,
+        utility_from_predictions,
+    )
+    from valor.valuation.oracle import exact_retraining_utility
+
+    X, y = config.historical_pool.reset_index(drop=True), config.y_historical.reset_index(drop=True)
+    payoff = PayoffMatrix(
+        r_tn=config.payoff_matrix[0][0], r_fp=config.payoff_matrix[0][1],
+        r_fn=config.payoff_matrix[1][0], r_tp=config.payoff_matrix[1][1],
+    ) if len(config.payoff_matrix) == 2 else _multi_payoff(config.payoff_matrix)
+    n = len(X)
+    rng = np.random.default_rng(config.seed)
+    residuals = []
+    for k in range(config.n_pseudo_trades):
+        # 角色切分
+        idx = rng.permutation(n)
+        n_base = int(config.base_frac * n)
+        n_cand = int(config.candidate_frac * n)
+        base_idx, cand_idx = idx[:n_base], idx[n_base:n_base + n_cand]
+        eval_idx = idx[n_base + n_cand: n_base + n_cand + (n - n_base - n_cand) // 2]
+        X_base, y_base = X.iloc[base_idx], y.iloc[base_idx]
+        X_cand, y_cand = X.iloc[cand_idx], y.iloc[cand_idx]
+        X_eval, y_eval = X.iloc[eval_idx], y.iloc[eval_idx]
+
+        # V̂：base vs base+candidate，LogisticRegression 估值
+        u_base, u_plus = exact_retraining_utility(
+            X_base=X_base, y_base=y_base, X_batch=X_cand, y_batch=y_cand,
+            X_val=X_eval, y_val=y_eval, payoff=payoff,
+            model_factory=config.model_factory, seed=config.seed + k,
+        )
+        predicted = u_plus - u_base
+
+        # V^real：oracle 重训练（更可信），在独立 eval 上
+        v_real = _oracle_realised(config, X_base, y_base, X_cand, y_cand,
+                                  X_eval, y_eval, payoff, seed=config.seed + k)
+
+        residuals.append({"predicted": predicted, "realized": v_real,
+                          "seed": config.seed + k})
+    return residuals
+
+
+def _multi_payoff(payoff_matrix: list[list[float]]):
+    """多分类 payoff → numpy 矩阵（供 utility_from_artifact 用）。"""
+    import numpy as np
+
+    return np.asarray(payoff_matrix, dtype=float)
+
+
+def _oracle_realised(config, X_base, y_base, X_cand, y_cand, X_eval, y_eval,
+                     payoff, *, seed: int) -> float:
+    """oracle 事后真实价值：用更高迭代模型在独立 eval 上算 U 差。"""
+    from sklearn.linear_model import LogisticRegression
+
+    from valor.valuation.economic_mapping import utility_from_predictions
+
+    m = config.model_factory() if config.model_factory else LogisticRegression(
+        max_iter=2000)
+    X_all = pd.concat([X_base, X_cand], ignore_index=True)
+    y_all = pd.concat([y_base, y_cand], ignore_index=True)
+    m.fit(X_all.fillna(0), y_all.to_numpy().astype(int))
+    u_plus = utility_from_predictions(
+        y_eval.to_numpy().astype(int), m.predict(X_eval.fillna(0)), payoff)
+
+    m2 = config.model_factory() if config.model_factory else LogisticRegression(
+        max_iter=2000)
+    m2.fit(X_base.fillna(0), y_base.to_numpy().astype(int))
+    u_base = utility_from_predictions(
+        y_eval.to_numpy().astype(int), m2.predict(X_eval.fillna(0)), payoff)
+    return u_plus - u_base
 
 
 __all__ = ["CalibrationConfig", "run_offline_calibration"]

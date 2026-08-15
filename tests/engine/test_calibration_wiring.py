@@ -7,10 +7,20 @@ from valor.engine.calibration_runner import CalibrationConfig, run_offline_calib
 from valor.engine import CapstoneScenario, run_capstone
 
 
+def _cal_config(handle, n=300):
+    pool = handle.X.iloc[:n]
+    return CalibrationConfig(
+        historical_pool=pool,
+        y_historical=handle.y.iloc[:n],
+        dataset_hash="d" * 64, trainer_hash="t" * 64, seed=0,
+        payoff_matrix=[[1.0, -2.0], [-5.0, 3.0]],
+        deployment_scale=1000, n_pseudo_trades=3,
+    )
+
+
 def test_calibration_runner_produces_bundle(tmp_path):
     handle = load_dataset("breast_cancer")
-    cfg = CalibrationConfig(historical_pool=handle.X.iloc[:200],
-                            dataset_hash="d" * 64, trainer_hash="t" * 64, seed=0)
+    cfg = _cal_config(handle, 200)
     bundle = run_offline_calibration(cfg, run_dir=str(tmp_path / "cal"))
     assert bundle.valuation is not None
     assert bundle.likelihood is not None
@@ -22,8 +32,7 @@ def test_calibration_runner_produces_bundle(tmp_path):
 
 def test_capstone_with_calibration(tmp_path):
     handle = load_dataset("breast_cancer")
-    cfg = CalibrationConfig(historical_pool=handle.X.iloc[:300],
-                            dataset_hash="d" * 64, trainer_hash="t" * 64, seed=0)
+    cfg = _cal_config(handle, 300)
     bundle = run_offline_calibration(cfg, run_dir=str(tmp_path / "cal"))
     sc = CapstoneScenario(scenario_id="cal-wire", seller_id="seller-1",
                           buyer_id="buyer-1")

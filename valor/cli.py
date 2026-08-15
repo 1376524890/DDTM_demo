@@ -110,9 +110,13 @@ def _cmd_engine(args: argparse.Namespace) -> int:
         pool = handle.X.iloc[:min(500, len(handle.X))]
         cfg = CalibrationConfig(
             historical_pool=pool,
+            y_historical=handle.y.iloc[:len(pool)],
             dataset_hash=content_hash({"dataset": args.dataset, "n": len(pool)}),
-            trainer_hash=content_hash({"trainer": "MLP"}),
+            trainer_hash=content_hash({"trainer": "LR"}),
             seed=0,
+            payoff_matrix=[[1.0, -2.0], [-5.0, 3.0]],
+            deployment_scale=1000,
+            n_pseudo_trades=5,
         )
         bundle = run_offline_calibration(cfg, run_dir=args.out_dir)
         print(json.dumps(bundle.to_plain(), ensure_ascii=False, indent=2))

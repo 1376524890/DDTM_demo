@@ -375,8 +375,11 @@ class TransactionOrchestrator:
 
         self._write_artifacts(manifest, ledger, terminal, clearance)
 
-        full_gate = self._full_chain_gate(
-            ledger, terminal, clearance, p_b_lower, p_max, p_min, b_s_star)
+        from .full_chain_gate import evaluate_full_chain
+
+        full_gate = evaluate_full_chain(
+            scenario=sc, manifest=manifest, ledger=ledger,
+            stages=self._stages, calibration=self.calibration)
         return OrchestrationResult(
             run_id=self.run_id, scenario_hash=config_hash,
             decision=clearance.decision, terminal_state=terminal.value,

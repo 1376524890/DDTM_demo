@@ -57,3 +57,83 @@ def gross_value(
 ) -> float:
     """V_{D,R}^{gross,*} = U(θ_{base+D}) - U(θ_base,∅) - L_b^comp（§26）。"""
     return u_base_plus - u_base - competition_loss
+
+
+# ---------------------------------------------------------------------------
+# 多分类经济映射（P1：MNIST 适配 + N_b 语义修复）
+#
+# 用户明确指出的漏洞：验证集大小不得充当 N_b（部署规模）。
+# U_b(θ) = N_b Σ_{y,ŷ} P̂(y,ŷ;θ) r_{y,ŷ}，其中 P̂(y,ŷ) = N_{y,ŷ}/N_eval
+# 在 eval 集上估计联合概率，但效用按部署规模 N_b 计（N_b 独立于 eval 大小）。
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BuyerContext:
+    """买方任务上下文（交接文档第五节）。
+
+    deployment_scale N_b：生产部署规模，独立于验证集大小——绝不把 eval 大小当 N_b。
+    payoff_matrix r[y,y_hat]：通用多分类收益矩阵（单位 [CU]）。
+    """
+
+    task_id: str
+    deployment_scale: int  # N_b
+    payoff_matrix: np.ndarray  # shape (n_classes, n_classes)，r[y_true, y_pred]
+    application_context: str = ""
+    baseline_budget: float | None = None
+    rights_requirement: str = ""
+
+    def to_plain(self) -> dict:
+        return {
+            "task_id": self.task_id,
+            "deployment_scale": self.deployment_scale,
+            "application_context": self.application_context,
+            "baseline_budget": self.baseline_budget,
+            "rights_requirement": self.rights_requirement,
+        }
+
+
+def utility_from_artifact(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    payoff_matrix: np.ndarray,
+    *,
+    deployment_scale: int,
+) -> float:
+    """U_b(θ) = N_b Σ P̂(y,ŷ;θ) r_{y,ŷ}（多分类，N_b 独立于 eval 大小）。
+
+    P̂(y,ŷ) = N_{y,ŷ}/N_eval 在 eval 集上估计联合经验概率。
+    """
+    payoff = np.asarray(payoff_matrix, dtype=float)
+    y_true = np.asarray(y_true).astype(int)
+    y_pred = np.asarray(y_pred).astype(int)
+    n = len(y_true)
+    if n == 0:
+        return 0.0
+    n_cls = payoff.shape[0]
+    # 联合经验频率 P̂(y,ŷ)
+    joint = np.zeros((n_cls, n_cls))
+    for y, yh in zip(y_true, y_pred):
+        if y < n_cls and yh < n_cls:
+            joint[y, yh] += 1.0
+    joint /= n
+    return float(deployment_scale) * float(np.sum(joint * payoff))
+
+
+def utility_delta_from_artifact(
+    base_artifact,
+    plus_artifact,
+    payoff_matrix: np.ndarray,
+    *,
+    deployment_scale: int,
+) -> tuple[float, float, float]:
+    """返回 (U_base, U_plus, ΔU)；ΔU = U(θ_{base+D}) - U(θ_base)。"""
+    u_base = utility_from_artifact(
+        base_artifact.y_true, base_artifact.y_pred, payoff_matrix,
+        deployment_scale=deployment_scale,
+    )
+    u_plus = utility_from_artifact(
+        plus_artifact.y_true, plus_artifact.y_pred, payoff_matrix,
+        deployment_scale=deployment_scale,
+    )
+    return u_base, u_plus, u_plus - u_base

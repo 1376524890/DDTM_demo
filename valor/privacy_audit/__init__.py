@@ -43,6 +43,12 @@ from .cost import AuditCostBreakdown, cost_breakdown
 from .evidence import PrivacyAuditEvidence, build_evidence
 from .primitives import PrimitiveOutput, run_primitive
 from .verifier import AuditExecutionContext, CommitChallengeVerifier
+from .task import PrivacyAuditTask
+from .server import create_privacy_app, serve_privacy
+from .client import PrivacyAuditClient
+from .scheduler import PrivacyAuditActionResult, PrivacyAuditScheduler
+from .voi import PrivacyAuditVOIExecutor, PrivacyAuditVOIResult, DEFAULT_CHALLENGE_SIZES
+from .gate import PrivacyAuditGate, run_privacy_audit_gate
 
 __all__ = [
     "AuditExecutionMode", "ClaimType", "DecisionRule", "PrimitiveResult",
@@ -60,4 +66,8 @@ __all__ = [
     "PrivacyAuditEvidence", "build_evidence",
     "PrimitiveOutput", "run_primitive",
     "AuditExecutionContext", "CommitChallengeVerifier",
+    "PrivacyAuditTask", "create_privacy_app", "serve_privacy",
+    "PrivacyAuditClient", "PrivacyAuditActionResult", "PrivacyAuditScheduler",
+    "PrivacyAuditVOIExecutor", "PrivacyAuditVOIResult", "DEFAULT_CHALLENGE_SIZES",
+    "PrivacyAuditGate", "run_privacy_audit_gate",
 ]

@@ -49,6 +49,7 @@ from .client import PrivacyAuditClient
 from .scheduler import PrivacyAuditActionResult, PrivacyAuditScheduler
 from .voi import PrivacyAuditVOIExecutor, PrivacyAuditVOIResult, DEFAULT_CHALLENGE_SIZES
 from .gate import PrivacyAuditGate, run_privacy_audit_gate
+from .executor_adapter import make_privacy_audit_executor
 
 __all__ = [
     "AuditExecutionMode", "ClaimType", "DecisionRule", "PrimitiveResult",
@@ -70,4 +71,5 @@ __all__ = [
     "PrivacyAuditClient", "PrivacyAuditActionResult", "PrivacyAuditScheduler",
     "PrivacyAuditVOIExecutor", "PrivacyAuditVOIResult", "DEFAULT_CHALLENGE_SIZES",
     "PrivacyAuditGate", "run_privacy_audit_gate",
+    "make_privacy_audit_executor",
 ]

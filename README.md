@@ -89,6 +89,48 @@ res = run_capstone(sc, run_dir="runs", calibration=bundle)   # bundle = 离线�
 print(res.decision, res.clearing_price, res.full_chain_gate["paper_closure_gate"])
 ```
 
+### 隐私保护分布式审计（Privacy-Preserving Commit-and-Challenge）
+
+正式 MNIST 实验默认 `COMMIT_CHALLENGE` 模式：**auditor 节点不再持有卖方全量数据**，
+只收到承诺 + 声明 + 挑战 + k 行选择性开启（Merkle 验证 + 抽样统计 primitive）。
+
+```python
+from valor.privacy_audit import (
+    ClaimType, CommitChallengeVerifier, create_privacy_app,
+    make_privacy_audit_executor, CommittedDatasetStore,
+)
+from valor.engine import CapstoneScenario, TransactionOrchestrator
+from fastapi.testclient import TestClient
+
+# 隐私审计节点（无 committed_data，只处理 k 行 openings）
+def client_factory(n=10):
+    clients = {f"node-{i}": TestClient(create_privacy_app(
+        CommitChallengeVerifier(f"node-{i}"))) for i in range(n)}
+    class _A:
+        def __init__(s, tc): s._t = tc
+        def submit_task(s, task):
+            r = s._t.post("/privacy/tasks", json=task.to_plain())
+            r.raise_for_status(); return r.json()
+    return lambda nid: _A(clients[str(nid)])
+
+sc = CapstoneScenario(scenario_id="privacy-cap", seller_id="s", buyer_id="b")
+sc.audit["privacy_budget"] = {"max_unique_rows": 300, "max_fraction": 0.1}
+sc.rights["audit_reveal_max_rows"] = 300
+pa = make_privacy_audit_executor(
+    claim_type=ClaimType.LABEL_DISTRIBUTION, challenge_sizes=[64, 128],
+    n_nodes=10, f=2, seller_store=CommittedDatasetStore("seller_private"),
+    node_client_factory=client_factory())
+orch = TransactionOrchestrator(sc, run_dir="runs", audit_executor=pa)
+res = orch.run()   # COMMIT_CHALLENGE 审计，披露受限，FullChainGate 可 PASS
+```
+
+- **保密性**：auditor 内存/文件系统只含 k 行（`/privacy/auditor_has_no_full_data` 断言 False），
+  卖方只提交承诺 H(D) + 聚合摘要 + 零星被挑战行。
+- **披露预算**：`DisclosureState` 统计 `L_t = |∪Opened|`，超限 fail closed。
+- **验收**：`PP-AUDIT-G01..G12` 全 PASS（`tests/privacy_audit/test_gate_full.py`）。
+- **实测**：MNIST 3000 候选，披露 4.1%，VCG 119 进 MC_A^pay，FullChainGate PASS (33/33)。
+- 详见 `docs/PRIVATE_AUDIT_ZK.md`。
+
 ## MNIST 完整交易流程（数值实例）
 
 > 以下是一次真实 MNIST 完整交易（`CapstoneScenario` 默认场景）逐步执行与求值记录，

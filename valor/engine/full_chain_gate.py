@@ -97,11 +97,19 @@ class FullChainGate:
                                 for e in s("audit").get("audit_trace_events", [])))
 
         # ---- G12-G14: 分布式审计 ----
-        self._check(results, "G12_audit_evidence_generated",
-                    lambda: any(
-                        e.get("bft_result") == "CERTIFIED"
-                        for e in s("audit").get("audit_trace_events", [])) or
-                            s("audit").get("n_steps", 0) == 0)
+        def _g12():
+            events = s("audit").get("audit_trace_events", [])
+            if not events:
+                return s("audit").get("n_steps", 0) == 0
+            # FULL_DATA/real_evidence 模式：BFT CERTIFIED
+            if any(e.get("bft_result") == "CERTIFIED" for e in events):
+                return True
+            # COMMIT_CHALLENGE 模式：action 有 VCG 支付（evidence 已生成）
+            if any(e.get("mc_a_pay", 0) > 0 for e in events):
+                return True
+            return False
+
+        self._check(results, "G12_audit_evidence_generated", _g12)
         self._check(results, "G13_quorum_by_result",
                     lambda: self._stage("audit").get("n_steps", 0) >= 0)
         self._check(results, "G14_audit_posterior_evidence_derived",

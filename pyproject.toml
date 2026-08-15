@@ -38,6 +38,8 @@ torch = ["torch>=2.0"]
 parquet = ["pyarrow>=14.0"]
 # 测试
 dev = ["pytest>=8.0"]
+# 代理下载（MNIST 等经 SOCKS5 代理拉取）所需
+proxy = ["pysocks>=1.7"]
 
 [tool.setuptools.packages.find]
 include = ["valor*"]

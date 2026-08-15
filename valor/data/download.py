@@ -46,6 +46,39 @@ def _load_digits():
     return X, y
 
 
+@_register_builtin("mnist")
+def _load_mnist():
+    """从本地缓存读取真实 MNIST（IDX 格式，经 7891 代理下载）。
+
+    数据位于 data/raw/mnist/（gitignore，不入库）。返回 (X[784], y) 的 DataFrame。
+    """
+    import gzip
+    from pathlib import Path
+
+    import numpy as np
+
+    base = Path(__file__).resolve().parent.parent.parent / "data" / "raw" / "mnist"
+
+    def load_idx(name: str):
+        with gzip.open(base / name, "rb") as f:
+            d = f.read()
+        magic = int.from_bytes(d[:4], "big")
+        if magic == 2051:  # image
+            n = int.from_bytes(d[4:8], "big")
+            r = int.from_bytes(d[8:12], "big")
+            c = int.from_bytes(d[12:16], "big")
+            return np.frombuffer(d[16:], dtype=np.uint8).reshape(n, r * c)
+        n = int.from_bytes(d[4:8], "big")
+        return np.frombuffer(d[8:], dtype=np.uint8)
+
+    X = load_idx("train-images-idx3-ubyte.gz")
+    y = load_idx("train-labels-idx1-ubyte.gz")
+    return (
+        pd.DataFrame(X, columns=[f"p{i}" for i in range(X.shape[1])]),
+        pd.Series(y, dtype=int),
+    )
+
+
 @dataclass(frozen=True)
 class DatasetHandle:
     """已加载数据集句柄（含名称/版本/承诺）。"""

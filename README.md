@@ -21,6 +21,14 @@ Entitlement → QualityReference → DistributedQualityAudit → V̲_{D,R}^{gros
 - **Phase 7**：状态机（四终态）+ 结算 + 反馈（GroundTruthEligibilityGate）。
 - **Phase 8**：实验/报告 + 全流程交易编排（主链完整数值闭环）。
 
+## 真实 MNIST（本地缓存）
+MNIST（60000×784）经 7891 SOCKS5 代理下载至 `data/raw/mnist/`（不入库）。
+```bash
+python scripts/train_mnist.py --epochs 3 --max-samples 5000   # 训练 MLP，test_acc≈0.87
+python -c "from valor.data.download import load_dataset; h=load_dataset('mnist'); print(h.X.shape)"
+```
+依赖：`torch`（CPU，经代理 `pip install --proxy socks5h://127.0.0.1:7891 torch --index-url https://download.pytorch.org/whl/cpu`）、`pysocks`。
+
 ## 全流程交易（Phase 8 capstone）
 ```bash
 python -m valor transaction run --config configs/experiments/full_transaction.json

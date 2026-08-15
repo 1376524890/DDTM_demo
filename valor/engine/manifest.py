@@ -89,6 +89,9 @@ class RunManifest:
             self.tx_id = tx_id
         if seed is not None:
             self.seed = seed
+        # 自动填充字段在冻结时生成，不纳入 required 预检
+        if self.dependency_lock_hash is None:
+            self.dependency_lock_hash = dependency_lock_hash()
         missing = [k for k in self._REQUIRED if getattr(self, k) is None]
         if missing:
             raise ValueError(f"manifest 冻结失败，缺 required 字段: {missing}")
@@ -101,8 +104,6 @@ class RunManifest:
         self.valor_version = repro["valor_version"]
         self.hardware = _hardware()
         self.timestamp_utc = repro["timestamp_utc"]
-        if self.dependency_lock_hash is None:
-            self.dependency_lock_hash = dependency_lock_hash()
         self._frozen = True
         return self
 

@@ -15,6 +15,8 @@ from .trace import TraceEvent, TraceLedger
 from .stage import FormulaTrace, StageResult, formula_hash
 from .artifacts import RunArtifacts
 from .binding import TransactionBinding, build_binding
+from .scenario import CapstoneScenario
+from .orchestrator import OrchestrationResult, TransactionOrchestrator, run_capstone
 
 __all__ = [
     "RunManifest",
@@ -27,4 +29,8 @@ __all__ = [
     "RunArtifacts",
     "TransactionBinding",
     "build_binding",
+    "CapstoneScenario",
+    "OrchestrationResult",
+    "TransactionOrchestrator",
+    "run_capstone",
 ]

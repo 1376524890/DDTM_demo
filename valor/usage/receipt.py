@@ -28,10 +28,8 @@ class UsageReceipt:
     timestamp: str
     prev_event_hash: str
 
-    def receipt_hash(self) -> str:
-        return content_hash(self.to_plain())
-
-    def to_plain(self) -> dict:
+    def _plain_fields(self) -> dict:
+        """不含 receipt_hash 的字段（供 hash 计算，避免递归）。"""
         return {
             "receipt_id": self.receipt_id,
             "tx_id": self.tx_id,
@@ -45,5 +43,12 @@ class UsageReceipt:
             "decision": self.decision,
             "timestamp": self.timestamp,
             "prev_event_hash": self.prev_event_hash,
-            "receipt_hash": self.receipt_hash(),
         }
+
+    def receipt_hash(self) -> str:
+        return content_hash(self._plain_fields())
+
+    def to_plain(self) -> dict:
+        d = self._plain_fields()
+        d["receipt_hash"] = self.receipt_hash()
+        return d

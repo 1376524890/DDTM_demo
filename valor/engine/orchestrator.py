@@ -378,51 +378,11 @@ class TransactionOrchestrator:
         }
 
     def _default_audit_executor(self, sc, ctx):
-        """默认审计执行器（单节点复现 gate 占位，P4 替换为真分布式）。"""
-        from valor.audit.action_catalog import ActionCatalog, CertifiedAction
-        from valor.audit.likelihood import ActionLikelihood
-        from valor.audit.loss import LossMatrix
-        from valor.audit.policy import run_policy
-        from valor.audit.state_model import StateBelief
-        from valor.quality.catalog import default_catalog
-        from valor.quality.reproduction import run_reproduction_gate
-        from valor.security.certification import CertifiedCell, CertificationCatalog
+        """默认审计执行器：真分布式审计（P4 quorum-by-result + P5 VCG cost + 证据后验）。"""
+        from .audit_executor import DistributedAuditExecutor
 
-        ledger = ctx["ledger"]
-        prior = sc.audit_prior
-        loss = LossMatrix(loss=sc.loss_matrix)
-        belief = StateBelief.from_prior(prior["pi_b"], prior["q_l"])
-        catalog_actions = ActionCatalog()
-        lik = ActionLikelihood(action_id="a1", rows=sc.likelihood)
-        catalog_actions.register(CertifiedAction(
-            "a1", lik, expected_cash_cost=sc.audit["cost"],
-            payer="SELLER"))
-        observer = lambda aid: "PASS"  # 占位；P4 接真证据
-        trace = run_policy(tx_id=str(ctx["binding"].tx_id), initial_belief=belief,
-                           catalog=catalog_actions, loss=loss, observer=observer)
-        posterior = trace.steps[-1].posterior if trace.steps else belief.to_plain()
-
-        # 认证 p̲_B^sys
-        cert = sc.certificate
-        cert_cat = CertificationCatalog()
-        cert_cat.register(CertifiedCell(
-            "c1", cert["a_D"], cert["b_D"], cert["alpha_D"],
-            {"breach": (cert["tp"], cert["fn"])}))
-        p_b_lower = cert_cat.p_breach_lower("c1", "breach")
-
-        n_steps = len(trace.steps)
-        audit_pay_s = sc.audit["cost"] * max(n_steps, 1) * 0.5
-        audit_pay_b = sc.audit["cost"] * max(n_steps, 1) * 0.5
-        self._log(ledger, stage="AUDIT_VOI", event_type="AUDIT_DECISION",
-                  formula_id="AUDIT_VOI_PRIVATE",
-                  formula_output={"n_steps": n_steps, "posterior": posterior})
-        return {
-            "posterior": posterior, "p_breach_lower_sys": p_b_lower,
-            "audit_pay_s": audit_pay_s, "audit_pay_b": audit_pay_b,
-            "n_steps": n_steps, "action_catalog_hash": content_hash(sc.likelihood),
-            "audit_policy_hash": content_hash({"policy_id": "p1"}),
-            "audit_trace_events": [],
-        }
+        executor = DistributedAuditExecutor(sc)
+        return executor.run(sc, ctx)
 
     def _run_usage(self, ledger, binding, terminal):
         """交易后用途控制（P9）：PDP/PEP/Receipt/Lineage。"""

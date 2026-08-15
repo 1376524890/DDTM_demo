@@ -46,4 +46,7 @@ class ActionCatalog:
     def catalog_hash(self) -> str:
         from valor.core.hashing import content_hash
 
-        return content_hash({aid: a.action_id for aid in self._actions})
+        return content_hash({
+            aid: {"action_id": action.action_id, "payer": action.payer}
+            for aid, action in self._actions.items()
+        })

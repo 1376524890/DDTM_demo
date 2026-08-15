@@ -26,7 +26,7 @@ def test_full_chain_gate_with_calibration(tmp_path):
 
     handle = load_dataset("breast_cancer")
     cfg = CalibrationConfig(historical_pool=handle.X.iloc[:300],
-                            dataset_hash="d" * 64, trainer_hash="t" * 64)
+                            dataset_hash="d" * 64, trainer_hash="t" * 64, seed=0)
     bundle = run_offline_calibration(cfg, run_dir=str(tmp_path / "cal"))
     sc = CapstoneScenario(scenario_id="gate-2", seller_id="seller-1",
                           buyer_id="buyer-1")

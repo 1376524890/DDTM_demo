@@ -105,8 +105,15 @@ def _cmd_engine(args: argparse.Namespace) -> int:
         from .engine.calibration_runner import CalibrationConfig, run_offline_calibration
 
         handle = load_dataset(args.dataset)
+        from valor.core.hashing import content_hash
+
+        pool = handle.X.iloc[:min(500, len(handle.X))]
         cfg = CalibrationConfig(
-            historical_pool=handle.X.iloc[:min(500, len(handle.X))])
+            historical_pool=pool,
+            dataset_hash=content_hash({"dataset": args.dataset, "n": len(pool)}),
+            trainer_hash=content_hash({"trainer": "MLP"}),
+            seed=0,
+        )
         bundle = run_offline_calibration(cfg, run_dir=args.out_dir)
         print(json.dumps(bundle.to_plain(), ensure_ascii=False, indent=2))
         return 0

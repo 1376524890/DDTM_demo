@@ -34,23 +34,33 @@ from valor.engine.calibration import (
 
 @dataclass
 class CalibrationConfig:
-    """离线校准配置。"""
+    """离线校准配置（所有业务/随机参数必须显式，禁止隐式默认）。"""
 
     historical_pool: pd.DataFrame  # Historical Calibration Pool
+    # 关键参数：无默认值，必须显式（fail closed）
+    dataset_hash: str
+    trainer_hash: str
+    seed: int
     breach_family: str = "structural"
     alpha_v: float = 0.1  # V̲ 下界置信分位数
     a_D: float = 1.0
     b_D: float = 1.0
     alpha_D: float = 0.05
-    policy_hash: str = "p" * 64
-    action_catalog_hash: str = "a" * 64
-    dataset_hash: str = "d" * 64
-    trainer_hash: str = "t" * 64
+    # 哈希引用必须来自上游 artifact；无占位
+    policy_hash: str | None = None
+    action_catalog_hash: str | None = None
     buyer_context_family: str = "digit-classification"
-    seed: int = 0
     # 注入比例（受控，非拍脑袋）
     missingness_fraction: float = 0.1
     duplicate_fraction: float = 0.05
+
+    def __post_init__(self) -> None:
+        from valor.core.hashing import content_hash
+
+        if self.policy_hash is None:
+            self.policy_hash = content_hash({"policy_id": "calibration-default"})
+        if self.action_catalog_hash is None:
+            self.action_catalog_hash = content_hash({"action": "quality-audit"})
 
 
 def _inject_missingness(df: pd.DataFrame, frac: float, seed: int) -> pd.DataFrame:

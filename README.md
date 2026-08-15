@@ -42,17 +42,65 @@ python -m valor experiment run --config configs/experiments/sweep.json   # 参�
 bash scripts/run-experiments.sh                                          # 一键复现
 ```
 
+## 收敛层（Engine，P0–P13）：端到端可重放实验系统
+
+把 VALOR 从"模块集合"收敛成**论文数学机制 = 代码真实执行 = 实验可复现**的闭环系统。
+核心原则：每个箭头留下 machine-readable artifact，下游只读上游 artifact，禁止从 config 手填同一个量。
+
+### 基础设施（`valor/engine/`）
+- **RunManifest**：冻结单次 run 全部可复现性（commit/config/dataset/split/calibration/certificate/seed）。
+- **TraceLedger**：统一 hash-chain 事件账本 `H_i = H(H_{i-1} ∥ Canonical(Event_i))`，`verify()` 全链重放。
+- **StageResult / FormulaTrace**：主链阶段统一产出 + 公式对账（论文公式 = 代码执行）。
+- **RunArtifacts**：`runs/<run_id>/` 目录落盘（manifest/trace/state/money/lineage/report）。
+- **DatasetAdapter / TrainerAdapter**：MNIST 等数据集/训练器抽象，VALOR 估值层只消费 `y_true/y_pred/probability/训练元数据`。
+- **CapstoneScenario**：冻结一次完整交易的全部输入（五角色数据隔离 / N_b / payoff / 权利 / 审计市场 / 安全参数）。
+
+### 关键修复（对接交文档）
+- **P4 quorum-by-result**：分布式审计要求同一结果 ≥ q 个一致 evidence（`#{i:Y_i=y^*}≥q`），非 `evidence_count≥q`；离线节点从备用池替换。
+- **P5 VCG cost + 证据后验**：Audit-VOI 用 Reverse VCG 支付作为 `MC_A^pay`，后验由真实证据 Bayes 更新（非 config）。
+- **P6 离线校准**：受控 breach injection → 检测 TP/FN → Beta 下界 `p̲_B^sys` 冻结；似然由检测敏感度/误报派生。
+- **P7 Seller Bond IC 对账**：输出 `constraint_lhs/rhs/slack`，`slack≥−tol` 才 PASS。
+- **P8 MoneyLedger**：语义化资金事件（payer/recipient/trigger 白名单），退款用实际锁定 escrow 而非 price=0。
+- **P11 FullChainGate**：G1–G33 论文闭合门，全部 PASS 才输出 `Paper Closure Gate = PASS`。
+
+### 使用（Engine CLI）
+```bash
+# 1. 离线校准（受控注入 → TP/FN → 冻结 likelihood/certificate/valuation artifact）
+python -m valor engine calibrate --dataset breast_cancer --out-dir calibration
+
+# 2. MNIST Capstone 交易（真分布式审计 + 冻结 calibration → FullChainGate）
+python -m valor engine capstone --scenario <scenario.json> --run-dir runs \
+    --calibration-dir calibration/<run_id>/calibration_bundle.json
+
+# 3. 五场景验收 C0–C4（TRADE / NO_TRADE / SELLER_BREACH / BUYER_BREACH）
+python -m valor engine acceptance --run-dir runs/acceptance
+
+# 4. RQ 实验（Level 1 公式对账 + Level 4 多 seed paired trials + 统计）
+python -c "from valor.engine.experiments import level1_reconciliation; print(level1_reconciliation())"
+```
+
+示例（Python）：
+```python
+from valor.engine import CapstoneScenario, run_capstone
+sc = CapstoneScenario(scenario_id="paper-demo", seller_id="seller-1", buyer_id="buyer-1")
+sc.trainer.update({"epochs": 3})
+sc.buyer_task["deployment_scale"] = 100000
+res = run_capstone(sc, run_dir="runs", calibration=bundle)   # bundle = 离线校准
+print(res.decision, res.clearing_price, res.full_chain_gate["paper_closure_gate"])
+```
+
 ## 目录结构
 ```
 pyproject.toml        # 包元数据 + 依赖（规范 §72）
 valor/                # 机制实现 + 实验代码（Python 包）
-configs/              # 配置（JSON + JSON Schema；参数显式无默认值）
-configs/schemas/      # 配置 JSON Schema
+  engine/             # P0-P13 收敛层（orchestrator/calibration/gate/acceptance/experiments）
+  adapters/           # DatasetAdapter/TrainerAdapter（MNIST）
+valor/configs/        # 配置（JSON + JSON Schema；参数显式无默认值）
 docs/                 # ARCHIVE_SPEC / VERSION_CONTROL_SPEC / DESIGN_DECISIONS
-tests/                # 单元测试（unit/）
-scripts/              # 一键复现脚本（后续 Phase）
+tests/                # 单元测试（unit/ + engine/）
+scripts/              # 一键复现脚本
 data/                 # 数据集（raw/prepared 不入库）
-raw/                  # 实验原始结果（gitignore）
+raw/  runs/           # 实验原始结果（gitignore）
 reports/              # 实验报告（figures 不入库）
 ```
 

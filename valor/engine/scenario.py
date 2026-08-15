@@ -64,7 +64,8 @@ class CapstoneScenario:
     })
     # 审计市场（P4）
     audit: dict[str, Any] = field(default_factory=lambda: {
-        "n_nodes": 7, "f": 2, "family": "quality",
+        # n_nodes 必须 > m=3f+1，使 VCG 反事实（删除 winner 后仍有替补委员会）可行
+        "n_nodes": 10, "f": 2, "family": "quality",
         "min_stake": 0.0, "timeout_s": 10.0, "rho": 0.0,
         "eta_b": 0.1, "eta_o": 0.0, "seed": 0,
         "cost": 2.0,

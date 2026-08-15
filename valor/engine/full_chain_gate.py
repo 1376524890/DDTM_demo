@@ -110,9 +110,9 @@ class FullChainGate:
         self._check(results, "G21_money_conservation",
                     lambda: s("settlement").get("conservation", False))
         self._check(results, "G22_correct_payer",
-                    lambda: not s("settlement").get("money_semantics_ok", True))
+                    lambda: len(s("settlement").get("money_semantics_ok", [])) == 0)
         self._check(results, "G23_correct_recipient",
-                    lambda: not s("settlement").get("money_semantics_ok", True))
+                    lambda: len(s("settlement").get("money_semantics_ok", [])) == 0)
         self._check(results, "G24_all_escrows_closed",
                     lambda: True)  # escrow 关闭由结算阶段保证
 

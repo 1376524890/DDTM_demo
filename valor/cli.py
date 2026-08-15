@@ -65,6 +65,65 @@ def cmd_transaction_run(config_path: str) -> int:
     return 0
 
 
+def _cmd_engine(args: argparse.Namespace) -> int:
+    """engine 收敛层命令：capstone / calibrate / acceptance。"""
+    import json
+    from pathlib import Path
+
+    from .engine import CapstoneScenario
+
+    if args.cmd == "capstone":
+        sc = CapstoneScenario(**json.loads(Path(args.scenario).read_text(encoding="utf-8")))
+        from .engine import run_capstone
+
+        calibration = None
+        if args.calibration_dir:
+            from .engine.calibration import CalibrationBundle, FrozenArtifact
+
+            bundle_json = json.loads(
+                Path(args.calibration_dir).read_text(encoding="utf-8"))
+            calibration = CalibrationBundle(
+                valuation=(
+                    FrozenArtifact("valuation_calibration",
+                                   bundle_json["valuation"]["data"])
+                    if bundle_json.get("valuation") else None),
+                likelihood=(
+                    FrozenArtifact("audit_likelihood",
+                                   bundle_json["likelihood"]["data"])
+                    if bundle_json.get("likelihood") else None),
+                certificate=(
+                    FrozenArtifact("audit_policy_certificate",
+                                   bundle_json["certificate"]["data"])
+                    if bundle_json.get("certificate") else None),
+            )
+        res = run_capstone(sc, run_dir=args.run_dir, calibration=calibration)
+        print(json.dumps(res.to_plain(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.cmd == "calibrate":
+        from valor.data.download import load_dataset
+        from .engine.calibration_runner import CalibrationConfig, run_offline_calibration
+
+        handle = load_dataset(args.dataset)
+        cfg = CalibrationConfig(
+            historical_pool=handle.X.iloc[:min(500, len(handle.X))])
+        bundle = run_offline_calibration(cfg, run_dir=args.out_dir)
+        print(json.dumps(bundle.to_plain(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.cmd == "acceptance":
+        from .engine.acceptance import run_acceptance
+
+        results = run_acceptance(run_dir=args.run_dir)
+        for r in results:
+            print(f"{r.scenario_id}: {r.terminal} "
+                  f"({'PASS' if r.passed else 'FAIL'})")
+        return 0 if all(r.passed for r in results) else 1
+
+    print(f"未知 engine 命令: {args.cmd}", file=sys.stderr)
+    return 2
+
+
 def _not_implemented(args: argparse.Namespace) -> int:
     """业务命令在后续 Phase 才实现；此处打印并返回非零。"""
     phase = args.phase
@@ -143,6 +202,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--config", required=True
     )
 
+    # ---- engine（P0-P13 收敛层）----
+    en = sub.add_parser("engine", help="收敛层（capstone/calibration/acceptance）")
+    ensub = en.add_subparsers(dest="cmd", required=True)
+    cap = ensub.add_parser("capstone", help="运行 MNIST capstone 交易")
+    cap.add_argument("--scenario", required=True)
+    cap.add_argument("--run-dir", default="runs")
+    cap.add_argument("--calibration-dir", default=None)
+    cal = ensub.add_parser("calibrate", help="离线校准（likelihood+certification+valuation）")
+    cal.add_argument("--dataset", default="breast_cancer")
+    cal.add_argument("--out-dir", default="calibration")
+    acc = ensub.add_parser("acceptance", help="五场景验收 C0-C4")
+    acc.add_argument("--run-dir", default="runs/acceptance")
+
     return parser
 
 
@@ -159,6 +231,10 @@ def main(argv=None) -> int:
 
     if args.command == "transaction" and args.cmd == "run":
         return cmd_transaction_run(args.config)
+
+    # engine 收敛层（P0-P13）
+    if args.command == "engine":
+        return _cmd_engine(args)
 
     # quality reproduce（Phase 1）：Reference Reproduction Gate
     if args.command == "quality" and args.cmd == "reproduce":

@@ -48,6 +48,10 @@ def cmd_transaction_run(config_path: str) -> int:
     os.makedirs("raw", exist_ok=True)
     with open("raw/run_result.json", "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
+    # 逐步公式/输入/输出记录（主链机制运行档案）
+    with open("raw/transaction_trace.json", "w", encoding="utf-8") as f:
+        json.dump({"steps": result.get("trace", [])},
+                  f, ensure_ascii=False, indent=2)
     # 生成报告与价格边界图
     from .report import build_report
     from .plotting import plot_price_bounds

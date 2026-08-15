@@ -45,7 +45,11 @@ from valor.quality.reproduction import run_reproduction_gate
 
 
 def run_full_transaction(cfg: dict) -> dict:
-    """执行一次全流程交易，返回完整数值结果。"""
+    """执行一次全流程交易，返回完整数值结果（含逐步公式/输入/输出 trace）。"""
+    trace: list[dict] = []
+    _rec = lambda step, formula, inputs, output: trace.append({
+        "step": step, "formula": formula, "inputs": inputs, "output": output,
+    })
     ds = cfg["dataset"]
     handle = load_dataset(ds["name"])
     X = preprocess(handle.X, fill_strategy="none")
@@ -72,8 +76,12 @@ def run_full_transaction(cfg: dict) -> dict:
     ent = cfg["entitlement"]
     result["entitlement"] = {"grant_authority": ent["grant_authority"],
                              "compliant": ent["compliant"]}
+    _rec("1_entitlement",
+         "Entitled(S,A_D,R_τ)=grant_authority ∧ Compliant(A_D,R_τ,B)=compliant",
+         ent, {"pass": ent["grant_authority"] and ent["compliant"]})
     if not (ent["grant_authority"] and ent["compliant"]):
         result["decision"] = "NO_TRADE_HARD_GATE"
+        result["trace"] = trace
         return result
 
     # 2) QualityReference（Phase 1 Gate B，单节点复现）
@@ -98,22 +106,41 @@ def run_full_transaction(cfg: dict) -> dict:
     quality_gate_pass = all(c.passed for c in certs.values())
     result["quality"] = {"gate_b_pass": quality_gate_pass,
                          "distributed_enabled": catalog.distributed_ids()}
+    _rec("2_quality_reference",
+         "Gate B：native 与 reference 等价（确定性 hash 一致/floating 容差/CL 版本等价）",
+         {"algorithms": list(certs)},
+         {"gate_b_pass": quality_gate_pass,
+          "distributed_enabled": catalog.distributed_ids()})
 
     # 3) Data-VOI（§26-28）：Oracle 边际价值 → gross → 保守下界
-    oracle = OracleRetraining(payoff)
-    u_base, u_plus = oracle_marginal(base, cand, val, payoff)
-    l_comp = competition_externality(
-        exposure=cfg.get("exposure", 0.0),
-        exclusivity=cfg.get("exclusivity", False),
-        sensitivity=cfg.get("competition_sensitivity", 1.0),
-    )
-    v_gross = gross_value(u_plus, u_base, competition_loss=l_comp)
-    # 保守下界：用历史 residual 校准（无历史时用折扣）
-    adj = cfg.get("lower_bound_adj", 0.0)
-    v_gross_lower = v_gross - adj
+    #    可选 valuation_override：给定 V̲_gross（用于独立验证定价/结算策略分支）
+    if "valuation_override" in cfg:
+        v_gross_lower = cfg["valuation_override"]
+        u_base = u_plus = None
+        l_comp = cfg.get("exposure", 0.0)
+        v_gross = v_gross_lower
+    else:
+        oracle = OracleRetraining(payoff)
+        u_base, u_plus = oracle_marginal(base, cand, val, payoff)
+        l_comp = competition_externality(
+            exposure=cfg.get("exposure", 0.0),
+            exclusivity=cfg.get("exclusivity", False),
+            sensitivity=cfg.get("competition_sensitivity", 1.0),
+        )
+        v_gross = gross_value(u_plus, u_base, competition_loss=l_comp)
+        # 保守下界：用历史 residual 校准（无历史时用折扣）
+        adj = cfg.get("lower_bound_adj", 0.0)
+        v_gross_lower = v_gross - adj
     result["valuation"] = {"u_base": u_base, "u_plus": u_plus,
                            "v_gross": v_gross, "l_comp": l_comp,
                            "v_gross_lower": v_gross_lower}
+    delta_u = (u_plus - u_base) if (u_base is not None and u_plus is not None) else None
+    _rec("3_data_voi",
+         "ΔU=U(θ_{base+D})-U(θ_base)；V_gross=ΔU-L_comp；V̲_gross=V_gross-adj（可 valuation_override）",
+         {"u_base": u_base, "u_plus": u_plus, "l_comp": l_comp,
+          "adj": cfg.get("lower_bound_adj", 0.0),
+          "override": "valuation_override" in cfg},
+         {"delta_u": delta_u, "v_gross": v_gross, "v_gross_lower": v_gross_lower})
 
     # 4) Audit-VOI（§24-25）：从校准似然跑策略
     loss = LossMatrix(loss=cfg["loss_matrix"])
@@ -127,15 +154,21 @@ def run_full_transaction(cfg: dict) -> dict:
     catalog_actions.register(CertifiedAction(
         "a1", lik, expected_cash_cost=cfg["audit_cost"]["cost"],
         payer=cfg["audit_cost"].get("payer", "SELLER")))
-    trace = run_policy(
+    audit_trace = run_policy(
         tx_id="tx-e2e", initial_belief=belief, catalog=catalog_actions,
         loss=loss, observer=lambda aid: "PASS",
     )
-    posterior = trace.steps[-1].posterior if trace.steps else belief.to_plain()
-    audit_pay_s = cfg["audit_cost"]["cost"] * max(len(trace.steps), 1) * 0.5
-    audit_pay_b = cfg["audit_cost"]["cost"] * max(len(trace.steps), 1) * 0.5
-    result["audit"] = {"n_steps": len(trace.steps), "posterior": posterior,
+    posterior = audit_trace.steps[-1].posterior if audit_trace.steps else belief.to_plain()
+    audit_pay_s = cfg["audit_cost"]["cost"] * max(len(audit_trace.steps), 1) * 0.5
+    audit_pay_b = cfg["audit_cost"]["cost"] * max(len(audit_trace.steps), 1) * 0.5
+    result["audit"] = {"n_steps": len(audit_trace.steps), "posterior": posterior,
                        "audit_pay_s": audit_pay_s, "audit_pay_b": audit_pay_b}
+    _rec("4_audit_voi",
+         "R(π)=min_d Σπ_xℓ(d,x)；MV_A=R(π)-Σ_yP(y|π,a)ΛR(π'(y))；VOI=MV-MĈ；max≤0→STOP",
+         {"prior": belief.to_plain(), "loss": cfg["loss_matrix"],
+          "likelihood": cfg["likelihood"], "audit_cost": cfg["audit_cost"]},
+         {"n_steps": len(audit_trace.steps), "posterior": posterior,
+          "audit_pay_s": audit_pay_s, "audit_pay_b": audit_pay_b})
 
     # 5) Certification（§22）：p̲_B^sys
     cert_cat = CertificationCatalog()
@@ -144,6 +177,12 @@ def run_full_transaction(cfg: dict) -> dict:
         {"breach": (cfg["cert"]["tp"], cfg["cert"]["fn"])}))
     p_b_lower = cert_cat.p_breach_lower("c1", "breach")
     result["certification"] = {"p_breach_lower_sys": p_b_lower}
+    _rec("5_certification",
+         "p̲_{B,h,c}=Q_{α_D}[Beta(a_D+TP_h, b_D+FN_h)]；p̲_B^sys=min_h p̲_{B,h,c}",
+         {"a_D": cfg["cert"]["a_D"], "b_D": cfg["cert"]["b_D"],
+          "alpha_D": cfg["cert"]["alpha_D"], "tp": cfg["cert"]["tp"],
+          "fn": cfg["cert"]["fn"]},
+         {"p_breach_lower_sys": p_b_lower})
 
     # 6) Seller Bond + pre-lock + 资本成本（§30-31）
     b_s = seller_bond_required(
@@ -160,6 +199,11 @@ def run_full_transaction(cfg: dict) -> dict:
                            bond_required=b_s, t_pre=cfg["bond"]["t_pre"],
                            t_post=cfg["bond"]["t_post"])
     result["liability"] = {"b_s_star": b_s, "b_s_pre": b_s_pre, "c_b_cap": c_b_cap}
+    _rec("6_seller_bond",
+         "B_S^*=max{0,((G_S^dev+ε_S)/p̲_B^sys - p_{e,F}F_S)/(p_{e,Bond}λ_S)}；"
+         "B_S^pre=max_ωB_S^*(ω)；C_B^cap=κ_S(B_S^preT_pre+B_S^*T_post)",
+         cfg["bond"],
+         {"b_s_star": b_s, "b_s_pre": b_s_pre, "c_b_cap": c_b_cap})
 
     # 7) Pricing（§39-41）
     p_max = buyer_max_price(
@@ -178,6 +222,13 @@ def run_full_transaction(cfg: dict) -> dict:
                          "margin": clearance.margin,
                          "clearing_price": clearance.clearing_price,
                          "decision": clearance.decision}
+    _rec("7_pricing",
+         "P_max=max{0,min[W_B^rem,V̲_gross-C_I-C_{A,B}^pay-C_R^pay-C_{B,use}^cap-R_B^post]}；"
+         "P_min=c^marg+C_{A,S}^pay+C_B^cap+C_{R,S}^pay+R_S^post+OC_S+Π_S^0；"
+         "M_T=P_max-P_min；P*=P_min+β_bar M_T",
+         {"buyer": cfg["buyer"], "seller": cfg["seller"], "beta_bar": cfg["pricing"]["beta_bar"]},
+         {"p_max": p_max, "p_min": p_min, "margin": clearance.margin,
+          "clearing_price": clearance.clearing_price, "decision": clearance.decision})
 
     # 8) State Machine + Settlement（§43）
     sm = TransactionStateMachine()
@@ -199,6 +250,13 @@ def run_full_transaction(cfg: dict) -> dict:
     result["state"] = {"terminal": terminal.value,
                        "rights_state": sm.rights_transition(terminal).value,
                        "bond_slashed": settle_res.bond_slashed}
+    _rec("8_state_settlement",
+         "终态判定优先级：硬门槛→买方违约→审计违约→价格决策→TRADE；按终态结算资金流（§43）",
+         {"price_decision": clearance.decision,
+          "seller_breach": cfg.get("seller_breach", False)},
+         {"terminal": terminal.value,
+          "rights_state": sm.rights_transition(terminal).value,
+          "bond_slashed": settle_res.bond_slashed})
 
     # 9) Feedback（§45-46）
     if terminal == TerminalState.TRADE:
@@ -209,7 +267,11 @@ def run_full_transaction(cfg: dict) -> dict:
     else:
         result["feedback"] = {"realised_value": None,
                               "eligible_events": []}
-
+    _rec("9_feedback",
+         "仅 ground-truth-eligible 事件更新 posterior；PASS 不⇒TN（§45）；θ_S~Beta(a_S,b_S)（§46）",
+         {"terminal": terminal.value},
+         result["feedback"])
+    result["trace"] = trace
     result["decision"] = clearance.decision
     return result
 

@@ -89,6 +89,71 @@ res = run_capstone(sc, run_dir="runs", calibration=bundle)   # bundle = 离线�
 print(res.decision, res.clearing_price, res.full_chain_gate["paper_closure_gate"])
 ```
 
+## MNIST 完整交易流程（数值实例）
+
+> 以下是一次真实 MNIST 完整交易（`CapstoneScenario` 默认场景）逐步执行与求值记录，
+> 对应 `runs/<run_id>/` 下 `report.json` / `transaction_trace.jsonl` / `manifest.json`。
+> **场景冻结**：MNIST（60000×784，10 类），五角色划分
+> `historical 25% / buyer_base 20% / seller_candidate 5% / transaction_eval 10% / FinalEvaluation 40%`，
+> 训练器 `MNISTMLP(784→128→64→10, epochs=3, lr=1e-3)`，部署规模 `N_b = 100,000`，
+> 审计市场 `n_nodes=10, f=2 → m=7, q=5`，权利束 `q=3 次 / digit-classification / COMPUTE_ONLY`，
+> seed = 0。离线校准（受控 duplicate 注入 → TP/FN）已冻结 likelihood/certificate/valuation artifact。
+
+### 步骤与求得值
+
+| 阶段 | 公式 / 动作 | 求得的数值 |
+|---|---|---|
+| **0. Listing** | 上架 `Z_τ=(A_D,R_τ)` | `listing_id=list-8f09…`，`product_hash=a1e522…`，`rights_hash=7ea25d…` |
+| **1. Entitlement** | 资格/合规门 | `pass=true` |
+| **2. Data-VOI** | `U_b(θ)=N_b Σ P̂(y,ŷ)r_{y,ŷ}` | `U_base=62,066.67`，`U_plus=65,266.67`，`ΔU=3,200.00` |
+| | 竞争外部性 `L_comp` | `L_comp=2.0` |
+| | `V_gross = ΔU − L_comp` | `V_gross = 3,198.00` |
+| | 保守下界 `V̲_gross = V_gross + Q_{α_V}(e)` | `V̲_gross = 3,204.65`（calibration residual） |
+| **3. Audit-VOI** | Reverse VCG 委员会（m=7） | `winner_set = node-0…node-6`，`MC_A^pay = Σ VCG = 119.0` |
+| | 分布式审计执行 + quorum | `BFT = CERTIFIED`，`outcome = PASS`（≥5 个一致 PASS） |
+| | 证据后验 `Bayes update` | `posterior = {P(G)=0.80, P(L)=0.20, P(B)=0.00}` |
+| | 审计支付 | `audit_pay_s = 59.5`，`audit_pay_b = 59.5` |
+| **4. Certification** | `p̲_B^sys = Q_{α_D}[Beta(a_D+TP, b_D+FN)]` | `p̲_B^sys = 0.82925` |
+| **5. Seller Bond** | `B_S^* = ( (G^dev+ε)/p̲_B^sys − p_{e,F}F_S ) / (p_{e,Bond}λ_S)` | `B_S^* = B_S^pre = 141.12` |
+| | 资本成本 `C_B^cap = κ_S(B_S^pre T_pre + B_S^* T_post)` | `C_B^cap = 28.22` |
+| | 激励约束对账 | `LHS = 61.0`，`RHS = 61.0`，`slack = 0.0`，`PASS` |
+| **6. Pricing** | `P_max = min[W_B^rem, V̲_gross − C_I − C_{A,B}^pay − C_R^pay − C_{B,use}^cap − R_B^post]` | `P_max = 500.00` |
+| | `P_min = c^marg + C_{A,S}^pay + C_B^cap + C_{R,S}^pay + R_S^post + OC_S + Π_S^0` | `P_min = 115.72` |
+| | `M_T = P_max − P_min` | `margin = 384.28` |
+| **7. Clearing** | `P^* = P_min + β_bar·M_T`（β_bar=0.5） | `P* = 307.86`，`decision = TRADE` |
+| **8. Settlement** | MoneyLedger 语义资金流 | `E_B^P → seller`：**307.86 CU**（数据成交价）；`conservation=true`，payer/recipient 语义全对 |
+| **9. Usage** | PDP/PEP + UsageReceipt + Lineage hash-chain | 6 请求：`ALLOW,ALLOW,ALLOW,DENY,DENY,DENY`（前 3 次正确用途，之后超上限/错误主体/错误用途）；`chain_valid=true` |
+| **10. Feedback** | `Θ_t → Θ_{t+1}` + realised Data-VOI | `Theta(1,1) → Theta(2,1)`（CONTROLLED_CANARY，`theta_updated=true`）；`realised_data_voi = 2,250.00`（FinalEvaluation） |
+
+### 最终结果
+
+```
+decision = TRADE
+clearing_price (P*) = 307.86 CU
+terminal_state = TRADE
+FullChainGate = PASS (33/33)   # Paper Closure Gate = PASS
+```
+
+### 可复现性（manifest.json 冻结）
+
+```
+run_id  = run-d00fddc1d0a147febd452897
+tx_id   = tx-e1fad3dbe48d316d1a6ef200
+config_hash            = 502ae429…
+dataset_hash           = 4b3d399b…
+split_hash             = c9a14cd2…
+trainer_hash           = 87262fa2…
+valuation_calibration_hash = 607034e8…
+certificate_hash       = 4df1b882…
+seed                   = 0
+git_commit             = 13dd545f…
+manifest_hash          = 423c2578…
+```
+
+> 该实例对应 9 个 artifact：`manifest.json` / `scenario.json` / `transaction_trace.jsonl` /
+> `formula_trace.jsonl` / `state_trace.jsonl` / `money_ledger.jsonl` / `lineage.jsonl` /
+> `report.json` / `report.md`。每个数值均可从上游 artifact 手动复算（下游只读上游，不手填）。
+
 ## 目录结构
 ```
 pyproject.toml        # 包元数据 + 依赖（规范 §72）

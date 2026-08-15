@@ -11,7 +11,24 @@
 from .task_models import AuditEvidence, TaskEnvelope
 from .node_state import AuditorNode, NodeRegistry
 from .client import AuditClient
-from .scheduler import DistributedAuditScheduler
+
+# DistributedAuditScheduler 惰性导出（PEP 562）：避免循环导入
+# （scheduler → market.reverse_vcg → market.committee_allocation → node_state）
+_LAZY = {
+    "DistributedAuditScheduler": (".scheduler", "DistributedAuditScheduler"),
+}
+
+
+def __getattr__(name: str):
+    if name in _LAZY:
+        import importlib
+
+        mod, attr = _LAZY[name]
+        obj = getattr(importlib.import_module(mod, __name__), attr)
+        globals()[name] = obj
+        return obj
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "AuditEvidence",

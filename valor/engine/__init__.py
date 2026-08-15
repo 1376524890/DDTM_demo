@@ -14,6 +14,7 @@ from .manifest import RunManifest, default_manifest
 from .trace import TraceEvent, TraceLedger
 from .stage import FormulaTrace, StageResult, formula_hash
 from .artifacts import RunArtifacts
+from .binding import TransactionBinding, build_binding
 
 __all__ = [
     "RunManifest",
@@ -24,4 +25,6 @@ __all__ = [
     "StageResult",
     "formula_hash",
     "RunArtifacts",
+    "TransactionBinding",
+    "build_binding",
 ]

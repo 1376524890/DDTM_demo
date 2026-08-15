@@ -82,3 +82,41 @@ r = prov("node-0", task)   # 节点只拿到 commitment_root + summary
 - 若论文要求"零知识"表述，应使用 **Commit-then-Reveal**（节点见摘要+零星行），
   并明确标注非完全 ZK；完全 ZK 对统计 primitive 需单独论证/用简单 primitive 演示。
 - 对敏感列可对摘要加差分隐私（ε-DP），进一步降低分布泄露。
+
+---
+
+## 七、已实现：VALOR Privacy-Preserving Commit-and-Challenge Audit（`valor/privacy_audit/`）
+
+按用户方案 PPA-1..PPA-7 实现，auditor **不再持有 MNIST 全量数据**（方案核心目标）：
+
+| 模块 | 内容 | 方案 |
+|---|---|---|
+| `models.py` | `AuditExecutionMode`(FULL_DATA/COMMIT_CHALLENGE/TEE/ZK)、`ClaimType`、`PrimitiveResult`、`PrivacyAuditAction` | §8 |
+| `canonicalize.py` | MNIST 行确定性二进制序列化（uint64 index ∥ uint8 label ∥ 784px） | §3 |
+| `merkle.py` | 带 side 的 `MerkleProof`，leaf = H(domain∥datasetID∥version∥i∥salt∥row) | §5 |
+| `commitment.py` | `DatasetCommitment` + `CommittedDatasetStore`（salt 每行独立，私有不公开） | §2/§4/§6 |
+| `claims.py` | `AggregateClaim`（seller 声明统计量，非 proof） | §7 |
+| `challenge.py` | `RowChallenge`（commitment 后生成，nonce 不可预测） | §10/§11 |
+| `opening.py` | `RowOpening` + `verify_opening`（Merkle 验证；任一失败=BREACH） | §13/§14 |
+| `disclosure.py` | `DisclosureState`（L_t=∪Opened，预算超限 fail closed） | §24/§25 |
+| `cost.py` | `AuditCostBreakdown`（VCG 进 MC_A^pay，资源成本另计） | §26 |
+| `evidence.py` | `PrivacyAuditEvidence`（opening hash/验证/统计量，不含原始行） | §21 |
+| `primitives.py` | 5 个抽样 primitive（Range/LabelDist/PixelMoment/Malformed/Duplicate） | §16 |
+| `verifier.py` | `AuditExecutionContext` + `CommitChallengeVerifier`（auditor 只持 k 行） | §19/§20 |
+| `server.py` | `create_privacy_app`（**无 committed_data 参数**） | §33 |
+| `scheduler.py` | `PrivacyAuditScheduler`（VCG→全局挑战→seller openings→committee→quorum） | §23 |
+| `voi.py` | `PrivacyAuditVOIExecutor`（k=32/64/128/256 作为不同 action，VCG 进 MC_A^pay） | §39/§40 |
+| `calibration.py` | 受控 corruption（label/tamper/G）→ 真实检测率 Λ_j | §27 |
+| `gate.py` | PP-AUDIT-G01..G12 验收 | §41 |
+
+### 验收结果
+- **PP-AUDIT-G01** auditor 文件系统无全量数据（`/privacy/auditor_has_no_full_data` 断言 False）
+- **G03/G04** 承诺先于挑战、所有揭示行 Merkle 验证
+- **G05-G08** 篡改 pixel/label/index/Merkle path 全检测
+- **G09** 隐私预算永不被超过（fail closed）
+- **G11** 真实 VCG 支付进入 Audit-VOI（MC_A^pay>0）
+- **全 Gate PASS** → `Privacy Audit Integration = PASS`
+
+### 关键：auditor 内存/文件系统只有 k 行
+`CommitChallengeVerifier.execute()` 只接收 `PrivacyAuditTask`（commitment/claim/challenge/openings），
+在内存中验证 k 行，不加载全量数据集。`node_server` 不再接收 `committed_data`。

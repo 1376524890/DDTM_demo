@@ -74,11 +74,13 @@ class TransactionOrchestrator:
         run_id: str | None = None,
         run_dir: str | Path = "runs",
         audit_executor: AuditExecutor | None = None,
+        calibration=None,  # CalibrationBundle（P6 冻结 artifact）
     ) -> None:
         self.scenario = scenario
         self.run_id = run_id or new_id("run", entropy=12)
         self.artifacts = RunArtifacts(Path(run_dir) / self.run_id, run_id=self.run_id)
         self.audit_executor = audit_executor or self._default_audit_executor
+        self.calibration = calibration
         self._stages: dict[str, StageResult] = {}
         self._formula_traces: list[FormulaTrace] = []
 
@@ -214,8 +216,11 @@ class TransactionOrchestrator:
         delta_u = u_plus - u_base
         l_comp = sc.exposure["l_comp"]
         v_gross = delta_u - l_comp
-        # 保守下界：用离线 calibration（P6）或默认 0
-        lower_adj = 0.0
+        # 保守下界：用离线 calibration（P6）residual 分位数，禁止手填 0
+        if self.calibration is not None and self.calibration.valuation is not None:
+            lower_adj = self.calibration.valuation.data["residual_quantile"]
+        else:
+            lower_adj = 0.0
         v_gross_lower = v_gross - lower_adj
 
         self._stage("data_voi", {
@@ -337,11 +342,16 @@ class TransactionOrchestrator:
                                              base_X, base_y, payoff)
 
         # ---- 冻结 manifest + 落盘 ----
+        cal_hashes = self.calibration.hashes() if self.calibration else {}
         manifest.set(
-            valuation_calibration_hash=content_hash({"alpha_v": 0.05}),
-            action_catalog_hash=audit.get("action_catalog_hash"),
+            valuation_calibration_hash=(
+                cal_hashes.get("valuation_calibration_hash")
+                or content_hash({"alpha_v": 0.05})),
+            action_catalog_hash=audit.get("action_catalog_hash")
+            or cal_hashes.get("likelihood_hash"),
             audit_policy_hash=audit.get("audit_policy_hash"),
-            certificate_hash=content_hash(sc.certificate),
+            certificate_hash=cal_hashes.get("certificate_hash")
+            or content_hash(sc.certificate),
         ).freeze(
             repo_root=".", run_id=self.run_id, tx_id=tx_id, seed=sc.split_seed)
 
@@ -381,7 +391,12 @@ class TransactionOrchestrator:
         """默认审计执行器：真分布式审计（P4 quorum-by-result + P5 VCG cost + 证据后验）。"""
         from .audit_executor import DistributedAuditExecutor
 
-        executor = DistributedAuditExecutor(sc)
+        cal = self.calibration
+        executor = DistributedAuditExecutor(
+            sc,
+            likelihood_artifact=cal.likelihood if cal else None,
+            certificate_artifact=cal.certificate if cal else None,
+        )
         return executor.run(sc, ctx)
 
     def _run_usage(self, ledger, binding, terminal):

@@ -56,10 +56,14 @@ class DistributedAuditExecutor:
         *,
         evidence_provider: EvidenceProvider | None = None,
         audit_cost_fn: Callable[[str], float] | None = None,
+        likelihood_artifact=None,  # FrozenArtifact（audit_likelihood）；None→用 config
+        certificate_artifact=None,  # FrozenArtifact（audit_policy_certificate）
     ) -> None:
         self.scenario = scenario
         self.evidence_provider = evidence_provider
         self.audit_cost_fn = audit_cost_fn or (lambda aid: scenario.audit.get("cost", 2.0))
+        self.likelihood_artifact = likelihood_artifact
+        self.certificate_artifact = certificate_artifact
 
     # ---- 基础设施 ----
     def _build_registry(self, n_nodes: int) -> NodeRegistry:
@@ -112,7 +116,12 @@ class DistributedAuditExecutor:
         belief = StateBelief.from_prior(prior["pi_b"], prior["q_l"])
         loss = LossMatrix(loss=sc.loss_matrix)
         catalog = ActionCatalog()
-        lik = ActionLikelihood(action_id="a1", rows=sc.likelihood)
+        # 似然：优先用冻结的校准 artifact，否则回退 config（P6 要求在线用冻结）
+        if self.likelihood_artifact is not None:
+            lik_rows = self.likelihood_artifact.data["rows"]
+        else:
+            lik_rows = sc.likelihood
+        lik = ActionLikelihood(action_id="a1", rows=lik_rows)
         catalog.register(CertifiedAction(
             "a1", lik, expected_cash_cost=self.audit_cost_fn("a1"),
             payer="SELLER"))
@@ -183,13 +192,16 @@ class DistributedAuditExecutor:
                 algorithm_hash=content_hash({"alg": "quality-audit"}),
             )
 
-        # 认证 p̲_B^sys
-        cert = sc.certificate
-        cert_cat = CertificationCatalog()
-        cert_cat.register(CertifiedCell(
-            "c1", cert["a_D"], cert["b_D"], cert["alpha_D"],
-            {"breach": (cert["tp"], cert["fn"])}))
-        p_b_lower = cert_cat.p_breach_lower("c1", "breach")
+        # 认证 p̲_B^sys：优先用冻结证书（P6 在线只做 lookup），否则回退 config
+        if self.certificate_artifact is not None:
+            p_b_lower = self.certificate_artifact.data["p_breach_lower_sys"]
+        else:
+            cert = sc.certificate
+            cert_cat = CertificationCatalog()
+            cert_cat.register(CertifiedCell(
+                "c1", cert["a_D"], cert["b_D"], cert["alpha_D"],
+                {"breach": (cert["tp"], cert["fn"])}))
+            p_b_lower = cert_cat.p_breach_lower("c1", "breach")
 
         # 审计支付 = 实际 VCG 支付总额（seller/buyer 各半，payer 决定）
         total_pay = sum(s.get("mc_a_pay", 0.0) for s in steps)

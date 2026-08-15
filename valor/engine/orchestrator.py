@@ -255,23 +255,33 @@ class TransactionOrchestrator:
                   formula_output={"p_breach_lower_sys": p_b_lower})
 
         # ---- Seller Bond（阶段 27-28，P7 reconciliation）----
-        from valor.liability.seller_bond import seller_bond_required
+        from valor.liability.seller_bond import (
+            reconcile_seller_bond, seller_bond_required,
+        )
         from valor.liability.seller_prelock import seller_prelock
         from valor.liability.capital_cost import capital_cost
 
+        bond_params = self._bond_params()
         b_s_star = seller_bond_required(
-            p_breach_lower_sys=p_b_lower, **self._bond_params())
+            p_breach_lower_sys=p_b_lower, **bond_params)
         b_s_pre = seller_prelock(
-            cells=[{"p_breach_lower_sys": p_b_lower}], **self._bond_params())
+            cells=[{"p_breach_lower_sys": p_b_lower}], **bond_params)
         c_b_cap = capital_cost(
             kappa_s=sc.bond["kappa_s"], bond_pre=b_s_pre, bond_required=b_s_star,
             t_pre=sc.bond["t_pre"], t_post=sc.bond["t_post"])
+        # P7 激励约束对账
+        bond_recon = reconcile_seller_bond(
+            bond=b_s_star, p_breach_lower_sys=p_b_lower, **bond_params)
         self._stage("seller_bond", {"b_s_star": b_s_star, "b_s_pre": b_s_pre,
-                                    "c_b_cap": c_b_cap})
+                                    "c_b_cap": c_b_cap, "reconciliation": bond_recon})
         self._log(ledger, stage="SELLER_BOND", event_type="BOND",
                   formula_id="B_SELLER_STAR",
                   formula_output={"b_s_star": b_s_star, "b_s_pre": b_s_pre,
-                                  "c_b_cap": c_b_cap})
+                                  "c_b_cap": c_b_cap,
+                                  "constraint_lhs": bond_recon["constraint_lhs"],
+                                  "constraint_rhs": bond_recon["constraint_rhs"],
+                                  "constraint_slack": bond_recon["constraint_slack"],
+                                  "constraint_pass": bond_recon["pass"]})
 
         # ---- Pricing（阶段 30-33，P12 reconciliation）----
         from valor.pricing.buyer_max import buyer_max_price
@@ -305,6 +315,7 @@ class TransactionOrchestrator:
 
         # ---- Settlement（阶段 35，P8 MoneyLedger 语义）----
         from valor.contract.accounts import Ledger
+        from valor.contract.money_event import MoneyLedger
         from valor.contract.settlement import settle
         from valor.contract.state_machine import StateMachineInput, TransactionStateMachine
         from valor.contract.escrow import EscrowAccounts
@@ -320,19 +331,25 @@ class TransactionOrchestrator:
         accounts = EscrowAccounts(
             e_s_a=audit_pay_s, e_b_a=audit_pay_b, e_b_p=sc.buyer["w_b_rem"],
             b_s_pre=b_s_pre, b_s_star=b_s_star, b_b_use=0.0)
+        money_ledger = MoneyLedger(ledger_bal, tx_id=tx_id)
         settle_res = settle(
             terminal=terminal, ledger=ledger_bal, accounts=accounts,
             price=clearance.clearing_price or 0.0,
-            audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b)
+            audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
+            money=money_ledger, tx_id=tx_id)
+        money_semantics_ok = money_ledger.validate_semantics()
         self._stage("settlement", {
             "terminal": terminal.value, "bond_slashed": settle_res.bond_slashed,
             "conservation": ledger_bal.conservation_check(),
+            "money_semantics_ok": money_semantics_ok,
             "transfers": [t.to_plain() for t in settle_res.transfers],
+            "money_events": [e.to_plain() for e in money_ledger.events],
         })
         self._log(ledger, stage="SETTLEMENT", event_type="SETTLE",
                   formula_id="SETTLE_PHASE1",
                   formula_output={"terminal": terminal.value,
-                                  "conservation": ledger_bal.conservation_check()})
+                                  "conservation": ledger_bal.conservation_check(),
+                                  "money_semantics_ok": money_semantics_ok})
 
         # ---- Usage（阶段 36-46，仅 TRADE，P9）----
         usage_result = self._run_usage(ledger, binding, terminal)
@@ -499,8 +516,12 @@ class TransactionOrchestrator:
             {"stage": k, "status": v.status, "output": v.output}
             for k, v in self._stages.items()
         ])
-        # money ledger
-        self.artifacts.write_money_ledger([])
+        # money ledger（P8 语义化事件）
+        settle_stage = self._stages.get("settlement")
+        money_rows = []
+        if settle_stage:
+            money_rows = settle_stage.output.get("money_events", [])
+        self.artifacts.write_money_ledger(money_rows)
         # report
         report_json = {
             "run_id": self.run_id,

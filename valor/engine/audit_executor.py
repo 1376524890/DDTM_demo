@@ -102,14 +102,32 @@ class DistributedAuditExecutor:
         bids = {AuditorID(str(n.node_id)): 10.0 + i for i, n in enumerate(registry.all())}
         scheduler = self._scheduler(registry, bids)
 
-        # 默认 evidence：全部 PASS（场景可在 audit["evidence"] 指定）
-        default_results = {str(n.node_id): "PASS" for n in registry.all()}
+        # 证据源（优先级）：显式传入 > 真实质量检测（候选数据存在）> 模拟 PASS
+        self._quality_result = None
         if self.evidence_provider is None:
-            ev_override = a.get("evidence", {})
-            for k, v in ev_override.items():
-                default_results[k] = v
-            self.evidence_provider = _default_evidence_provider(default_results)
-            scheduler.evidence_provider = self.evidence_provider
+            cand_df = ctx.get("candidate_df")
+            ref_df = ctx.get("reference_df")
+            y_cand = ctx.get("y_candidate")
+            if cand_df is not None and ref_df is not None and y_cand is not None:
+                from .real_evidence import make_real_evidence_provider
+
+                prov = make_real_evidence_provider(
+                    reference_df=ref_df, candidate_df=cand_df,
+                    y_candidate=y_cand,
+                    alpha_shift=a.get("alpha_shift", 0.01),
+                    label_error_threshold=a.get("label_error_threshold", 0.28),
+                )
+                self.evidence_provider = prov
+                self._quality_result = prov.real_result
+                scheduler.evidence_provider = prov
+            else:
+                # 无候选数据时的兜底（测试/非 MNIST）：显式 override 或全 PASS
+                default_results = {str(n.node_id): "PASS" for n in registry.all()}
+                ev_override = a.get("evidence", {})
+                for k, v in ev_override.items():
+                    default_results[k] = v
+                self.evidence_provider = _default_evidence_provider(default_results)
+                scheduler.evidence_provider = self.evidence_provider
 
         # 构建 action catalog + loss + prior
         prior = sc.audit_prior
@@ -178,6 +196,9 @@ class DistributedAuditExecutor:
                 "outcome": outcome,
                 "posterior_after": posterior,
                 "payer": action.payer,
+                "quality_evidence": (
+                    self._quality_result.to_plain()
+                    if self._quality_result is not None else None),
             })
             # 记录 trace event
             ledger.append(
@@ -217,6 +238,9 @@ class DistributedAuditExecutor:
             "action_catalog_hash": catalog.catalog_hash,
             "audit_policy_hash": content_hash({"policy_id": "p1"}),
             "audit_trace_events": steps,
+            "quality_evidence": (
+                self._quality_result.to_plain()
+                if self._quality_result is not None else None),
         }
 
 

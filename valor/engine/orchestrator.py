@@ -356,7 +356,8 @@ class TransactionOrchestrator:
 
         # ---- Feedback（阶段 49-51，P10）----
         feedback_result = self._run_feedback(ledger, terminal, final_X, final_y,
-                                             base_X, base_y, payoff)
+                                             base_X, base_y, cand_X, cand_y,
+                                             payoff)
 
         # ---- 冻结 manifest + 落盘 ----
         cal_hashes = self.calibration.hashes() if self.calibration else {}
@@ -493,28 +494,63 @@ class TransactionOrchestrator:
         self.artifacts.write_jsonl(
             "lineage.jsonl", [e.to_plain() for e in lineage_events])
 
-    def _run_feedback(self, ledger, terminal, final_X, final_y, base_X, base_y, payoff):
-        """反馈（P10）：Θ_t → Θ_{t+1}。"""
+    def _run_feedback(self, ledger, terminal, final_X, final_y, base_X, base_y,
+                      cand_X, cand_y, payoff):
+        """反馈（P10）：Θ_t → Θ_{t+1} + realised Data-VOI。
+
+        realised Data-VOI 在 FinalEvaluation 上计算（严格隔离，§45/§65），
+        FinalEvaluation 绝不进入估值/定价/交易决策。
+        """
         from valor.feedback.eligibility import GroundTruthEligibilityGate
         from valor.feedback.seller_risk import update_seller_beta
+        from valor.valuation.economic_mapping import utility_from_artifact
 
         sc = self.scenario
         fb = sc.feedback
+        payoff = np.asarray(sc.payoff_matrix, dtype=float)
+        n_b = sc.buyer_task["deployment_scale"]
+
+        realised = None
+        if terminal == TerminalState.TRADE and len(final_X) > 0:
+            # 用交易评估集训练 base 与 base+candidate，在 FinalEvaluation 上算 realised ΔU
+            from valor.adapters import MNISTTrainerAdapter
+
+            tk = {k: v for k, v in sc.trainer.items() if k != "type"}
+            tr = MNISTTrainerAdapter(**tk)
+            base_art = tr.fit_predict(base_X, base_y, final_X, final_y,
+                                      seed=sc.split_seed)
+            X_all = pd.concat([base_X, cand_X], ignore_index=True)
+            y_all = pd.concat([base_y, cand_y], ignore_index=True)
+            plus_art = tr.fit_predict(X_all, y_all, final_X, final_y,
+                                      seed=sc.split_seed)
+            u_b = utility_from_artifact(base_art.y_true, base_art.y_pred, payoff,
+                                        deployment_scale=n_b)
+            u_p = utility_from_artifact(plus_art.y_true, plus_art.y_pred, payoff,
+                                        deployment_scale=n_b)
+            realised = u_p - u_b
+
         if terminal == TerminalState.TRADE and GroundTruthEligibilityGate.is_eligible(fb["event_type"]):
             a, b = update_seller_beta(fb["theta_s_a"], fb["theta_s_b"],
                                       tp=1, fn=0, event_type=fb["event_type"])
             theta_after = {"a": a, "b": b}
+            theta_updated = True
         else:
             theta_after = {"a": fb["theta_s_a"], "b": fb["theta_s_b"]}
+            theta_updated = False
         self._stage("feedback", {
             "eligible": GroundTruthEligibilityGate.is_eligible(fb["event_type"]),
             "theta_before": {"a": fb["theta_s_a"], "b": fb["theta_s_b"]},
             "theta_after": theta_after,
+            "theta_updated": theta_updated,
+            "realised_data_voi": realised,
         })
         self._log(ledger, stage="FEEDBACK", event_type="THETA_UPDATE",
                   formula_id="THETA_UPDATE",
-                  formula_output=theta_after)
-        return theta_after
+                  formula_output={"theta_after": theta_after,
+                                  "theta_updated": theta_updated,
+                                  "realised_data_voi": realised})
+        return {"theta_after": theta_after, "realised_data_voi": realised,
+                "theta_updated": theta_updated}
 
     def _write_artifacts(self, manifest, ledger, terminal, clearance):
         """写入 runs/<run_id>/ artifacts。"""

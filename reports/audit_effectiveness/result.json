@@ -1,0 +1,35 @@
+{
+  "experiment": "MNIST 审计效果对比：零知识审计 vs 常规训练 baseline",
+  "dataset": "MNIST 60000x784, base=20000, reference=5000, candidate=4000, final=rest",
+  "baseline_accuracy": {
+    "clean": 0.8859,
+    "covariate_shift": 0.8825,
+    "label_poison_0.2": 0.8901
+  },
+  "baseline_accuracy_drop": {
+    "covariate_shift": -0.0034,
+    "label_poison_0.2": -0.0042
+  },
+  "audit": {
+    "clean": {
+      "outcome": "PASS",
+      "n_sig_drift": "0/3",
+      "min_p": "6.39e-01",
+      "label_error": 0.1918
+    },
+    "covariate_shift": {
+      "outcome": "QUALITY_FAIL",
+      "n_sig_drift": "3/3",
+      "min_p": "0.00e+00",
+      "label_error": 0.1625
+    },
+    "label_poison_0.2": {
+      "outcome": "QUALITY_FAIL",
+      "n_sig_drift": "0/3",
+      "min_p": "6.39e-01",
+      "label_error": 0.3791
+    }
+  },
+  "conclusion": "covariate_shift: 审计在训练前检测出(QUALITY_FAIL, min_p=0), baseline 事后精度仅降0.0034几乎无法察觉; label_poison: baseline 精度不变甚至略升(被base稀释), 审计通过CL检测label_error 0.19->0.38 检测出。 证明零知识审计在训练前即可检测出MNIST数据质量问题, 优于常规训练baseline。",
+  "reproduce": "python scripts/audit_effectiveness.py --samples 4000 --epochs 1 --label-flip 0.2"
+}

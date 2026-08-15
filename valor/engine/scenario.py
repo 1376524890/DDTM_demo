@@ -105,6 +105,11 @@ class CapstoneScenario:
         "l_comp": 2.0, "exclusivity": False, "competition_sensitivity": 1.0,
     })
     # 交易后使用序列（P9）
+    # 交易后使用环境（P9）
+    usage: dict[str, Any] = field(default_factory=lambda: {
+        "authorized_actors": ["buyer_org_A"],
+        "allowed_environments": ["approved_compute"],
+    })
     usage_requests: list[dict[str, Any]] = field(default_factory=lambda: [
         {"actor": "buyer_org_A", "purpose": "digit-classification",
          "environment": "approved_compute", "timestamp": "2026-03-01T00:00:00Z",
@@ -152,6 +157,7 @@ class CapstoneScenario:
             "seller": self.seller,
             "pricing": self.pricing,
             "exposure": self.exposure,
+            "usage": self.usage,
             "usage_requests": self.usage_requests,
             "feedback": self.feedback,
         }

@@ -436,6 +436,9 @@ class TransactionOrchestrator:
         results = []
         lineage_events = []
         prev_hash = chain.genesis
+        # 授权主体来自权利 scope（P9：权利约束执行，非硬编码）
+        authorized_actors = set(sc.usage.get("authorized_actors", ["buyer_org_A"]))
+        allowed_environments = set(sc.usage.get("allowed_environments", ["approved_compute"]))
         for req in sc.usage_requests:
             r = UsageRequest(actor=req["actor"], purpose=req["purpose"],
                              environment=req["environment"],
@@ -446,8 +449,8 @@ class TransactionOrchestrator:
             res = enforce(
                 request=r, usage_state=state, valid_from=rights.t0,
                 valid_until=rights.t1, max_uses=rights.q,
-                purposes=rights.purposes, authorized_actors={sc.buyer_id, "buyer_org_A"},
-                allowed_environments={"approved_compute"})
+                purposes=rights.purposes, authorized_actors=authorized_actors,
+                allowed_environments=allowed_environments)
             receipt = UsageReceipt(
                 receipt_id=new_id("receipt", entropy=8), tx_id=binding.tx_id,
                 rights_hash=binding.listing.rights_hash,
@@ -461,7 +464,7 @@ class TransactionOrchestrator:
             results.append({"request": req, "decision": res.decision,
                             "expected": req["expect"],
                             "match": res.decision == req["expect"]})
-            # lineage（§33 DataFlowEvent）
+            # lineage（§33 DataFlowEvent）→ hash chain
             ev = DataFlowEvent(
                 event_id=new_id("evt", entropy=8), tx_id=binding.tx_id,
                 actor=r.actor, action="COMPUTE_ON",
@@ -471,14 +474,24 @@ class TransactionOrchestrator:
                 evidence=res.decision)
             prev_hash = chain.append(ev)
             lineage_events.append(ev)
+        chain_valid = chain.verify(lineage_events)
         self._stage("usage", {"enabled": True, "results": results,
-                              "lineage_last": chain.last()})
+                              "lineage_last": chain.last(),
+                              "chain_valid": chain_valid,
+                              "n_requests": len(results)})
         self._log(ledger, stage="USAGE", event_type="PEP_ENFORCE",
                   formula_id="PEP",
-                  formula_output={"results": results, "lineage_last": chain.last()})
+                  formula_output={"results": results, "lineage_last": chain.last(),
+                                  "chain_valid": chain_valid})
+        self._write_lineage(lineage_events)
         return {"enabled": True, "results": results, "receipts": receipts,
                 "lineage_last": chain.last(),
-                "chain_valid": chain.verify(lineage_events)}
+                "chain_valid": chain_valid}
+
+    def _write_lineage(self, lineage_events) -> None:
+        """写入 lineage.jsonl artifact（§33 数据流向血缘）。"""
+        self.artifacts.write_jsonl(
+            "lineage.jsonl", [e.to_plain() for e in lineage_events])
 
     def _run_feedback(self, ledger, terminal, final_X, final_y, base_X, base_y, payoff):
         """反馈（P10）：Θ_t → Θ_{t+1}。"""

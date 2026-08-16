@@ -66,28 +66,70 @@ def settle(
     transfers: list[Transfer] = list(money.ledger._transfers)
     bond_slashed = 0.0
 
+    # 审计托管支付给审计员（seller 承担基础审计，buyer 承担增量审计）
+    def _pay_audit():
+        if accounts.e_s_a > 0 and audit_pay_s > 0:
+            _t("E_S^A", "auditor", audit_pay_s, "基础审计支付给审计员")
+        if accounts.e_b_a > 0 and audit_pay_b > 0:
+            _t("E_B^A", "auditor", audit_pay_b, "增量审计支付给审计员")
+
+    def _refund_audit_escrow_remainder():
+        # 审计托管余量返还（用 ledger 实际余额，避免 accounts 与 ledger 不同步）
+        e_s_bal = money.ledger.balance("E_S^A")
+        if e_s_bal > 1e-9:
+            _t("E_S^A", "seller", e_s_bal, "审计托管余量返还")
+        e_b_bal = money.ledger.balance("E_B^A")
+        if e_b_bal > 1e-9:
+            _t("E_B^A", "buyer", e_b_bal, "审计托管余量返还B")
+
     if terminal == TerminalState.TRADE:
         _t("E_B^P", "seller", price, "数据成交价")
+        if accounts.e_b_p - price > 1e-9:
+            _t("E_B^P", "buyer", accounts.e_b_p - price, "purchase escrow 余量返还")
+        _pay_audit()
+        _refund_audit_escrow_remainder()
+        # bond 结算（无违约）：B_S^pre 中 b_s_star 部分转入 B_S^*，差额释放，
+        # B_S^* 到期返还 seller → 两个 escrow 账户归零
+        if accounts.b_s_star > 0:
+            _t("B_S^pre", "B_S^*", accounts.b_s_star, "预锁转入责任保证金")
         release = accounts.b_s_pre - accounts.b_s_star
         if release > 0:
             _t("B_S^pre", "seller", release, "释放预锁差额")
+        if money.ledger.balance("B_S^*") > 1e-9:
+            _t("B_S^*", "seller", money.ledger.balance("B_S^*"), "bond 到期返还")
     elif terminal == TerminalState.NO_TRADE:
-        # 返还实际锁定的 purchase escrow（非 price）；审计按 payer 语义支付
+        # 返还实际锁定的 purchase escrow（非 price）；审计按 payer 语义支付；
+        # 预锁全部返还 seller（B_S^* 账户本就不存在，无单独返还）
         _t("E_B^P", "buyer", accounts.e_b_p, "NO_TRADE 返还 escrow")
-        if audit_pay_s > 0:
-            _t("E_S^A", "seller", audit_pay_s, "基础审计支付")
-        if audit_pay_b > 0:
-            _t("E_B^A", "buyer", audit_pay_b, "买方增量审计支付")
+        _pay_audit()
+        _refund_audit_escrow_remainder()
         if accounts.b_s_pre > 0:
             _t("B_S^pre", "seller", accounts.b_s_pre, "返还预锁")
     elif terminal == TerminalState.SELLER_BREACH:
         _t("E_B^P", "buyer", accounts.e_b_p, "SELLER_BREACH 退款")
         bond_slashed = accounts.b_s_pre * bond_slash_fraction
         _t("B_S^pre", "buyer", bond_slashed, "罚没卖方 bond")
-        if audit_pay_s > 0:
-            _t("E_S^A", "seller", audit_pay_s, "完成审计仍支付")
+        # 预锁剩余返还
+        if accounts.b_s_pre - bond_slashed > 1e-9:
+            _t("B_S^pre", "seller", accounts.b_s_pre - bond_slashed, "预锁剩余返还")
+        _pay_audit()
+        _refund_audit_escrow_remainder()
+        # 责任保证金：从 B_S^pre 转入的 B_S^*（若有）罚没给 buyer
+        if money.ledger.balance("B_S^*") > 1e-9:
+            _t("B_S^*", "buyer", money.ledger.balance("B_S^*"), "责任保证金罚没")
     elif terminal == TerminalState.BUYER_BREACH:
+        # TRADE 已发生：成交价支付，usage bond 罚没，审计支付
+        _t("E_B^P", "seller", price, "数据成交价")
+        if accounts.e_b_p - price > 1e-9:
+            _t("E_B^P", "buyer", accounts.e_b_p - price, "purchase escrow 余量返还")
         _t("B_B^use", "seller", accounts.b_b_use, "买方 usage bond 罚没")
+        _pay_audit()
+        _refund_audit_escrow_remainder()
+        # bond 无违约：预锁返还
+        if accounts.b_s_pre > 0:
+            _t("B_S^pre", "seller", accounts.b_s_pre, "返还预锁")
+        if money.ledger.balance("B_S^*") > 1e-9:
+            _t("B_S^*", "seller", money.ledger.balance("B_S^*"), "bond 到期返还")
     else:
         raise ValueError(f"未知终态: {terminal}")
 

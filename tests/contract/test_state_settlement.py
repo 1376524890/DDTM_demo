@@ -39,12 +39,18 @@ def test_rights_transition():
 
 def test_settlement_trade():
     ledger = Ledger({"buyer": 1000.0, "seller": 0.0, "E_B^P": 300.0,
-                     "E_S^A": 0.0, "E_B^A": 0.0, "B_S^pre": 100.0, "B_S^*": 80.0})
-    accounts = EscrowAccounts(e_b_p=300.0, b_s_pre=100.0, b_s_star=80.0)
+                     "E_S^A": 10.0, "E_B^A": 0.0, "B_S^pre": 100.0, "B_S^*": 0.0})
+    accounts = EscrowAccounts(e_b_p=300.0, e_s_a=10.0, b_s_pre=100.0, b_s_star=80.0)
     res = settle(terminal=TerminalState.TRADE, ledger=ledger, accounts=accounts,
                  price=200.0, audit_pay_s=10.0, audit_pay_b=0.0)
     assert res.terminal_state == TerminalState.TRADE
-    assert ledger.balance("seller") == pytest.approx(200.0 + 20.0)  # price + released prelock diff
+    # price + prelock diff + B_S^* 返还 = 200+20+80 = 300
+    assert ledger.balance("seller") == pytest.approx(300.0)
+    # 审计托管支付给审计员
+    assert ledger.balance("auditor") == pytest.approx(10.0)
+    # 所有 escrow 关闭
+    for acc in ("E_B^P", "E_S^A", "E_B^A", "B_S^pre", "B_S^*"):
+        assert ledger.balance(acc) == pytest.approx(0.0), acc
 
 
 def test_settlement_no_trade():
@@ -58,13 +64,14 @@ def test_settlement_no_trade():
 
 def test_settlement_seller_breach_slashes_bond():
     ledger = Ledger({"buyer": 0.0, "seller": 0.0, "E_B^P": 300.0,
-                     "E_S^A": 50.0, "B_S^pre": 100.0, "B_S^*": 100.0, "E_B^A": 0.0})
+                     "E_S^A": 10.0, "B_S^pre": 100.0, "B_S^*": 100.0, "E_B^A": 0.0})
     accounts = EscrowAccounts(e_b_p=300.0, b_s_pre=100.0, b_s_star=100.0)
     res = settle(terminal=TerminalState.SELLER_BREACH, ledger=ledger,
                  accounts=accounts, price=300.0, audit_pay_s=10.0, audit_pay_b=0.0,
                  bond_slash_fraction=1.0)
     assert res.bond_slashed == pytest.approx(100.0)
-    assert ledger.balance("buyer") == pytest.approx(300.0 + 100.0)  # escrow refund + slashed bond
+    # 退款 + 罚没 bond + 责任保证金罚没 = 300+100+100 = 500
+    assert ledger.balance("buyer") == pytest.approx(500.0)
 
 
 def test_utilities():

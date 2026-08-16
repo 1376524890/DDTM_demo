@@ -20,14 +20,20 @@ def test_no_trade_refunds_actual_escrow_not_price():
     money = MoneyLedger(ledger, tx_id="tx-1")
     settle(terminal=TerminalState.NO_TRADE, ledger=ledger, accounts=accounts,
            price=0.0, audit_pay_s=10.0, audit_pay_b=5.0, money=money)
-    # 买方收到全部 escrow 300（不是 0）
-    assert ledger.balance("buyer") == pytest.approx(300.0 + 5.0)  # escrow + audit refund
+    # 买方收到 E_B^P(300) + E_B^A 余量(50-5=45) = 345
+    assert ledger.balance("buyer") == pytest.approx(345.0)
+    # auditor 收到基础10 + 增量5 = 15
+    assert ledger.balance("auditor") == pytest.approx(15.0)
     assert ledger.conservation_check()
     assert money.validate_semantics() == []
+    # 所有 escrow 关闭
+    for acc in ("E_B^P", "E_S^A", "E_B^A", "B_S^pre", "B_S^*"):
+        assert ledger.balance(acc) == pytest.approx(0.0), acc
 
 
 def test_money_event_semantics_valid():
-    ledger = Ledger({"E_B^P": 300.0, "seller": 0.0, "B_S^pre": 100.0})
+    ledger = Ledger({"E_B^P": 300.0, "seller": 0.0, "B_S^pre": 100.0,
+                     "B_S^*": 0.0, "E_S^A": 0.0, "E_B^A": 0.0})
     accounts = EscrowAccounts(e_b_p=300.0, b_s_pre=100.0, b_s_star=80.0)
     money = MoneyLedger(ledger, tx_id="tx-1")
     settle(terminal=TerminalState.TRADE, ledger=ledger, accounts=accounts,

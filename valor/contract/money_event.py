@@ -60,6 +60,17 @@ _LEGAL_FLOWS = {
     "买方 usage bond 罚没": ("B_B^use", "seller"),
     "审计支付给审计员": ("E_B^A", "auditor"),
     "审计支付给审计员S": ("E_S^A", "auditor"),
+    # V2：escrow 全关闭新增
+    "基础审计支付给审计员": ("E_S^A", "auditor"),
+    "增量审计支付给审计员": ("E_B^A", "auditor"),
+    "审计托管余量返还": ("E_S^A", "seller"),
+    "审计托管余量返还B": ("E_B^A", "buyer"),
+    "bond 到期返还": ("B_S^*", "seller"),
+    "返还责任保证金": ("B_S^*", "seller"),
+    "预锁剩余返还": ("B_S^pre", "seller"),
+    "责任保证金罚没": ("B_S^*", "buyer"),
+    "purchase escrow 余量返还": ("E_B^P", "buyer"),
+    "预锁转入责任保证金": ("B_S^pre", "B_S^*"),
 }
 
 

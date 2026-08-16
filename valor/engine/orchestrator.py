@@ -223,10 +223,21 @@ class TransactionOrchestrator:
             lower_adj = 0.0
         v_gross_lower = v_gross - lower_adj
 
+        # confusion matrix（供 G9 独立复算；joint = confusion / N_eval）
+        n_cls = payoff.shape[0]
+        confusion = np.zeros((n_cls, n_cls), dtype=float)
+        for yt, yp in zip(plus_art.y_true, plus_art.y_pred):
+            if yt < n_cls and yp < n_cls:
+                confusion[yt, yp] += 1.0
         self._stage("data_voi", {
             "u_base": u_base, "u_plus": u_plus, "delta_u": delta_u,
             "v_gross": v_gross, "l_comp": l_comp, "v_gross_lower": v_gross_lower,
             "deployment_scale": n_b,
+            "recompute_inputs": {
+                "confusion_matrix": confusion.tolist(),
+                "payoff_matrix": sc.payoff_matrix,
+                "deployment_scale": n_b,
+            },
         })
         self._log(ledger, stage="DATA_VOI", event_type="VALUATION",
                   formula_id="DATA_VOI_MARGINAL",
@@ -249,10 +260,28 @@ class TransactionOrchestrator:
         audit_trace_events = audit.get("audit_trace_events", [])
 
         # ---- Certification（阶段 25-26）----
-        self._stage("certification", {"p_breach_lower_sys": p_b_lower})
+        # recompute_inputs：从冻结证书或 scenario 默认取 Beta 参数（G16 独立复算）
+        if self.calibration is not None and self.calibration.certificate is not None:
+            cert_d = self.calibration.certificate.data
+            cert_inputs = {
+                "a_D": cert_d["a_D"], "b_D": cert_d["b_D"],
+                "alpha_D": cert_d["alpha_D"], "tp": cert_d["tp"],
+                "fn": cert_d["fn"],
+            }
+        else:
+            cert_inputs = {
+                "a_D": sc.certificate["a_D"], "b_D": sc.certificate["b_D"],
+                "alpha_D": sc.certificate["alpha_D"],
+                "tp": sc.certificate["tp"], "fn": sc.certificate["fn"],
+            }
+        self._stage("certification", {
+            "p_breach_lower_sys": p_b_lower,
+            "recompute_inputs": cert_inputs,
+        })
         self._log(ledger, stage="CERTIFICATION", event_type="P_BREACH_LOWER",
                   formula_id="P_BREACH_LOWER_SYS",
-                  formula_output={"p_breach_lower_sys": p_b_lower})
+                  formula_output={"p_breach_lower_sys": p_b_lower,
+                                  "recompute_inputs": cert_inputs})
 
         # ---- Seller Bond（阶段 27-28，P7 reconciliation）----
         from valor.liability.seller_bond import (
@@ -304,6 +333,19 @@ class TransactionOrchestrator:
             "p_max": p_max, "p_min": p_min, "margin": clearance.margin,
             "clearing_price": clearance.clearing_price,
             "decision": clearance.decision,
+            "recompute_inputs": {
+                "v_gross_lower": v_gross_lower, "w_b_rem": sc.buyer["w_b_rem"],
+                "c_i": sc.buyer["c_i"], "c_a_b_pay": audit_pay_b,
+                "c_r_pay": sc.buyer["c_r_pay"],
+                "c_b_use_cap": sc.buyer["c_b_use_cap"],
+                "r_b_post": sc.buyer["r_b_post"],
+                "c_marg": sc.seller["c_marg"], "c_a_s_pay": audit_pay_s,
+                "c_b_cap": c_b_cap, "c_r_s_pay": sc.seller["c_r_s_pay"],
+                "r_s_post": sc.seller["r_s_post"], "oc_s": sc.seller["oc_s"],
+                "pi_s0": sc.seller["pi_s0"],
+                "p_max": p_max, "p_min": p_min,
+                "beta_bar": sc.pricing["beta_bar"],
+            },
         })
         self._log(ledger, stage="PRICING", event_type="PRICE_BOUNDS",
                   formula_id="PRICING",
@@ -333,6 +375,15 @@ class TransactionOrchestrator:
             e_s_a=audit_pay_s, e_b_a=audit_pay_b, e_b_p=sc.buyer["w_b_rem"],
             b_s_pre=b_s_pre, b_s_star=b_s_star, b_b_use=0.0)
         money_ledger = MoneyLedger(ledger_bal, tx_id=tx_id)
+        # 结算前捕获 escrow 初始余额（G24 独立复算用）
+        escrow_initial = {
+            "E_B^P": ledger_bal.balance("E_B^P"),
+            "E_S^A": ledger_bal.balance("E_S^A"),
+            "E_B^A": ledger_bal.balance("E_B^A"),
+            "B_S^pre": ledger_bal.balance("B_S^pre"),
+            "B_S^*": ledger_bal.balance("B_S^*"),
+            "B_B^use": ledger_bal.balance("B_B^use"),
+        }
         settle_res = settle(
             terminal=terminal, ledger=ledger_bal, accounts=accounts,
             price=clearance.clearing_price or 0.0,
@@ -345,6 +396,7 @@ class TransactionOrchestrator:
             "money_semantics_ok": money_semantics_ok,
             "transfers": [t.to_plain() for t in settle_res.transfers],
             "money_events": [e.to_plain() for e in money_ledger.events],
+            "escrow_initial_balances": escrow_initial,
         })
         self._log(ledger, stage="SETTLEMENT", event_type="SETTLE",
                   formula_id="SETTLE_PHASE1",

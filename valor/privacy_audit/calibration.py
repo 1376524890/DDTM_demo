@@ -174,4 +174,81 @@ def _single_run(X, y, k, rng, *, corrupt, tamper, seed, corrupt_frac=0.2) -> str
     return ev.result
 
 
-__all__ = ["LikelihoodCell", "calibrate_likelihood"]
+# ---------------------------------------------------------------------------
+# V2：真实三状态经验似然（删除人工 L=0.5，Dirichlet smoothing）
+# ---------------------------------------------------------------------------
+def calibrate_empirical_likelihood_v2(
+    *,
+    X: np.ndarray, y: np.ndarray,
+    challenge_sizes: list[int],
+    n_runs: int = 4,
+    label_latent_frac: float = 0.05,  # L：轻度污染（诚实但不适合）
+    label_breach_frac: float = 0.3,   # B：严重污染/篡改（真实 breach）
+    seed: int = 0,
+    alpha: dict[str, float] | None = None,
+) -> dict:
+    """构造真实 G/L/B 三状态经验似然，冻结 artifact。
+
+    三种 ground truth（论文强调 L≠B）：
+        G : 数据和声明都正常
+        L : 轻度 label 污染（卖方诚实但 buyer-specific suitability 不足）
+        B : Merkle 篡改（commitment 与揭示数据不一致，真实 seller breach）
+
+    对每个 (state, k)，跑 n_runs 次 COMMIT_CHALLENGE，收集 (state, outcome)
+    计数，用 Dirichlet smoothing 估计 Λ(y|x)。R_cal 只用校准数据。
+    """
+    from valor.engine.calibration_v2 import (
+        DEFAULT_ALPHA,
+        OUTCOMES,
+        EmpiricalLikelihood,
+        freeze_empirical_likelihood,
+    )
+
+    rng = np.random.default_rng(seed)
+    # 每个 k 一个独立似然（challenge_size 影响检测能力）
+    likelihoods = {}
+    for k in challenge_sizes:
+        lik = EmpiricalLikelihood(
+            action_id=f"a-{k}", breach_family="structural",
+            alpha=alpha or dict(DEFAULT_ALPHA))
+        for run in range(n_runs):
+            # G：干净
+            g_out = _single_run(X, y, k, rng, corrupt=False, tamper=False,
+                                seed=seed + run)
+            lik.add("G", g_out)
+            # L：轻度 label 污染（诚实但不适合）
+            l_out = _single_run(X, y, k, rng, corrupt=True, tamper=False,
+                                seed=seed + run + 100,
+                                corrupt_frac=label_latent_frac)
+            lik.add("L", l_out)
+            # B：Merkle 篡改（真实 breach）→ 必然 BREACH_EVIDENCE
+            b_out = _single_run(X, y, k, rng, corrupt=False, tamper=True,
+                                seed=seed + run + 200)
+            lik.add("B", b_out)
+        likelihoods[str(k)] = lik
+
+    # 冻结 artifact（每个 k 一个 rows；审计时按 k 取）
+    from valor.core.hashing import content_hash
+
+    cal_hash = content_hash({"X": X.tobytes(), "y": y.tobytes(), "seed": seed})
+    frozen = {
+        "kind": "audit_likelihood_v2",
+        "challenge_sizes": challenge_sizes,
+        "n_runs": n_runs,
+        "label_latent_frac": label_latent_frac,
+        "label_breach_frac": label_breach_frac,
+        "likelihoods": {
+            k: freeze_empirical_likelihood(
+                lik, policy_hash="p" * 64, calibration_hash=cal_hash)
+            for k, lik in likelihoods.items()
+        },
+    }
+    frozen["artifact_hash"] = content_hash({
+        "kind": frozen["kind"],
+        "likelihoods": frozen["likelihoods"],
+        "n_runs": n_runs, "seed": seed,
+    })
+    return frozen
+
+
+__all__ = ["LikelihoodCell", "calibrate_likelihood", "calibrate_empirical_likelihood_v2"]

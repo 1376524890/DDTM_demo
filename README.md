@@ -131,6 +131,43 @@ res = orch.run()   # COMMIT_CHALLENGE 审计，披露受限，FullChainGate 可 
 - **实测**：MNIST 3000 候选，披露 4.1%，VCG 119 进 MC_A^pay，FullChainGate PASS (33/33)。
 - 详见 `docs/PRIVATE_AUDIT_ZK.md`。
 
+## 实验框架（Experiment Framework V2，`valor/experiments/`）
+
+论文实验运行基础设施。核心原则：**一个 trial 先生成「世界」（WorldSpec），method 只能改变
+策略，不能改变世界**（真正的 paired experiment）。
+
+```python
+from valor.experiments import (
+    make_experiment_spec, build_paired_plan, ExperimentRunner, ArtifactStore,
+    build_manifest,
+)
+
+exp = make_experiment_spec(
+    experiment_id="RQ2-001", rq="RQ2",
+    methods=("no_audit", "valor"), seeds=(1, 2, 3),
+    execution_mode="COMMIT_CHALLENGE",          # 必须显式冻结，不设隐藏默认
+    calibration_artifact_hash="cal"*32, certificate_hash="cert"*32,
+)
+plan = build_paired_plan(experiment=exp, world_factory=world_factory,
+                         method_configs={})
+runner = ExperimentRunner(plan=plan, store=ArtifactStore("experiments"),
+                          executor=capstone_trial_executor,
+                          manifest_builder=manifest_builder)
+summary = runner.run()   # completed skip / failed retry / missing execute（resume）
+```
+
+关键特性：
+- **Seed Hierarchy**：`S_x = H(S_master ∥ namespace_x)`（dataset/corruption/auditor_cost/.../method 各自独立 seed），baseline 与 Proposed 共享 world randomness。
+- **R_cal / R_cert / R_eval 三集合隔离**：likelihood 从 R_cal、p̲_B^sys 从 R_cert、RQ metrics 从 R_eval，禁止交叉。
+- **Immutable raw artifacts**：trial 完成后 immutable；重跑 hash 一致 → skip，不一致 → `REPRODUCIBILITY_VIOLATION`。
+- **统一统计**：95% bootstrap CI + paired t-test/Wilcoxon + Cohen's dz/rank-biserial + Holm correction。
+- **验收 EF-G01..EF-G15 全 PASS**（`tests/experiments/test_framework_v2.py`）。
+
+演示：
+```bash
+python scripts/experiment_framework_demo.py   # 2 seeds × 2 methods 真实 paired 实验
+```
+
 ## MNIST 完整交易流程（数值实例）
 
 > 以下是一次真实 MNIST 完整交易（`CapstoneScenario` 默认场景）逐步执行与求值记录，

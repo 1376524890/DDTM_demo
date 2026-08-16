@@ -1,4 +1,4 @@
-"""对象绑定与承诺校验（规范 §4）。
+"""对象绑定与承诺校验（规范 §4）+ 数据集承诺（canonical H(D)）。
 
 每笔交易承诺 τ = (txID, sellerID, buyerID, assetID, versionID,
 H(D), H(M_D), H(R_τ), policyVersion, timestamp)。
@@ -9,6 +9,11 @@ H(D), H(M_D), H(R_τ), policyVersion, timestamp)。
 
 任何对象哈希、版本或权利束不一致均为确定性合同错误（CommitBindingError）；
 若来自卖方替换或虚假交付，则进入 SELLER_BREACH（此处只负责检测不一致）。
+
+数据集身份（Dataset Identity）属于 Asset 层，因此 canonical DatasetCommitment
+（H(D)）定义在这里，作为全系统唯一来源。审计/估值/交付/使用各环节都必须引用
+同一个 commitment.commitment_hash，禁止用 `content_hash({"mnist": role_counts})`
+之类旁路哈希充当 H(D)。
 """
 
 from __future__ import annotations
@@ -33,6 +38,63 @@ class TransactionCommitment:
     rights_commitment: str
     policy_version: str
     timestamp: str
+
+
+@dataclass(frozen=True)
+class DatasetCommitment:
+    """数据集承诺 —— 全系统唯一 canonical H(D)（规范 §2/§4）。
+
+    数据集身份（Dataset Identity）属于 Asset，因此本类型定义在 asset 层。
+    审计/估值/交付/使用各环节必须引用同一个 `commitment_hash`；禁止用
+    `content_hash({"mnist": role_counts})` 之类旁路哈希充当 H(D)。
+
+    commitment_hash = H(datasetHash, merkleRoot, schemaHash, n, canonVersion)
+    dataset_hash      = H(canonical(D))     # 完整数据一致性
+    merkle_root       = MerkleRoot(D)       # 局部开启验证
+    """
+
+    dataset_id: str
+    version: str
+    n_rows: int
+    schema_hash: str
+    canonicalization_spec_hash: str
+    merkle_root: str
+    dataset_hash: str
+    commitment_hash: str
+
+    def to_plain(self) -> dict:
+        return {
+            "dataset_id": self.dataset_id,
+            "version": self.version,
+            "n_rows": self.n_rows,
+            "schema_hash": self.schema_hash,
+            "canonicalization_spec_hash": self.canonicalization_spec_hash,
+            "merkle_root": self.merkle_root,
+            "dataset_hash": self.dataset_hash,
+            "commitment_hash": self.commitment_hash,
+        }
+
+    @classmethod
+    def from_plain(cls, d: dict) -> "DatasetCommitment":
+        return cls(
+            dataset_id=d["dataset_id"], version=d["version"], n_rows=d["n_rows"],
+            schema_hash=d["schema_hash"],
+            canonicalization_spec_hash=d["canonicalization_spec_hash"],
+            merkle_root=d["merkle_root"], dataset_hash=d["dataset_hash"],
+            commitment_hash=d["commitment_hash"],
+        )
+
+    def public_artifact(self) -> dict:
+        """市场公开版本（不含 merkle_nodes / salts）。"""
+        return {
+            "dataset_id": self.dataset_id,
+            "n_rows": self.n_rows,
+            "schema_hash": self.schema_hash,
+            "merkle_root": self.merkle_root,
+            "dataset_hash": self.dataset_hash,
+            "commitment_hash": self.commitment_hash,
+            "canonicalization_spec_hash": self.canonicalization_spec_hash,
+        }
 
 
 @dataclass(frozen=True)

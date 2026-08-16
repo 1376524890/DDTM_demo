@@ -96,6 +96,102 @@ class ValuationCalibrator:
 # ---------------------------------------------------------------------------
 # 2. 审计似然校准（Audit Likelihood）—— 由检测敏感度/误报派生 Λ_j
 # ---------------------------------------------------------------------------
+# 三状态与多结果（G/L/B ground truth；L≠B 语义）
+EMPIRICAL_STATES = ("G", "L", "B")
+EMPIRICAL_OUTCOMES = ("PASS", "CLAIM_NOT_SUPPORTED", "BREACH_EVIDENCE", "INCONCLUSIVE")
+
+# 默认 Dirichlet 先验（平滑；不预设 G/L/B 区分，只防零计数）
+DEFAULT_DIRICHLET_ALPHA = {y: 1.0 for y in EMPIRICAL_OUTCOMES}
+
+
+@dataclass
+class EmpiricalAuditLikelihood:
+    """真实三状态经验似然 Λ(y|x)（Dirichlet smoothing）。
+
+    三种 ground truth：
+        G : 数据和声明都正常
+        L : 卖方诚实，但 buyer-specific suitability 不足（不触发 breach）
+        B : commitment/claim/delivery 存在真实 seller breach
+
+    counts[x][y] = n_{a,c,x,y}（经验计数）；alpha[y] = Dirichlet smoothing。
+    由经验计数估计，绝不用人工固定映射（如 L=0.5）。
+    """
+
+    action_id: str
+    breach_family: str
+    counts: dict[str, dict[str, int]] = field(default_factory=dict)
+    alpha: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_DIRICHLET_ALPHA))
+
+    def add(self, state: str, outcome: str) -> None:
+        """记录一次 (X=x, Y=y) 观测。"""
+        if state not in EMPIRICAL_STATES:
+            raise ValueError(f"未知状态 {state!r}，须在 {EMPIRICAL_STATES}")
+        if outcome not in EMPIRICAL_OUTCOMES:
+            raise ValueError(f"未知结果 {outcome!r}，须在 {EMPIRICAL_OUTCOMES}")
+        self.counts.setdefault(state, {y: 0 for y in EMPIRICAL_OUTCOMES})[outcome] += 1
+
+    def likelihood_rows(self) -> dict[str, dict[str, float]]:
+        """Λ(y|x) = (n_{x,y}+α_y)/(Σ n_{x,y'}+Σ α_y')。
+
+        返回 rows[y][x]，供 StateBelief/bayes_update 使用（rows[y][x] = Λ(y|x)）。
+        """
+        rows: dict[str, dict[str, float]] = {y: {} for y in EMPIRICAL_OUTCOMES}
+        for state in EMPIRICAL_STATES:
+            counts = self.counts.get(state, {y: 0 for y in EMPIRICAL_OUTCOMES})
+            denom = sum(counts.get(y, 0) for y in EMPIRICAL_OUTCOMES) + sum(self.alpha.values())
+            for y in EMPIRICAL_OUTCOMES:
+                numer = counts.get(y, 0) + self.alpha.get(y, 0.0)
+                rows[y][state] = numer / denom if denom > 0 else 0.0
+        return rows
+
+    def n_observations(self) -> int:
+        return sum(sum(c.values()) for c in self.counts.values())
+
+    def to_plain(self) -> dict:
+        return {
+            "action_id": self.action_id,
+            "breach_family": self.breach_family,
+            "counts": self.counts,
+            "alpha": self.alpha,
+            "n_observations": self.n_observations(),
+            "rows": self.likelihood_rows(),
+        }
+
+
+def freeze_empirical_likelihood(
+    lik: EmpiricalAuditLikelihood, *, policy_hash: str, calibration_hash: str,
+) -> dict:
+    """冻结经验似然 artifact（含确定性 hash）。
+
+    policy_hash 必须来自上游真实策略，禁止占位 hash。
+    """
+    data = {
+        "kind": "audit_likelihood",
+        "action_id": lik.action_id,
+        "breach_family": lik.breach_family,
+        "counts": lik.counts,
+        "alpha": lik.alpha,
+        "rows": lik.likelihood_rows(),
+        "n_observations": lik.n_observations(),
+        "policy_hash": policy_hash,
+        "calibration_hash": calibration_hash,
+        "normalized_sum_per_state": {
+            s: round(sum(lik.likelihood_rows()[y][s] for y in EMPIRICAL_OUTCOMES), 9)
+            for s in EMPIRICAL_STATES
+        },
+    }
+    data["artifact_hash"] = content_hash({
+        "kind": "audit_likelihood",
+        "action_id": lik.action_id, "breach_family": lik.breach_family,
+        "counts": lik.counts, "alpha": lik.alpha, "policy_hash": policy_hash,
+        "calibration_hash": calibration_hash,
+    })
+    return data
+
+
+# ---------------------------------------------------------------------------
+# 2.1 审计似然校准（Audit Likelihood）—— 由检测敏感度/误报派生 Λ_j
+# ---------------------------------------------------------------------------
 @dataclass
 class DetectionStats:
     """一次受控 breach injection 的检测统计（TP/FP/FN/TN）。"""
@@ -230,6 +326,11 @@ __all__ = [
     "FrozenArtifact",
     "ValuationCalibrator",
     "DetectionStats",
+    "EmpiricalAuditLikelihood",
+    "freeze_empirical_likelihood",
+    "EMPIRICAL_STATES",
+    "EMPIRICAL_OUTCOMES",
+    "DEFAULT_DIRICHLET_ALPHA",
     "AuditLikelihoodCalibrator",
     "AuditPolicyCertifier",
     "CalibrationBundle",

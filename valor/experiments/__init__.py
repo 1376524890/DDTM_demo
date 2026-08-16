@@ -35,6 +35,7 @@ from .artifacts import (
 )
 from .runner import ExperimentRunner, RetryPolicy, RunSummary
 from .analysis import AnalysisRunner, PairedAnalysis
+from .reconciliation import ReconciliationCase, level1_reconciliation
 
 __all__ = [
     "SeedHierarchy", "derive_seed",
@@ -46,4 +47,5 @@ __all__ = [
     "REPRODUCIBILITY_VIOLATION", "artifact_root_hash", "build_manifest",
     "ExperimentRunner", "RetryPolicy", "RunSummary",
     "AnalysisRunner", "PairedAnalysis",
+    "ReconciliationCase", "level1_reconciliation",
 ]

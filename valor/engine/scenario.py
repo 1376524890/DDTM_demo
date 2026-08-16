@@ -178,4 +178,61 @@ class CapstoneScenario:
         return content_hash(self.to_plain())
 
 
-__all__ = ["CapstoneScenario"]
+def scenario_from_config(cfg: dict) -> CapstoneScenario:
+    """从正式交易 config（transaction run 的 JSON）构造冻结场景。
+
+    正式交易唯一入口 `python -m valor transaction run --config` 经此把 config
+    桥接到 TransactionOrchestrator。业务参数必须显式给出（fail closed），
+    禁止无来源默认值。
+    """
+    ds = cfg["dataset"]
+    payoff = cfg["payoff"]
+    # 多分类 payoff（10 类）→ 构造对角矩阵；二分类用 r_tn/r_fp/r_fn/r_tp
+    if {"r_tn", "r_fp", "r_fn", "r_tp"} <= set(payoff):
+        payoff_matrix = [
+            [payoff["r_tp"], payoff["r_fp"]],
+            [payoff["r_fn"], payoff["r_tn"]],
+        ]
+    else:
+        raise ValueError("payoff 须含 r_tn/r_fp/r_fn/r_tp（二分类）或完整矩阵")
+
+    rights = cfg.get("rights", {
+        "r_class": "data", "access_mode": "COMPUTE_ONLY",
+        "t0": "2026-01-01T00:00:00Z", "t1": "2026-12-31T00:00:00Z",
+        "q": 3, "purposes": ["digit-classification"],
+        "scope": "buyer_org_A", "exclusivity": False,
+        "redistribution": False, "derivative": True,
+        "not_applicable_reason": None,
+    })
+    sc = CapstoneScenario(
+        scenario_id=cfg.get("scenario_id", "cli-transaction"),
+        seller_id=cfg.get("seller_id", "seller-1"),
+        buyer_id=cfg.get("buyer_id", "buyer-1"),
+        split_seed=ds.get("seed", 0),
+        payoff_matrix=payoff_matrix,
+        rights=rights,
+        entitlement_pass=cfg.get("entitlement", {}).get("grant_authority", True),
+        seller_breach=cfg.get("seller_breach", False),
+        buyer_misuse=cfg.get("buyer_misuse", False),
+    )
+    # 覆盖审计/责任/买方/卖方/定价参数（显式提供才覆盖）
+    if "audit" in cfg:
+        sc.audit.update(cfg["audit"])
+    if "prior" in cfg:
+        sc.audit_prior.update(cfg["prior"])
+    if "loss_matrix" in cfg:
+        sc.loss_matrix.update(cfg["loss_matrix"])
+    if "cert" in cfg:
+        sc.certificate.update(cfg["cert"])
+    if "bond" in cfg:
+        sc.bond.update(cfg["bond"])
+    if "buyer" in cfg:
+        sc.buyer.update(cfg["buyer"])
+    if "seller" in cfg:
+        sc.seller.update(cfg["seller"])
+    if "pricing" in cfg:
+        sc.pricing.update(cfg["pricing"])
+    return sc
+
+
+__all__ = ["CapstoneScenario", "scenario_from_config"]

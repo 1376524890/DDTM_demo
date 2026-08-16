@@ -13,7 +13,11 @@ from valor.privacy_audit import (
     generate_challenge,
     verify_opening,
 )
-from valor.privacy_audit.calibration import calibrate_likelihood
+from valor.privacy_audit.calibration_cases import (
+    run_breach_case,
+    run_good_case,
+    run_latent_case,
+)
 from valor.privacy_audit.canonicalize import canonical_row_from_payload
 from valor.privacy_audit.merkle import MerkleProof
 from valor.seller import SellerCommittedDataset
@@ -32,19 +36,17 @@ def _seller(X, y, path="/tmp/pa-acc", ds="ds1"):
         store, dataset_id=ds, version="v1", X=X, y=y, schema_hash="s" * 64)
 
 
-def test_calibration_produces_likelihood():
+def test_calibration_cases_L_ne_B():
+    """G/L/B 三种 ground truth 严格不同：B 触发 breach，L 不触发。"""
     X, y = _block(400, seed=0)
-    res = calibrate_likelihood(
-        X=X, y=y, challenge_sizes=[32, 64], n_runs=2,
-        label_corruption_frac=0.3, seed=0)
-    art = res["likelihood_artifact"]
-    assert art["kind"] == "privacy_audit_likelihood"
-    assert len(art["cells"]) == 6  # 2 k × 3 breach 类型
-    assert len(art["artifact_hash"]) == 64
-    # GOOD 的 pass_rate 应高于 LABEL_CORRUPT（检测有区分力）
-    good_pass = [c.pass_rate for c in res["cells"] if c.breach_type == "GOOD"]
-    corrupt_pass = [c.pass_rate for c in res["cells"] if c.breach_type == "LABEL_CORRUPT"]
-    assert sum(good_pass) >= sum(corrupt_pass)
+    g = run_good_case(X, y, 32, seed=0)
+    l = run_latent_case(X, y, 32, seed=1, latent_frac=0.05)
+    b = run_breach_case(X, y, 32, seed=2)
+    # B（篡改）→ 必为 BREACH_EVIDENCE（真实 seller breach）
+    assert b == "BREACH_EVIDENCE"
+    # L（诚实但不适合）绝不能是 BREACH_EVIDENCE
+    assert l != "BREACH_EVIDENCE"
+    assert g != "BREACH_EVIDENCE"
 
 
 # ---- PP-AUDIT 验收 Gate ----

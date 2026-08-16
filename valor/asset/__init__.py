@@ -10,6 +10,7 @@
 from .models import AssetVersion, DataAsset
 from .commitments import (
     BoundObject,
+    DatasetCommitment,
     TransactionCommitment,
     bind_commitment,
     verify_commitment,
@@ -23,6 +24,7 @@ __all__ = [
     "AssetVersion",
     "DataAsset",
     "BoundObject",
+    "DatasetCommitment",
     "TransactionCommitment",
     "bind_commitment",
     "verify_commitment",

@@ -37,91 +37,60 @@ def _add_cmd(sub, name: str, help_: str) -> argparse.ArgumentParser:
 
 
 def cmd_transaction_run(config_path: str) -> int:
-    """全流程交易（Phase 8）：主链 Entitlement→…→结算/反馈，输出全部数值。"""
+    """正式交易唯一入口：config → CapstoneScenario → TransactionOrchestrator。
+
+    只允许一条主链（engine/orchestrator.py）；不再存在第二套交易入口。
+    """
     import json
     import os
+    from pathlib import Path
 
-    from .run import run_full_transaction
+    from .engine import TransactionOrchestrator
+    from .engine.scenario import scenario_from_config
 
     cfg = json.loads(open(config_path, encoding="utf-8").read())
-    result = run_full_transaction(cfg)
+    sc = scenario_from_config(cfg)
+    orch = TransactionOrchestrator(sc, run_dir=cfg.get("run_dir", "runs"))
+    result = orch.run()
     os.makedirs("raw", exist_ok=True)
     with open("raw/run_result.json", "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-    # 逐步公式/输入/输出记录（主链机制运行档案）
-    with open("raw/transaction_trace.json", "w", encoding="utf-8") as f:
-        json.dump({"steps": result.get("trace", [])},
-                  f, ensure_ascii=False, indent=2)
-    # 生成报告与价格边界图
-    from .report import build_report
-    from .plotting import plot_price_bounds
+        json.dump(result.to_plain(), f, ensure_ascii=False, indent=2)
+    print(f"成交决策: {result.decision}")
+    print(f"run_id:   {result.run_id}")
+    return 0
 
-    build_report("raw/run_result.json", "reports/full_transaction.md")
-    pr = result.get("pricing", {})
-    if pr.get("p_max") is not None and pr.get("p_min") is not None:
-        plot_price_bounds(pr["p_max"], pr["p_min"], result.get("decision", ""),
-                          "reports/figures/price_bounds.png")
-    print(f"成交决策: {result.get('decision')}")
+
+def cmd_calibration_run(config_path: str) -> int:
+    """离线校准唯一入口：config → run_offline_calibration → 冻结 bundle。"""
+    import json
+    from pathlib import Path
+
+    from .engine.calibration_runner import CalibrationConfig, run_offline_calibration
+    from valor.data.download import load_dataset
+    from valor.core.hashing import content_hash
+
+    cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
+    dataset = cfg["dataset"]["name"]
+    handle = load_dataset(dataset)
+    n = cfg.get("n_pool", min(300, len(handle.X)))
+    pool = handle.X.iloc[:n]
+    cal_cfg = CalibrationConfig(
+        historical_pool=pool,
+        y_historical=handle.y.iloc[:n],
+        dataset_hash=content_hash({"dataset": dataset, "n": n}),
+        trainer_hash=content_hash({"trainer": cfg.get("trainer", "LR")}),
+        seed=cfg.get("seed", 0),
+        payoff_matrix=cfg.get("payoff_matrix", [[1.0, -2.0], [-5.0, 3.0]]),
+        deployment_scale=cfg.get("deployment_scale", 1000),
+        n_pseudo_trades=cfg.get("n_pseudo_trades", 3),
+    )
+    bundle = run_offline_calibration(cal_cfg, run_dir=cfg.get("run_dir", "calibration"))
+    print(json.dumps(bundle.to_plain(), ensure_ascii=False, indent=2))
     return 0
 
 
 def _cmd_engine(args: argparse.Namespace) -> int:
-    """engine 收敛层命令：capstone / calibrate / acceptance。"""
-    import json
-    from pathlib import Path
-
-    from .engine import CapstoneScenario
-
-    if args.cmd == "capstone":
-        sc = CapstoneScenario(**json.loads(Path(args.scenario).read_text(encoding="utf-8")))
-        from .engine import run_capstone
-
-        calibration = None
-        if args.calibration_dir:
-            from .engine.calibration import CalibrationBundle, FrozenArtifact
-
-            bundle_json = json.loads(
-                Path(args.calibration_dir).read_text(encoding="utf-8"))
-            calibration = CalibrationBundle(
-                valuation=(
-                    FrozenArtifact("valuation_calibration",
-                                   bundle_json["valuation"]["data"])
-                    if bundle_json.get("valuation") else None),
-                likelihood=(
-                    FrozenArtifact("audit_likelihood",
-                                   bundle_json["likelihood"]["data"])
-                    if bundle_json.get("likelihood") else None),
-                certificate=(
-                    FrozenArtifact("audit_policy_certificate",
-                                   bundle_json["certificate"]["data"])
-                    if bundle_json.get("certificate") else None),
-            )
-        res = run_capstone(sc, run_dir=args.run_dir, calibration=calibration)
-        print(json.dumps(res.to_plain(), ensure_ascii=False, indent=2))
-        return 0
-
-    if args.cmd == "calibrate":
-        from valor.data.download import load_dataset
-        from .engine.calibration_runner import CalibrationConfig, run_offline_calibration
-
-        handle = load_dataset(args.dataset)
-        from valor.core.hashing import content_hash
-
-        pool = handle.X.iloc[:min(500, len(handle.X))]
-        cfg = CalibrationConfig(
-            historical_pool=pool,
-            y_historical=handle.y.iloc[:len(pool)],
-            dataset_hash=content_hash({"dataset": args.dataset, "n": len(pool)}),
-            trainer_hash=content_hash({"trainer": "LR"}),
-            seed=0,
-            payoff_matrix=[[1.0, -2.0], [-5.0, 3.0]],
-            deployment_scale=1000,
-            n_pseudo_trades=5,
-        )
-        bundle = run_offline_calibration(cfg, run_dir=args.out_dir)
-        print(json.dumps(bundle.to_plain(), ensure_ascii=False, indent=2))
-        return 0
-
+    """engine 收敛层命令：仅 acceptance（交易统一走 transaction run）。"""
     if args.cmd == "acceptance":
         from .engine.acceptance import run_acceptance
 
@@ -213,16 +182,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--config", required=True
     )
 
-    # ---- engine（P0-P13 收敛层）----
-    en = sub.add_parser("engine", help="收敛层（capstone/calibration/acceptance）")
+    # ---- calibration（唯一离线校准入口）----
+    cb = sub.add_parser("calibration", help="离线校准（唯一入口）")
+    cbsub = cb.add_subparsers(dest="cmd", required=True)
+    cbsub.add_parser("run", help="受控注入→检测→冻结 likelihood/certificate/valuation").add_argument(
+        "--config", required=True
+    )
+
+    # ---- engine（收敛层：acceptance 仅作验收；交易统一走 transaction run）----
+    en = sub.add_parser("engine", help="收敛层（acceptance）")
     ensub = en.add_subparsers(dest="cmd", required=True)
-    cap = ensub.add_parser("capstone", help="运行 MNIST capstone 交易")
-    cap.add_argument("--scenario", required=True)
-    cap.add_argument("--run-dir", default="runs")
-    cap.add_argument("--calibration-dir", default=None)
-    cal = ensub.add_parser("calibrate", help="离线校准（likelihood+certification+valuation）")
-    cal.add_argument("--dataset", default="breast_cancer")
-    cal.add_argument("--out-dir", default="calibration")
     acc = ensub.add_parser("acceptance", help="五场景验收 C0-C4")
     acc.add_argument("--run-dir", default="runs/acceptance")
 
@@ -242,6 +211,10 @@ def main(argv=None) -> int:
 
     if args.command == "transaction" and args.cmd == "run":
         return cmd_transaction_run(args.config)
+
+    # calibration 唯一离线校准入口
+    if args.command == "calibration" and args.cmd == "run":
+        return cmd_calibration_run(args.config)
 
     # engine 收敛层（P0-P13）
     if args.command == "engine":
@@ -263,11 +236,11 @@ def main(argv=None) -> int:
             os.path.join(run_dir, "report.md"),
         )
 
-    # experiment run（Phase 8）
+    # experiment run（Phase 8）—— 统一走 valor/experiments/ 框架
     if args.command == "experiment" and args.cmd == "run":
-        from .experiment import run_experiments
+        from .experiments.cli import run_experiment_cli
 
-        return run_experiments(args.config)
+        return run_experiment_cli(args.config)
 
     # gate phase0：输出机器可读 JSON（检查单 T）
     if args.command == "gate" and args.cmd == "phase0":

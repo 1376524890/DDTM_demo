@@ -1,32 +1,18 @@
 {
   "schema_version": "1",
-  "dataset": {
-    "name": "breast_cancer",
-    "seed": 0,
-    "base_train_frac": 0.5,
-    "seller_pool_frac": 0.2,
-    "valuation_validation_frac": 0.15,
-    "n_batches": 4,
-    "rows_per_batch": 20
-  },
-  "payoff": { "r_tn": 1.0, "r_fp": -2.0, "r_fn": -5.0, "r_tp": 3.0 },
+  "mode": "PRODUCTION",
+  "scenario_id": "cli-transaction",
+  "seller_id": "seller-1",
+  "buyer_id": "buyer-1",
+  "dataset": { "name": "mnist", "seed": 0 },
+  "payoff": { "r_tp": 3.0, "r_fp": -2.0, "r_fn": -5.0, "r_tn": 1.0 },
   "entitlement": { "grant_authority": true, "compliant": true },
-  "exposure": 2.0,
-  "exclusivity": false,
-  "competition_sensitivity": 1.0,
-  "lower_bound_adj": 0.0,
+  "prior": { "pi_b": 0.25, "q_l": 0.2 },
   "loss_matrix": {
     "ACCEPT":    { "G": 0.0,  "L": 5.0,  "B": 50.0 },
     "REJECT":    { "G": 10.0, "L": 1.0,  "B": 0.0  },
     "TERMINATE": { "G": 10.0, "L": 1.0,  "B": 1.0  }
   },
-  "prior": { "pi_b": 0.25, "q_l": 0.2 },
-  "likelihood": {
-    "PASS":          { "G": 0.85, "L": 0.75, "B": 0.10 },
-    "QUALITY_FAIL":  { "G": 0.12, "L": 0.22, "B": 0.40 },
-    "BREACH_EVIDENCE": { "G": 0.03, "L": 0.03, "B": 0.50 }
-  },
-  "audit_cost": { "cost": 2.0, "payer": "SELLER" },
   "cert": { "a_D": 1.0, "b_D": 1.0, "alpha_D": 0.05, "tp": 12, "fn": 2 },
   "bond": {
     "g_dev": 60.0, "eps_s": 1.0, "p_e_bond": 1.0, "p_e_f": 0.3,
@@ -34,12 +20,9 @@
   },
   "buyer": { "w_b_rem": 500.0, "c_i": 20.0, "c_r_pay": 5.0,
              "c_b_use_cap": 2.0, "r_b_post": 5.0 },
-  "seller": { "c_marg": 5.0, "c_a_s_pay": 0.0, "c_r_s_pay": 3.0,
-              "r_s_post": 4.0, "oc_s": 6.0, "pi_s0": 10.0 },
+  "seller": { "c_marg": 5.0, "c_r_s_pay": 3.0, "r_s_post": 4.0,
+              "oc_s": 6.0, "pi_s0": 10.0 },
   "pricing": { "beta_bar": 0.5 },
-  "initial_balances": {
-    "E_B^P": 500.0, "E_S^A": 100.0, "E_B^A": 100.0,
-    "B_S^pre": 200.0, "B_S^*": 200.0, "B_B^use": 0.0
-  },
-  "seller_breach": false
+  "audit": { "n_nodes": 10, "f": 2, "cost": 2.0 },
+  "run_dir": "runs"
 }

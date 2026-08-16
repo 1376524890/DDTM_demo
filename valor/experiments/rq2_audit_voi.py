@@ -55,6 +55,10 @@ def capstone_trial_executor(method_id: str, config: dict, world) -> dict:
     res = orch.run()
     audit = orch._stages["audit"].output
     pricing = orch._stages["pricing"].output
+    # artifact hash 全部来自真实运行产出（禁止占位 hash）
+    from valor.core.hashing import content_hash
+
+    stage_plain = {k: v.output for k, v in orch._stages.items()}
     return {
         "metrics": {
             "clearing_price": res.clearing_price or 0.0,
@@ -63,9 +67,13 @@ def capstone_trial_executor(method_id: str, config: dict, world) -> dict:
             "disclosure_fraction": audit.get("disclosure_fraction", 0.0),
         },
         "terminal_state": res.terminal_state,
-        "run_manifest_hash": "m" * 64,
-        "trace_hash": "t" * 64,
-        "artifact_root_hash": "a" * 64,
+        "run_manifest_hash": content_hash({"run_id": orch.run_id,
+                                           "scenario_hash": res.scenario_hash}),
+        "trace_hash": content_hash(stage_plain),
+        "artifact_root_hash": content_hash({
+            "run_id": orch.run_id, "manifest": content_hash({"scenario_hash": res.scenario_hash}),
+            "trace": content_hash(stage_plain),
+        }),
     }
 
 

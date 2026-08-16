@@ -216,12 +216,13 @@ class TransactionOrchestrator:
         delta_u = u_plus - u_base
         l_comp = sc.exposure["l_comp"]
         v_gross = delta_u - l_comp
-        # 保守下界：用离线 calibration（P6）residual 分位数，禁止手填 0
+        # 保守下界：V̲_gross = V̂_gross + Q_{α_V}(e)，e = V^real - V̂（加法，非减法）。
+        # 优先用离线 calibration（P6）residual 分位数；无 calibration 时测试用 0。
         if self.calibration is not None and self.calibration.valuation is not None:
-            lower_adj = self.calibration.valuation.data["residual_quantile"]
+            residual_q = self.calibration.valuation.data["residual_quantile"]
         else:
-            lower_adj = 0.0
-        v_gross_lower = v_gross - lower_adj
+            residual_q = 0.0
+        v_gross_lower = v_gross + residual_q
 
         # confusion matrix（供 G9 独立复算；joint = confusion / N_eval）
         n_cls = payoff.shape[0]

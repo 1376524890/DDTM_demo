@@ -57,7 +57,7 @@ def test_all_primitives_pass_gate(reproduction_case):
             "ks_shift": {"column": "mean radius", "alpha_shift": 0.05},
             "categorical_shift": {"column": "mean radius", "alpha_shift": 0.05},
             "mmd": {"target_pvalue_resolution": 0.05, "n_permutations": 20},
-            "confident_learning": {"floating_tolerance": 0.1, "min_gt_recall": 0.2},
+            "confident_learning": {"threshold_method": "mean", "floating_tolerance": 0.1, "min_gt_recall": 0.2},
             "metadata_claim_audit": {
                 "claims": {"c1": {"predicate": "max_missing_rate",
                                   "column": "mean radius", "declared": 0.0}},
@@ -97,7 +97,7 @@ def test_ground_truth_metrics_label_flip(reproduction_case):
             "ks_shift": {"column": "mean radius", "alpha_shift": 0.05},
             "categorical_shift": {"column": "mean radius", "alpha_shift": 0.05},
             "mmd": {"target_pvalue_resolution": 0.05, "n_permutations": 20},
-            "confident_learning": {"floating_tolerance": 0.1, "min_gt_recall": 0.2},
+            "confident_learning": {"threshold_method": "mean", "floating_tolerance": 0.1, "min_gt_recall": 0.2},
             "metadata_claim_audit": {
                 "claims": {"c1": {"predicate": "max_missing_rate",
                                   "column": "mean radius", "declared": 0.0}},

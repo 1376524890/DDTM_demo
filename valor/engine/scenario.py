@@ -15,6 +15,20 @@ from typing import Any
 
 from valor.core.hashing import content_hash
 
+# MNIST 主链默认 10x10 payoff（买方任务，规范 §14）
+_MNIST_PAYOFF = [
+    [1.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0],
+    [-3.0, 1.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0],
+    [-3.0, -3.0, 1.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0],
+    [-3.0, -3.0, -3.0, 1.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0],
+    [-3.0, -3.0, -3.0, -3.0, 1.0, -3.0, -3.0, -3.0, -3.0, -3.0],
+    [-3.0, -3.0, -3.0, -3.0, -3.0, 1.0, -3.0, -3.0, -3.0, -3.0],
+    [-3.0, -3.0, -3.0, -3.0, -3.0, -3.0, 1.0, -3.0, -3.0, -3.0],
+    [-3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, 1.0, -3.0, -3.0],
+    [-3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, 1.0, -3.0],
+    [-3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, 1.0],
+]
+
 
 @dataclass
 class CapstoneScenario:
@@ -69,6 +83,7 @@ class CapstoneScenario:
         "min_stake": 0.0, "timeout_s": 10.0, "rho": 0.0,
         "eta_b": 0.1, "eta_o": 0.0, "seed": 0,
         "cost": 2.0,
+        "alpha_shift": 0.01, "label_error_threshold": 0.28,
     })
     # 安全/先验/似然校准 artifact 引用（P6 离线冻结）
     audit_prior: dict[str, Any] = field(default_factory=lambda: {
@@ -189,15 +204,19 @@ def scenario_from_config(cfg: dict) -> CapstoneScenario:
     禁止无来源默认值。
     """
     ds = cfg["dataset"]
-    payoff = cfg["payoff"]
-    # 多分类 payoff（10 类）→ 构造对角矩阵；二分类用 r_tn/r_fp/r_fn/r_tp
-    if {"r_tn", "r_fp", "r_fn", "r_tp"} <= set(payoff):
-        payoff_matrix = [
-            [payoff["r_tp"], payoff["r_fp"]],
-            [payoff["r_fn"], payoff["r_tn"]],
-        ]
+    payoff = cfg.get("payoff")
+    # MNIST 主链为 10 分类；payoff 必须是完整矩阵（list[list]）。
+    # 二分类 r_tn/r_fp/r_fn/r_tp 与 MNIST 10 类不匹配，禁止用作 H(D) 主链 payoff。
+    if isinstance(payoff, list) and payoff and isinstance(payoff[0], list):
+        payoff_matrix = payoff
+    elif isinstance(payoff, dict) and {"r_tn", "r_fp", "r_fn", "r_tp"} <= set(payoff):
+        # 二分类场景仅当 dataset 为二分类时允许；MNIST 主链不接受
+        raise ValueError(
+            "二分类 payoff (r_tn/r_fp/r_fn/r_tp) 不适用于 MNIST 主链；"
+            "请提供 10x10 payoff 矩阵"
+        )
     else:
-        raise ValueError("payoff 须含 r_tn/r_fp/r_fn/r_tp（二分类）或完整矩阵")
+        payoff_matrix = _MNIST_PAYOFF  # MNIST 默认 10x10
 
     rights = cfg.get("rights", {
         "r_class": "data", "access_mode": "COMPUTE_ONLY",
@@ -207,16 +226,22 @@ def scenario_from_config(cfg: dict) -> CapstoneScenario:
         "redistribution": False, "derivative": True,
         "not_applicable_reason": None,
     })
+    def _req(key: str) -> Any:
+        if key not in cfg or cfg[key] is None:
+            raise ValueError(f"[scenario_from_config] 正式交易 config 缺失必需字段: {key!r}")
+        return cfg[key]
+
+    ent = cfg.get("entitlement") or {}
     sc = CapstoneScenario(
-        scenario_id=cfg.get("scenario_id", "cli-transaction"),
-        seller_id=cfg.get("seller_id", "seller-1"),
-        buyer_id=cfg.get("buyer_id", "buyer-1"),
+        scenario_id=_req("scenario_id"),
+        seller_id=_req("seller_id"),
+        buyer_id=_req("buyer_id"),
         split_seed=ds.get("seed", 0),
         payoff_matrix=payoff_matrix,
         rights=rights,
-        entitlement_pass=cfg.get("entitlement", {}).get("grant_authority", True),
-        seller_breach=cfg.get("seller_breach", False),
-        buyer_misuse=cfg.get("buyer_misuse", False),
+        entitlement_pass=ent.get("grant_authority", True),
+        seller_breach=cfg.get("seller_breach") or False,
+        buyer_misuse=cfg.get("buyer_misuse") or False,
     )
     # 覆盖审计/责任/买方/卖方/定价参数（显式提供才覆盖）
     if "audit" in cfg:

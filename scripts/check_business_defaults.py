@@ -43,6 +43,20 @@ ALLOWED_CONSTANTS = {
 # 触发构造（调用名）
 _TRIGGER_CALLS = {"get", "getattr", "field", "Field", "default_factory"}
 
+# 配置类接收者：只有在这些"配置/场景/参数"对象上的 .get 默认值才视为业务默认值。
+# 对结果/事件/数据 dict（e / result / s / r / d / metrics / sched_res / ctx / data）
+# 的 .get 是数据访问默认（如 event.get("outcome", "")），不属于业务参数默认。
+_CONFIG_RECEIVERS = {
+    "cfg", "config", "conf", "sc", "scenario", "param", "params",
+    "a",  # audit 配置 dict（scenario.audit）
+    "rights", "buyer", "seller", "bond", "pricing", "exposure",
+    "cal_cfg", "cal_config", "opts", "options", "settings",
+}
+
+
+def _is_config_receiver(receiver: str | None) -> bool:
+    return receiver is not None and receiver in _CONFIG_RECEIVERS
+
 
 class DefaultScanner(ast.NodeVisitor):
     """遍历 AST，收集业务默认值命中项。"""
@@ -69,16 +83,27 @@ class DefaultScanner(ast.NodeVisitor):
             isinstance(node, ast.Constant) and node.value is None
         )
 
-    # ---- 捕获 config.get("x", default) / getattr(x, "x", default) / dict.get ----
+    # ---- 捕获 config.get("x", default) / getattr(x, "x", default) / field(default_factory) ----
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
         if isinstance(func, ast.Attribute) and func.attr in _TRIGGER_CALLS:
             kw = {k.arg: k.value for k in node.keywords}
+            # field(...)/default_factory：直接捕获（无 receiver）
+            if func.attr in ("field", "Field", "default_factory"):
+                # field(default_factory=lambda: {...}) 由 visit_Lambda/AnnAssign 兜底
+                self.generic_visit(node)
+                return
+            # .get / .getattr：仅当 receiver 是配置类对象才视为业务默认
+            receiver = None
+            if isinstance(func.value, ast.Name):
+                receiver = func.value.id
+            if func.attr in ("get", "getattr") and not _is_config_receiver(receiver):
+                self.generic_visit(node)
+                return
             name_node = None
             default_node = None
             if func.attr == "get":
                 # dict.get(key, default)：default 是第 2 个 positional 参数
-                # （args[0] 是 key 本身，args[1] 才是 default，不是 args[2]）
                 if len(node.args) >= 1 and isinstance(node.args[0], ast.Constant):
                     name_node = node.args[0]
                 if len(node.args) >= 2:
@@ -89,7 +114,6 @@ class DefaultScanner(ast.NodeVisitor):
                     name_node = node.args[1]
                 if len(node.args) >= 3:
                     default_node = node.args[2]
-            # 也检查 keyword 形式（name / default）
             if name_node is None and "name" in kw:
                 name_node = kw["name"]
             if default_node is None and "default" in kw:

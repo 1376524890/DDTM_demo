@@ -62,6 +62,15 @@ def _choose(rng: np.random.Generator, n: int, frac: float) -> np.ndarray:
     return np.sort(rng.choice(n, size=k, replace=False))
 
 
+def _param(params: dict, key: str, kind: InjectionKind):
+    """注入参数必须显式（fail closed）；缺失即抛，禁止隐式默认。"""
+    if key not in params or params[key] is None:
+        raise ValueError(
+            f"[injection.{kind.value}] 注入参数 {key!r} 必须显式（InjectionSpec.params），"
+            f"禁止隐式默认")
+    return params[key]
+
+
 def _apply(kind: InjectionKind, X: pd.DataFrame, y: pd.Series,
            idx: np.ndarray, cols: tuple[str, ...], params: dict):
     """就地执行一种注入，返回 (X, y, error_type)。"""
@@ -72,8 +81,9 @@ def _apply(kind: InjectionKind, X: pd.DataFrame, y: pd.Series,
         et[idx] = "missingness"
     elif kind == InjectionKind.SCHEMA_VIOLATION:
         # 在列中写入域外值（远超正常范围），模拟 schema 违规
+        bad_value = _param(params, "bad_value", kind)
         for c in (cols or list(X.columns)):
-            X.iloc[idx, X.columns.get_loc(c)] = params.get("bad_value", -999.0)
+            X.iloc[idx, X.columns.get_loc(c)] = bad_value
         et[idx] = "schema_violation"
     elif kind == InjectionKind.EXACT_DUPLICATE:
         dup = X.iloc[idx]
@@ -82,7 +92,7 @@ def _apply(kind: InjectionKind, X: pd.DataFrame, y: pd.Series,
         et = np.full(len(X), None, dtype=object)
         et[len(X) - len(dup):] = "exact_duplicate"
     elif kind == InjectionKind.NEAR_DUPLICATE:
-        noise = params.get("noise", 1e-3)
+        noise = _param(params, "noise", kind)
         dup = X.iloc[idx].copy()
         for c in dup.select_dtypes(include=[np.number]).columns:
             dup[c] = dup[c] + rng.normal(0, noise, size=len(dup))
@@ -95,14 +105,14 @@ def _apply(kind: InjectionKind, X: pd.DataFrame, y: pd.Series,
         y.iloc[idx] = 1 - y.iloc[idx]
         et[idx] = "label_flip"
     elif kind == InjectionKind.COVARIATE_SHIFT:
-        shift = params.get("shift", 2.0)
+        shift = _param(params, "shift", kind)
         for c in (cols or list(X.select_dtypes(include=[np.number]).columns)):
             X.iloc[idx, X.columns.get_loc(c)] = X.iloc[idx, X.columns.get_loc(c)] + shift
         et[idx] = "covariate_shift"
     elif kind == InjectionKind.LABEL_SHIFT:
         y = y.copy()
         # 翻转 idx 中部分样本标签，模拟标签分布偏移（与 label_flip 类似但按分布）
-        flip = _choose(rng, len(idx), params.get("flip_frac", 0.5))
+        flip = _choose(rng, len(idx), _param(params, "flip_frac", kind))
         y.iloc[idx[flip]] = 1 - y.iloc[idx[flip]]
         et[idx] = "label_shift"
     elif kind in (InjectionKind.METADATA_FALSE_CLAIM,

@@ -115,7 +115,7 @@ def _run_pair(spec: QualityAlgorithmSpec, case: _Case, params: dict) -> tuple[
         native = run_confident_learning(
             cand, case.y_candidate, probabilities=probs,
             model_spec_hash=content_hash({"model": "logreg", "cv": 3}),
-            threshold_method=params.get("threshold_method", "mean"),
+            threshold_method=params["threshold_method"],
         )
         if gt is not None:
             det = np.zeros(len(cand), dtype=bool)
@@ -145,8 +145,8 @@ def _run_pair(spec: QualityAlgorithmSpec, case: _Case, params: dict) -> tuple[
         native = run_mmd(
             cand, refdf,
             bandwidth=params.get("bandwidth"),
-            target_pvalue_resolution=params.get("target_pvalue_resolution", 0.05),
-            n_permutations=params.get("n_permutations", 100),
+            target_pvalue_resolution=params["target_pvalue_resolution"],
+            n_permutations=params["n_permutations"],
         )
     elif aid == "metadata_claim_audit":
         from .native import run_metadata_claim_audit
@@ -194,7 +194,7 @@ def reproduce_algorithm(
         positives = gt_metrics.get("tp", 0) + gt_metrics.get("fn", 0)
         if positives > 0:
             recall = gt_metrics.get("recall", 0.0)
-            if recall < params.get("min_gt_recall", 0.5):
+            if recall < params["min_gt_recall"]:
                 passed = False
     cert = QualityReproductionCertificate(
         certificate_id=f"cert-{spec.algorithm_id}",

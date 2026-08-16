@@ -5,7 +5,6 @@
   "seller_id": "seller-1",
   "buyer_id": "buyer-1",
   "dataset": { "name": "mnist", "seed": 0 },
-  "payoff": { "r_tp": 3.0, "r_fp": -2.0, "r_fn": -5.0, "r_tn": 1.0 },
   "entitlement": { "grant_authority": true, "compliant": true },
   "prior": { "pi_b": 0.25, "q_l": 0.2 },
   "loss_matrix": {

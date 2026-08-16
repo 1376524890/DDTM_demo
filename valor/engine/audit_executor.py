@@ -61,7 +61,7 @@ class DistributedAuditExecutor:
     ) -> None:
         self.scenario = scenario
         self.evidence_provider = evidence_provider
-        self.audit_cost_fn = audit_cost_fn or (lambda aid: scenario.audit.get("cost", 2.0))
+        self.audit_cost_fn = audit_cost_fn or (lambda aid: scenario.audit["cost"])
         self.likelihood_artifact = likelihood_artifact
         self.certificate_artifact = certificate_artifact
 
@@ -83,10 +83,10 @@ class DistributedAuditExecutor:
                      for n in registry.all()}
         return DistributedAuditScheduler(
             endpoints=endpoints, registry=registry, family=a["family"], f=f,
-            bids=bids, min_stake=a.get("min_stake", 0.0),
-            timeout_s=a.get("timeout_s", 10.0), rho=a.get("rho", 0.0),
-            eta_b=a.get("eta_b", 0.0), eta_o=a.get("eta_o", 0.0),
-            seed=a.get("seed", 0), evidence_provider=self.evidence_provider,
+            bids=bids, min_stake=a["min_stake"],
+            timeout_s=a["timeout_s"], rho=a["rho"],
+            eta_b=a["eta_b"], eta_o=a["eta_o"],
+            seed=a["seed"], evidence_provider=self.evidence_provider,
         )
 
     # ---- 执行 ----
@@ -114,8 +114,8 @@ class DistributedAuditExecutor:
                 prov = make_real_evidence_provider(
                     reference_df=ref_df, candidate_df=cand_df,
                     y_candidate=y_cand,
-                    alpha_shift=a.get("alpha_shift", 0.01),
-                    label_error_threshold=a.get("label_error_threshold", 0.28),
+                    alpha_shift=a["alpha_shift"],
+                    label_error_threshold=a["label_error_threshold"],
                 )
                 self.evidence_provider = prov
                 self._quality_result = prov.real_result

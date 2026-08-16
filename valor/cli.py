@@ -50,7 +50,8 @@ def cmd_transaction_run(config_path: str) -> int:
 
     cfg = json.loads(open(config_path, encoding="utf-8").read())
     sc = scenario_from_config(cfg)
-    orch = TransactionOrchestrator(sc, run_dir=cfg.get("run_dir", "runs"))
+    run_dir = cfg.get("run_dir") or "runs"
+    orch = TransactionOrchestrator(sc, run_dir=run_dir)
     result = orch.run()
     os.makedirs("raw", exist_ok=True)
     with open("raw/run_result.json", "w", encoding="utf-8") as f:
@@ -72,19 +73,25 @@ def cmd_calibration_run(config_path: str) -> int:
     cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
     dataset = cfg["dataset"]["name"]
     handle = load_dataset(dataset)
-    n = cfg.get("n_pool", min(300, len(handle.X)))
+
+    def _req(key: str):
+        if key not in cfg or cfg[key] is None:
+            raise ValueError(f"[calibration run] 正式校准 config 缺失必需字段: {key!r}")
+        return cfg[key]
+
+    n = _req("n_pool")
     pool = handle.X.iloc[:n]
     cal_cfg = CalibrationConfig(
         historical_pool=pool,
         y_historical=handle.y.iloc[:n],
         dataset_hash=content_hash({"dataset": dataset, "n": n}),
-        trainer_hash=content_hash({"trainer": cfg.get("trainer", "LR")}),
-        seed=cfg.get("seed", 0),
-        payoff_matrix=cfg.get("payoff_matrix", [[1.0, -2.0], [-5.0, 3.0]]),
-        deployment_scale=cfg.get("deployment_scale", 1000),
-        n_pseudo_trades=cfg.get("n_pseudo_trades", 3),
+        trainer_hash=content_hash({"trainer": _req("trainer")}),
+        seed=_req("seed"),
+        payoff_matrix=_req("payoff_matrix"),
+        deployment_scale=_req("deployment_scale"),
+        n_pseudo_trades=_req("n_pseudo_trades"),
     )
-    bundle = run_offline_calibration(cal_cfg, run_dir=cfg.get("run_dir", "calibration"))
+    bundle = run_offline_calibration(cal_cfg, run_dir=_req("run_dir"))
     print(json.dumps(bundle.to_plain(), ensure_ascii=False, indent=2))
     return 0
 

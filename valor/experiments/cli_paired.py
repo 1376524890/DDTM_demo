@@ -1,4 +1,4 @@
-"""paired 实验 CLI：走 Experiment Framework V2（spec/registry/pairing/runner/analysis）。
+"""paired 实验 CLI：走 Experiment Framework（spec/registry/pairing/runner/analysis）。
 
 method 只能改变策略，不能改变 world（paired）；每个 trial 经 TransactionOrchestrator。
 """

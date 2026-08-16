@@ -1,4 +1,4 @@
-"""VALOR Experiment Framework V2 —— 论文实验运行基础设施。
+"""VALOR Experiment Framework —— 论文实验运行基础设施。
 
 原则：
 - 一个 trial 先生成「世界」（WorldSpec），method 只改变策略，不改变世界（paired）。

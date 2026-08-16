@@ -1,4 +1,4 @@
-"""Experiment Framework V2 核心对象：ExperimentSpec / WorldSpec / TrialSpec / TrialResult。
+"""Experiment Framework 核心对象：ExperimentSpec / WorldSpec / TrialSpec / TrialResult。
 
 原则：一个 trial 先生成「世界」（WorldSpec），method 只能改变策略，不能改变世界。
 TrialSpec 不可变；trial_id = H(experimentID, worldHash, methodID, configHash)。

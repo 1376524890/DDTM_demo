@@ -1,4 +1,4 @@
-"""Experiment Framework V2 真实演示（不跑论文结论）。
+"""Experiment Framework 真实演示（不跑论文结论）。
 
 用真实 capstone executor 跑一个小 paired 实验（2 seeds × 2 methods），
 验证 framework 端到端：world → paired trial → immutable artifacts → analysis。

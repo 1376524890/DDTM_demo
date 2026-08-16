@@ -60,7 +60,7 @@ _LEGAL_FLOWS = {
     "买方 usage bond 罚没": ("B_B^use", "seller"),
     "审计支付给审计员": ("E_B^A", "auditor"),
     "审计支付给审计员S": ("E_S^A", "auditor"),
-    # V2：escrow 全关闭新增
+    # escrow 全关闭新增
     "基础审计支付给审计员": ("E_S^A", "auditor"),
     "增量审计支付给审计员": ("E_B^A", "auditor"),
     "审计托管余量返还": ("E_S^A", "seller"),

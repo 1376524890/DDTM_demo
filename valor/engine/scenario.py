@@ -100,6 +100,9 @@ class CapstoneScenario:
     seller: dict[str, Any] = field(default_factory=lambda: {
         "c_marg": 5.0, "c_r_s_pay": 3.0, "r_s_post": 4.0,
         "oc_s": 6.0, "pi_s0": 10.0,
+        # 卖方可动用资金（B_S^pre 硬门槛：seller_funds < B_S^pre → NO_TRADE_HARD_GATE）
+        # 显式给出；缺失时跳过硬门槛（测试便捷），生产 config 必须提供。
+        "funds": None,
     })
     pricing: dict[str, Any] = field(default_factory=lambda: {"beta_bar": 0.5})
     exposure: dict[str, Any] = field(default_factory=lambda: {

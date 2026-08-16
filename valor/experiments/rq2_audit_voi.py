@@ -1,4 +1,4 @@
-"""RQ2 模板：Audit-VOI 实验（EF Framework V2 的 method executor 示例）。
+"""RQ2 模板：Audit-VOI 实验（EF Framework 的 method executor 示例）。
 
 本文件是 RQ2 的 method executor 骨架，供 ExperimentRunner 调用。
 method 只接收 (method_id, config, world)，在 world 上运行真实 capstone，

@@ -69,21 +69,30 @@ class DefaultScanner(ast.NodeVisitor):
             isinstance(node, ast.Constant) and node.value is None
         )
 
-    # ---- 捕获 config.get("x", default) / getattr(x, "x", default) ----
+    # ---- 捕获 config.get("x", default) / getattr(x, "x", default) / dict.get ----
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
         if isinstance(func, ast.Attribute) and func.attr in _TRIGGER_CALLS:
-            name_node = None
-            if len(node.args) >= 2 and isinstance(node.args[0], ast.Constant):
-                name_node = node.args[0]
-            # 也检查 keyword 形式
             kw = {k.arg: k.value for k in node.keywords}
+            name_node = None
+            default_node = None
+            if func.attr == "get":
+                # dict.get(key, default)：default 是第 2 个 positional 参数
+                # （args[0] 是 key 本身，args[1] 才是 default，不是 args[2]）
+                if len(node.args) >= 1 and isinstance(node.args[0], ast.Constant):
+                    name_node = node.args[0]
+                if len(node.args) >= 2:
+                    default_node = node.args[1]
+            elif func.attr == "getattr":
+                # getattr(obj, name, default)：default 是第 3 个 positional 参数
+                if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                    name_node = node.args[1]
+                if len(node.args) >= 3:
+                    default_node = node.args[2]
+            # 也检查 keyword 形式（name / default）
             if name_node is None and "name" in kw:
                 name_node = kw["name"]
-            default_node = None
-            if len(node.args) >= 3:
-                default_node = node.args[2]
-            elif "default" in kw:
+            if default_node is None and "default" in kw:
                 default_node = kw["default"]
             if isinstance(name_node, ast.Constant) and isinstance(name_node.value, str):
                 name = name_node.value
@@ -96,15 +105,16 @@ class DefaultScanner(ast.NodeVisitor):
         # 继续遍历
         self.generic_visit(node)
 
-    # ---- 捕获 x or 0.1 ----
-    def visit_BinOp(self, node: ast.BinOp) -> None:
+    # ---- 捕获 x or 0.1（ast.BoolOp，而非 ast.BinOp/ast.Or）----
+    def visit_BoolOp(self, node: ast.BoolOp) -> None:
         if isinstance(node.op, ast.Or):
-            if isinstance(node.left, ast.Name) and node.left.id in BUSINESS_NAMES:
-                if self._is_constant_default(node.right):
-                    self.hits.append(
-                        f"{self.path}:{node.lineno} 业务默认值 "
-                        f"{node.left.id} or <default>"
-                    )
+            if len(node.values) >= 2 and isinstance(node.values[0], ast.Name):
+                if node.values[0].id in BUSINESS_NAMES:
+                    if self._is_constant_default(node.values[1]):
+                        self.hits.append(
+                            f"{self.path}:{node.lineno} 业务默认值 "
+                            f"{node.values[0].id} or <default>"
+                        )
         self.generic_visit(node)
 
     # ---- 捕获注解赋值默认值：alpha: float = 0.05 ----

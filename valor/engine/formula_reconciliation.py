@@ -1,4 +1,4 @@
-"""FormulaReconciliationEngine —— 公式独立复算引擎（FullChainGate V2 核心）。
+"""FormulaReconciliationEngine —— 公式独立复算引擎（FullChainGate 核心）。
 
 每个公式注册一个独立重算函数：输入是 stage 记录的 `recompute_inputs`（纯原始
 输入，不含运行中间量），输出是独立复算值。Gate 用 engine 逐项对账，比较

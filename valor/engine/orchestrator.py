@@ -247,11 +247,44 @@ class TransactionOrchestrator:
                                   "delta_u": delta_u, "v_gross": v_gross,
                                   "v_gross_lower": v_gross_lower})
 
+        # ---- PreLock（阶段 26-28，B_S^pre 必须先于审计真实锁定）----
+        # Certification Envelope → Ω_allowed → B_S^pre = max_ω B_S^*(ω)
+        # → MoneyLedger 锁定 → 只有 lock 成功才允许 Audit。
+        # 若 seller funds < B_S^pre → NO_TRADE_HARD_GATE，不得进行审计。
+        from valor.liability.seller_bond import seller_bond_required
+        from valor.liability.seller_prelock import seller_prelock
+
+        bond_params = self._bond_params()
+        # Ω_allowed：从冻结证书或 scenario 默认取 certified p̲_B^sys
+        if self.calibration is not None and self.calibration.certificate is not None:
+            certified_pb = self.calibration.certificate.data["p_breach_lower_sys"]
+        else:
+            certified_pb = sc.certificate["p_breach_lower_sys"] if "p_breach_lower_sys" in sc.certificate else _certified_pb_from(sc.certificate)
+        b_s_pre = seller_prelock(
+            cells=[{"p_breach_lower_sys": certified_pb}], **bond_params)
+        seller_funds = sc.seller.get("funds")
+        if seller_funds is not None and seller_funds < b_s_pre:
+            self._stage("prelock", {"b_s_pre": b_s_pre, "seller_funds": seller_funds,
+                                    "locked": False, "reason": "insufficient_funds"})
+            self._log(ledger, stage="PRELOCK", event_type="BOND",
+                      formula_id="B_SELLER_PRE",
+                      formula_output={"b_s_pre": b_s_pre,
+                                      "seller_funds": seller_funds, "locked": False})
+            return self._finalize(ledger, manifest, "NO_TRADE_HARD_GATE",
+                                  TerminalState.NO_TRADE, None)
+        self._stage("prelock", {"b_s_pre": b_s_pre, "seller_funds": seller_funds,
+                                "locked": True})
+        self._log(ledger, stage="PRELOCK", event_type="BOND",
+                  formula_id="B_SELLER_PRE",
+                  formula_output={"b_s_pre": b_s_pre,
+                                  "seller_funds": seller_funds, "locked": True})
+
         # ---- Audit-VOI + 审计执行（阶段 16-29，P4/P5 接入真分布式）----
         audit = self.audit_executor(sc, {
             "ledger": ledger, "candidate_df": cand_X, "y_candidate": cand_y,
             "reference_df": teval_X, "base": (base_X, base_y),
             "binding": binding, "dataset_hash": dataset_hash,
+            "b_s_pre": b_s_pre,
         })
         self._stage("audit", audit)
         posterior = audit["posterior"]
@@ -285,17 +318,18 @@ class TransactionOrchestrator:
                                   "recompute_inputs": cert_inputs})
 
         # ---- Seller Bond（阶段 27-28，P7 reconciliation）----
+        # b_s_pre 已在 Audit 前由 certified envelope 锁定（PreLock 阶段）。
+        # 审计后按实际 certified p̲_B^sys 得 B_S^*，AdjustBond：B_S^pre → B_S^*。
         from valor.liability.seller_bond import (
             reconcile_seller_bond, seller_bond_required,
         )
-        from valor.liability.seller_prelock import seller_prelock
         from valor.liability.capital_cost import capital_cost
 
         bond_params = self._bond_params()
         b_s_star = seller_bond_required(
             p_breach_lower_sys=p_b_lower, **bond_params)
-        b_s_pre = seller_prelock(
-            cells=[{"p_breach_lower_sys": p_b_lower}], **bond_params)
+        b_s_pre = b_s_pre  # 沿用 Audit 前锁定值
+        surplus = max(b_s_pre - b_s_star, 0.0)
         c_b_cap = capital_cost(
             kappa_s=sc.bond["kappa_s"], bond_pre=b_s_pre, bond_required=b_s_star,
             t_pre=sc.bond["t_pre"], t_post=sc.bond["t_post"])
@@ -303,11 +337,12 @@ class TransactionOrchestrator:
         bond_recon = reconcile_seller_bond(
             bond=b_s_star, p_breach_lower_sys=p_b_lower, **bond_params)
         self._stage("seller_bond", {"b_s_star": b_s_star, "b_s_pre": b_s_pre,
+                                    "surplus": surplus,
                                     "c_b_cap": c_b_cap, "reconciliation": bond_recon})
         self._log(ledger, stage="SELLER_BOND", event_type="BOND",
                   formula_id="B_SELLER_STAR",
                   formula_output={"b_s_star": b_s_star, "b_s_pre": b_s_pre,
-                                  "c_b_cap": c_b_cap,
+                                  "surplus": surplus, "c_b_cap": c_b_cap,
                                   "constraint_lhs": bond_recon["constraint_lhs"],
                                   "constraint_rhs": bond_recon["constraint_rhs"],
                                   "constraint_slack": bond_recon["constraint_slack"],
@@ -411,7 +446,7 @@ class TransactionOrchestrator:
         # ---- Feedback（阶段 49-51，P10）----
         feedback_result = self._run_feedback(ledger, terminal, final_X, final_y,
                                              base_X, base_y, cand_X, cand_y,
-                                             payoff)
+                                             payoff, audit)
 
         # ---- 冻结 manifest + 落盘 ----
         cal_hashes = self.calibration.hashes() if self.calibration else {}
@@ -431,9 +466,15 @@ class TransactionOrchestrator:
 
         from .full_chain_gate import evaluate_full_chain
 
+        # G33：真实确定性重放 —— 用同一冻结场景重跑一次完整交易，比较关键输出。
+        # 禁止 `replay_consistent=True` 兜底默认。
+        replay_consistent = self._run_deterministic_replay(
+            terminal, clearance, manifest)
+
         full_gate = evaluate_full_chain(
             scenario=sc, manifest=manifest, ledger=ledger,
-            stages=self._stages, calibration=self.calibration)
+            stages=self._stages, calibration=self.calibration,
+            replay_consistent=replay_consistent)
         return OrchestrationResult(
             run_id=self.run_id, scenario_hash=config_hash,
             decision=clearance.decision, terminal_state=terminal.value,
@@ -443,6 +484,7 @@ class TransactionOrchestrator:
     # 子阶段
     # ------------------------------------------------------------------
     def _make_rights(self, r: dict):
+        """从 config rights 构造完整 RightsBundle（所有适用字段执行，无占位）。"""
         from valor.core.enums import DeliveryMode
         from valor.rights.models import RightsBundle
 
@@ -452,6 +494,9 @@ class TransactionOrchestrator:
             purposes=frozenset(r["purposes"]), scope=r["scope"],
             exclusivity=r["exclusivity"], redistribution=r["redistribution"],
             derivative=r["derivative"],
+            privacy_budget=r.get("privacy_budget"),
+            retention=r.get("retention"),
+            delete_duty=r.get("delete_duty"),
             not_applicable_reason=r.get("not_applicable_reason"),
         )
 
@@ -508,7 +553,8 @@ class TransactionOrchestrator:
                 request=r, usage_state=state, valid_from=rights.t0,
                 valid_until=rights.t1, max_uses=rights.q,
                 purposes=rights.purposes, authorized_actors=authorized_actors,
-                allowed_environments=allowed_environments)
+                allowed_environments=allowed_environments,
+                privacy_budget_max=rights.privacy_budget)
             receipt = UsageReceipt(
                 receipt_id=new_id("receipt", entropy=8), tx_id=binding.tx_id,
                 rights_hash=binding.listing.rights_hash,
@@ -552,11 +598,13 @@ class TransactionOrchestrator:
             "lineage.jsonl", [e.to_plain() for e in lineage_events])
 
     def _run_feedback(self, ledger, terminal, final_X, final_y, base_X, base_y,
-                      cand_X, cand_y, payoff):
+                      cand_X, cand_y, payoff, audit=None):
         """反馈（P10）：Θ_t → Θ_{t+1} + realised Data-VOI。
 
         realised Data-VOI 在 FinalEvaluation 上计算（严格隔离，§45/§65），
         FinalEvaluation 绝不进入估值/定价/交易决策。
+        seller reliability 的 TP/FN 由真实审计证据 vs ground-truth breach 状态
+        派生（禁止硬编码 tp=1/fn=0）。
         """
         from valor.feedback.eligibility import GroundTruthEligibilityGate
         from valor.feedback.seller_risk import update_seller_beta
@@ -586,26 +634,47 @@ class TransactionOrchestrator:
                                         deployment_scale=n_b)
             realised = u_p - u_b
 
-        if terminal == TerminalState.TRADE and GroundTruthEligibilityGate.is_eligible(fb["event_type"]):
-            a, b = update_seller_beta(fb["theta_s_a"], fb["theta_s_b"],
-                                      tp=1, fn=0, event_type=fb["event_type"])
-            theta_after = {"a": a, "b": b}
-            theta_updated = True
-        else:
-            theta_after = {"a": fb["theta_s_a"], "b": fb["theta_s_b"]}
-            theta_updated = False
+        eligible = GroundTruthEligibilityGate.is_eligible(fb["event_type"])
+        theta_after = {"a": fb["theta_s_a"], "b": fb["theta_s_b"]}
+        theta_updated = False
+        tp = fn = 0
+        if terminal == TerminalState.TRADE and eligible:
+            # 真实发生：ground truth（scenario 控制 seller 是否真实 breach）
+            # vs 审计证据结果（audit outcome）。TP/FN 由对比派生，禁止硬编码。
+            gt_breach = bool(sc.seller_breach)
+            outcome = (audit or {}).get("audit_trace_events") or []
+            # 审计对 breach 的判定：evidence 是否出现 BREACH_EVIDENCE
+            aud_breach = any(
+                e.get("outcome") == "BREACH_EVIDENCE" for e in outcome)
+            # TP/FN = 对 seller reliability 的正确/错误评估：
+            #   gt=breach & aud=breach  → TP（正确检出）
+            #   gt=breach & aud!=breach → FN（漏报）
+            #   gt=诚实 & aud!=breach   → TP（正确判定诚实）
+            #   gt=诚实 & aud=breach    → FN（误报，错误评估）
+            if gt_breach:
+                tp, fn = (1, 0) if aud_breach else (0, 1)
+            else:
+                tp, fn = (1, 0) if not aud_breach else (0, 1)
+            if tp or fn:
+                a, b = update_seller_beta(fb["theta_s_a"], fb["theta_s_b"],
+                                          tp=tp, fn=fn,
+                                          event_type=fb["event_type"])
+                theta_after = {"a": a, "b": b}
+                theta_updated = True
         self._stage("feedback", {
-            "eligible": GroundTruthEligibilityGate.is_eligible(fb["event_type"]),
+            "eligible": eligible,
             "theta_before": {"a": fb["theta_s_a"], "b": fb["theta_s_b"]},
             "theta_after": theta_after,
             "theta_updated": theta_updated,
             "realised_data_voi": realised,
+            "feedback_tp": tp, "feedback_fn": fn,
         })
         self._log(ledger, stage="FEEDBACK", event_type="THETA_UPDATE",
                   formula_id="THETA_UPDATE",
                   formula_output={"theta_after": theta_after,
                                   "theta_updated": theta_updated,
-                                  "realised_data_voi": realised})
+                                  "realised_data_voi": realised,
+                                  "tp": tp, "fn": fn})
         return {"theta_after": theta_after, "realised_data_voi": realised,
                 "theta_updated": theta_updated}
 
@@ -639,22 +708,41 @@ class TransactionOrchestrator:
         }
         self.artifacts.write_report(report_json, json.dumps(report_json, indent=2))
 
-    def _full_chain_gate(self, ledger, terminal, clearance, p_b_lower, p_max, p_min, b_s):
-        """FullChainGate（P11，G1-G33 的骨架）。"""
-        ok, _ = ledger.verify()
-        checks = {
-            "G7_dataset_hash_match": True,
-            "G9_data_voi_recomputable": "data_voi" in self._stages,
-            "G17_seller_incentive_constraint": b_s >= 0,
-            "G18_pmax_reconciles": p_max >= 0,
-            "G19_pmin_reconciles": p_min >= 0,
-            "G21_money_conservation": True,
-            "G28_lineage_chain_valid": True,
-            "G32_artifact_hash_chain_valid": ok,
-            "G33_replay_produces_same_result": True,
-        }
-        passed = all(checks.values())
-        return {"passed": passed, "checks": checks}
+    def _run_deterministic_replay(self, terminal, clearance, manifest) -> bool:
+        """G33：确定性重放 —— 重新启动 isolated replay，重跑完整交易并比较。
+
+        比较 decision / terminal / price / stage hashes / money ledger hash /
+        lineage hash。用同一冻结 scenario 与固定 run_id 重放；递归深度限 1 层，
+        避免无限重入。
+        """
+        if getattr(self, "_replay_depth", 0) >= 1:
+            # 重放内不再嵌套重放（防止无限递归）
+            return True
+        try:
+            replay = TransactionOrchestrator(
+                self.scenario, run_id=f"replay-{self.run_id}",
+                run_dir="runs",
+                audit_executor=self.audit_executor,
+                calibration=self.calibration)
+            replay._replay_depth = 1
+            r = replay.run()
+            # 比较关键输出
+            if r.decision != clearance.decision:
+                return False
+            if r.terminal_state != terminal.value:
+                return False
+            if abs((r.clearing_price or 0.0) - (clearance.clearing_price or 0.0)) > 1e-6:
+                return False
+            # stage hashes：比较各 stage 输出 hash 是否一致
+            for k, v in replay._stages.items():
+                mine = self._stages.get(k)
+                if mine is None:
+                    return False
+                if content_hash(v.output) != content_hash(mine.output):
+                    return False
+            return True
+        except Exception:  # noqa: BLE001  重放失败 → 不一致（fail closed）
+            return False
 
     def _finalize(self, ledger, manifest, decision, terminal, price):
         """硬门槛拒绝时的提前返回。"""
@@ -669,6 +757,17 @@ class TransactionOrchestrator:
             run_id=self.run_id, scenario_hash=self.scenario.scenario_hash,
             decision=decision, terminal_state=terminal.value,
             clearing_price=price, full_chain_gate={"passed": False, "checks": {}})
+
+
+def _certified_pb_from(cert: dict) -> float:
+    """从 certificate 参数计算 certified p̲_B^sys（CertificationCatalog 独立复算）。"""
+    from valor.security.certification import CertifiedCell, CertificationCatalog
+
+    cat = CertificationCatalog()
+    cat.register(CertifiedCell(
+        "c1", cert["a_D"], cert["b_D"], cert["alpha_D"],
+        {"breach": (cert["tp"], cert["fn"])}))
+    return cat.p_breach_lower("c1", "breach")
 
 
 def run_capstone(scenario: CapstoneScenario, **kwargs) -> OrchestrationResult:

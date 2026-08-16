@@ -1,11 +1,12 @@
-"""FullChainGate V2 —— 论文闭合门（G1–G33），真正独立复算。
+"""FullChainGate —— 论文闭合门（G1–G33），真正独立复算。
 
-V1 的问题是若干 Gate 只是"字段存在/数值非负"。V2 升级为**真正独立复算**：
 - 对可公式化的量（Data-VOI、Pmax/Pmin/Clearing、p̲_B^sys、MC_A^pay），用
   FormulaReconciliationEngine 从 stage 记录的 `recompute_inputs` 独立重算，
   比较「记录输出」与「独立复算」。
 - 对协议/机制量（quorum、evidence、posterior、escrow、leakage），做真实
   结构性验证而非数值非负。
+- G33 用真实确定性重放（重新运行完整交易并比较），禁止 `replay_consistent=True`
+  兜底。
 
 全部 PASS 才输出 Paper Closure Gate = PASS。
 """
@@ -26,16 +27,16 @@ from valor.engine.trace import TraceLedger
 
 @dataclass
 class FullChainGate:
-    """论文闭合门评估器（V2：独立复算）。"""
+    """论文闭合门评估器（独立复算 + 真实重放）。"""
 
     scenario: CapstoneScenario
     manifest: RunManifest
     ledger: TraceLedger
     stages: dict[str, Any]
     calibration: CalibrationBundle | None = None
-    replay_consistent: bool = True
+    replay_consistent: bool | None = None
     # 可选：FinalEvaluation 数据访问 trace（G29）
-    final_eval_accessed_before_decision: bool = False
+    final_eval_accessed_before_decision: bool | None = None
 
     def _stage(self, name: str) -> dict:
         st = self.stages.get(name)
@@ -212,8 +213,9 @@ class FullChainGate:
         # ---- G32-G33: replay ----
         ok, _ = self.ledger.verify()
         self._check(results, "G32_artifact_hash_chain_valid", lambda: ok)
+        # G33：必须显式提供真实重放结果（禁止 None/True 兜底）
         self._check(results, "G33_replay_produces_same_result",
-                    lambda: self.replay_consistent)
+                    lambda: self.replay_consistent is True)
 
         results["G1_provenance_complete"] = all(results.values())
         failures = [k for k, v in results.items() if not v]
@@ -227,7 +229,7 @@ class FullChainGate:
             "failures": failures,
         }
 
-    # ---- V2 辅助验证 ----
+    # ---- 辅助验证 ----
     def _delivery_hash_matches(self) -> bool:
         """Ddelivery hash 与 Daudit/Dvaluation 一致（G8）。"""
         # 交付/审计/估值都用同一 dataset_hash（orchestrator 保证）
@@ -297,10 +299,10 @@ def evaluate_full_chain(
     ledger: TraceLedger,
     stages: dict[str, Any],
     calibration: CalibrationBundle | None = None,
-    replay_consistent: bool = True,
-    final_eval_accessed_before_decision: bool = False,
+    replay_consistent: bool | None = None,
+    final_eval_accessed_before_decision: bool | None = None,
 ) -> dict:
-    """便捷入口：评估 FullChainGate V2。"""
+    """便捷入口：评估 FullChainGate（G33 重放必须显式提供，禁止兜底）。"""
     g = FullChainGate(scenario=scenario, manifest=manifest, ledger=ledger,
                       stages=stages, calibration=calibration,
                       replay_consistent=replay_consistent,

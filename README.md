@@ -29,16 +29,18 @@ python -c "from valor.data.download import load_dataset; h=load_dataset('mnist')
 ```
 依赖：`torch`（CPU，经代理 `pip install --proxy socks5h://127.0.0.1:7891 torch --index-url https://download.pytorch.org/whl/cpu`）、`pysocks`。
 
-## 全流程交易（Phase 8 capstone）
+## 全流程交易（正式唯一入口）
 ```bash
 python -m valor transaction run --config configs/experiments/full_transaction.json
 ```
-从 Entitlement→QualityReference→Data-VOI→Audit-VOI→Certification→SellerBond→
-Pricing→Clearing→StateMachine→Settlement→Feedback 全链计算，输出成交/不成交与全部数值，
-生成 `reports/full_transaction.md` 与 `reports/figures/price_bounds.png`。
+正式交易唯一 CLI，内部唯一调用 `TransactionOrchestrator`（`valor/engine/orchestrator.py`）。
+从 config → `CapstoneScenario` → Entitlement→Data-VOI→PreLock→Audit-VOI→Certification→
+SellerBond→Pricing→Clearing→Settlement→Usage→Feedback→FullChainGate 全链计算。
+不再存在第二套交易入口（`run.py` / `engine capstone` 已删除）。
 
 ```bash
-python -m valor experiment run --config configs/experiments/sweep.json   # 参数扫描
+python -m valor experiment run --config configs/experiments/sweep.json   # 唯一实验入口（valor/experiments/）
+python -m valor calibration run --config <calibration.json>              # 唯一离线校准入口
 bash scripts/run-experiments.sh                                          # 一键复现
 ```
 
@@ -63,20 +65,19 @@ bash scripts/run-experiments.sh                                          # 一�
 - **P8 MoneyLedger**：语义化资金事件（payer/recipient/trigger 白名单），退款用实际锁定 escrow 而非 price=0。
 - **P11 FullChainGate**：G1–G33 论文闭合门，全部 PASS 才输出 `Paper Closure Gate = PASS`。
 
-### 使用（Engine CLI）
+### 使用（CLI）
 ```bash
 # 1. 离线校准（受控注入 → TP/FN → 冻结 likelihood/certificate/valuation artifact）
-python -m valor engine calibrate --dataset breast_cancer --out-dir calibration
+python -m valor calibration run --config <calibration.json>
 
-# 2. MNIST Capstone 交易（真分布式审计 + 冻结 calibration → FullChainGate）
-python -m valor engine capstone --scenario <scenario.json> --run-dir runs \
-    --calibration-dir calibration/<run_id>/calibration_bundle.json
+# 2. 正式交易（唯一主链：config → CapstoneScenario → TransactionOrchestrator → FullChainGate）
+python -m valor transaction run --config configs/experiments/full_transaction.json
 
 # 3. 五场景验收 C0–C4（TRADE / NO_TRADE / SELLER_BREACH / BUYER_BREACH）
 python -m valor engine acceptance --run-dir runs/acceptance
 
-# 4. RQ 实验（Level 1 公式对账 + Level 4 多 seed paired trials + 统计）
-python -c "from valor.engine.experiments import level1_reconciliation; print(level1_reconciliation())"
+# 4. RQ 实验（唯一实验入口；Level 1 公式对账）
+python -c "from valor.experiments.reconciliation import level1_reconciliation; print(level1_reconciliation())"
 ```
 
 示例（Python）：
@@ -131,7 +132,7 @@ res = orch.run()   # COMMIT_CHALLENGE 审计，披露受限，FullChainGate 可 
 - **实测**：MNIST 3000 候选，披露 4.1%，VCG 119 进 MC_A^pay，FullChainGate PASS (33/33)。
 - 详见 `docs/PRIVATE_AUDIT_ZK.md`。
 
-## 实验框架（Experiment Framework V2，`valor/experiments/`）
+## 实验框架（Experiment Framework，`valor/experiments/`）
 
 论文实验运行基础设施。核心原则：**一个 trial 先生成「世界」（WorldSpec），method 只能改变
 策略，不能改变世界**（真正的 paired experiment）。

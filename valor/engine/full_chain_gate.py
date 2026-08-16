@@ -231,11 +231,19 @@ class FullChainGate:
 
     # ---- 辅助验证 ----
     def _delivery_hash_matches(self) -> bool:
-        """Ddelivery hash 与 Daudit/Dvaluation 一致（G8）。"""
-        # 交付/审计/估值都用同一 dataset_hash（orchestrator 保证）
+        """Ddelivery == Daudit == Dlisting（G8）—— 全部用 canonical commitment_hash。"""
+        listing = self._stage("listing").get("commitment_hash")
+        audit = self._stage("audit").get("commitment_hash")
         delivery = self._stage("usage").get("asset_version_hash")
-        audit = self._stage("audit").get("commitment_hash") or self.ledger.dataset_hash
-        return delivery is None or delivery == self.ledger.dataset_hash
+        # usage.asset_version_hash 即 binding.listing.data_commitment
+        if listing is None and audit is None:
+            return True  # 无审计/无 listing（不适用）
+        ref = listing or audit or self.ledger.dataset_hash
+        if audit is not None and audit != ref:
+            return False
+        if delivery is not None and delivery != ref:
+            return False
+        return True
 
     def _posterior_recomputable(self) -> bool:
         """G14：从 prior + Λ + observed evidence 独立重算 posterior。

@@ -141,7 +141,10 @@ class TransactionOrchestrator:
         split_hash = content_hash({
             "n": dman.n_samples, "roles": dman.role_counts, "seed": sc.split_seed,
         })
-        dataset_hash = content_hash(dman.to_plain())
+        # canonical H(D)：用卖方承诺数据集（candidate）构建唯一 DatasetCommitment。
+        # 禁止用 content_hash({"mnist": role_counts}) 等旁路哈希充当 H(D)。
+        commitment = self._build_asset_commitment(cand_X, cand_y, tx_id)
+        dataset_hash = commitment.dataset_hash
         trainer_kwargs = {k: v for k, v in sc.trainer.items() if k != "type"}
         trainer = MNISTTrainerAdapter(**trainer_kwargs)
         trainer_hash = content_hash(trainer.trainer_manifest())
@@ -166,7 +169,7 @@ class TransactionOrchestrator:
         rights = self._make_rights(sc.rights)
         listing = create_listing(
             seller_id=sc.seller_id, asset_id="asset-mnist", asset_version="v1",
-            data_commitment=content_hash({"mnist": dman.role_counts}),
+            data_commitment=commitment.commitment_hash,
             rights=rights, metadata_claims={"schema": "MNIST-784", "classes": 10},
         )
         catalog = MarketCatalog()
@@ -178,6 +181,9 @@ class TransactionOrchestrator:
         self._stage("listing", {
             "listing_id": listing.listing_id, "product_hash": listing.product_hash,
             "rights_hash": listing.rights_hash,
+            "data_commitment": listing.data_commitment,
+            "dataset_hash": commitment.dataset_hash,
+            "commitment_hash": commitment.commitment_hash,
         })
         self._log(ledger, stage="LISTING", event_type="LISTING_CREATED",
                   formula_id="Z_TAU", formula_output=listing.to_plain())
@@ -283,7 +289,8 @@ class TransactionOrchestrator:
         audit = self.audit_executor(sc, {
             "ledger": ledger, "candidate_df": cand_X, "y_candidate": cand_y,
             "reference_df": teval_X, "base": (base_X, base_y),
-            "binding": binding, "dataset_hash": dataset_hash,
+            "binding": binding, "dataset_hash": commitment.dataset_hash,
+            "data_commitment": commitment.commitment_hash,
             "b_s_pre": b_s_pre,
         })
         self._stage("audit", audit)
@@ -483,6 +490,34 @@ class TransactionOrchestrator:
     # ------------------------------------------------------------------
     # 子阶段
     # ------------------------------------------------------------------
+    def _build_asset_commitment(self, cand_X, cand_y, tx_id):
+        """用卖方承诺数据集构建 canonical DatasetCommitment（asset 层唯一 H(D)）。
+
+        返回 asset.DatasetCommitment；listing/audit/delivery/usage 全部引用
+        commitment.commitment_hash。
+        """
+        import numpy as np
+
+        from valor.asset.commitments import DatasetCommitment
+        from valor.core.hashing import content_hash
+
+        Xa = np.asarray(cand_X.to_numpy(), dtype=np.uint8) if hasattr(cand_X, "to_numpy") else np.asarray(cand_X, dtype=np.uint8)
+        ya = np.asarray(cand_y.to_numpy(), dtype=np.uint8) if hasattr(cand_y, "to_numpy") else np.asarray(cand_y, dtype=np.uint8)
+        n = len(Xa)
+        # 确定性行哈希（不依赖卖方私有 salt/Merkle，作为交易承诺的公开 H(D)）
+        rows = [content_hash({"row": list(Xa[i]), "label": int(ya[i])})
+                for i in range(n)]
+        dataset_hash = content_hash({"dataset": self.scenario.dataset_name,
+                                     "n": n, "rows": rows})
+        commitment_hash = content_hash({"dataset_hash": dataset_hash, "n": n})
+        return DatasetCommitment(
+            dataset_id=f"{self.scenario.dataset_name}-{tx_id}",
+            version="v1", n_rows=n,
+            schema_hash=content_hash({"schema": "MNIST-784"}),
+            canonicalization_spec_hash=content_hash({"canonical": "VALOR-MNIST-ROW"}),
+            merkle_root="", dataset_hash=dataset_hash,
+            commitment_hash=commitment_hash)
+
     def _make_rights(self, r: dict):
         """从 config rights 构造完整 RightsBundle（所有适用字段执行，无占位）。"""
         from valor.core.enums import DeliveryMode

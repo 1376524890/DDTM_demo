@@ -238,6 +238,8 @@ class DistributedAuditExecutor:
             "action_catalog_hash": catalog.catalog_hash,
             "audit_policy_hash": content_hash({"policy_id": "p1"}),
             "audit_trace_events": steps,
+            "commitment_hash": ctx.get("data_commitment"),
+            "dataset_hash": ctx.get("dataset_hash"),
             "quality_evidence": (
                 self._quality_result.to_plain()
                 if self._quality_result is not None else None),

@@ -90,8 +90,9 @@ python scripts/check_business_defaults.py --root valor
 # 审计效果对比（零知识审计 vs baseline）
 python scripts/audit_effectiveness.py --samples 4000 --epochs 1 --label-flip 0.2
 
-# 完整 capstone（真实审计 + 冻结 calibration）
-python -m valor engine calibrate --dataset breast_cancer --out-dir calibration
-python -m valor engine capstone --scenario <scenario.json> --run-dir runs \
-    --calibration-dir calibration/<run_id>/calibration_bundle.json
+# 唯一离线校准入口（受控注入 → TP/FN → 冻结 artifact）
+python -m valor calibration run --config <calibration.json>
+
+# 正式交易唯一入口（config → TransactionOrchestrator → FullChainGate）
+python -m valor transaction run --config configs/experiments/full_transaction.json
 ```

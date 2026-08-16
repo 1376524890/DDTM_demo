@@ -132,8 +132,10 @@
 ### D128 反馈仅 ground-truth-eligible 事件更新 posterior（§45/§46）
 - GroundTruthEligibilityGate；PASS 不⇒TN；Beta posterior 更新。
 
-### D129 全流程交易编排（run.py）
-- 把主链各阶段串成一次可运行交易，输出全部数值与成交决策（Phase 8 capstone）。
+### D129 全流程交易编排（engine/orchestrator.py）
+- 正式交易唯一入口 `python -m valor transaction run` → config → `CapstoneScenario` →
+  `TransactionOrchestrator`，把主链各阶段串成一次可运行交易，输出全部数值与成交决策。
+- `run.py` / `experiment.py` 已删除；不存在第二套交易入口。
 
 ### D130 实验统计规范（§66）
 - mean/median+CI、Wilson 比例区间、Holm 校正、paired t/Wilcoxon。

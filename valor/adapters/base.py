@@ -1,6 +1,6 @@
 """DatasetAdapter / TrainerAdapter / PredictionArtifact 抽象（P1）。
 
-对齐交接文档第三节：run.py 不应知道 CNN/784 维/torch DataLoader 等细节。
+对齐交接文档第三节：交易编排层不应知道 CNN/784 维/torch DataLoader 等细节。
 VALOR 估值/交易层永远只消费：
 
     y_true  y_pred  probability  training_metadata

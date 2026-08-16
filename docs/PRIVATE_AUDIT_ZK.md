@@ -68,14 +68,24 @@ committed dataset（`node_worker.py`），`NodeExecutor.execute()` 直接对全�
   卖方无法在承诺后篡改。
 
 ## 五、复现
+正式隐私审计只存在于 `valor/privacy_audit/`（Commit-Challenge）。`engine/private_audit.py`
+已被删除。复现走正式隐私审计路径（卖方承诺数据集 → 挑战 → Merkle 验证）：
 ```python
-from valor.data.download import load_dataset
-from valor.engine.private_audit import private_audit_evidence_provider
-h = load_dataset('breast_cancer')
-prov = private_audit_evidence_provider(
-    reference_X=h.X.iloc[:500], candidate_X=h.X.iloc[500:1000],
-    candidate_y=h.y.iloc[500:1000])
-r = prov("node-0", task)   # 节点只拿到 commitment_root + summary
+import numpy as np
+from valor.privacy_audit import (
+    CommittedDatasetStore, CommitChallengeVerifier, generate_challenge,
+    verify_opening)
+from valor.seller import SellerCommittedDataset
+
+X = np.random.randint(0, 256, size=(500, 784), dtype=np.uint8)
+y = np.random.randint(0, 10, size=500)
+seller = SellerCommittedDataset.create(
+    CommittedDatasetStore("/tmp/pa-doc"), dataset_id="doc", version="v1",
+    X=X, y=y, schema_hash="s" * 64)
+ch = generate_challenge(task_hash="t" * 64, action_id="a1",
+                        n_rows=500, k=16, nonce=b"\x0c" * 32)
+opens = seller.open_rows(list(ch.indices))
+assert all(verify_opening(o, seller.commitment) for o in opens)  # Merkle 验证
 ```
 
 ## 六、建议

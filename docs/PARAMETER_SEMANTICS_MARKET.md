@@ -93,13 +93,12 @@
 ## 复现
 
 ```bash
-# 真实校准（受控注入 → 真实 TP/FN → Beta 下界）
-python -m valor engine calibrate --dataset breast_cancer --out-dir calibration
+# 唯一离线校准入口（受控注入 → 真实 TP/FN → Beta 下界）
+python -m valor calibration run --config <calibration.json>
 
 # 审计效果实证（干净 0.16 → label 污染 0.38）
 python scripts/audit_effectiveness.py --samples 4000 --epochs 1 --label-flip 0.2
 
-# 完整 capstone（真实审计：节点分歧 + quorum 裁决）
-python -m valor engine capstone --scenario <scenario.json> --run-dir runs \
-    --calibration-dir calibration/<run_id>/calibration_bundle.json
+# 正式交易唯一入口（config → CapstoneScenario → TransactionOrchestrator）
+python -m valor transaction run --config configs/experiments/full_transaction.json
 ```

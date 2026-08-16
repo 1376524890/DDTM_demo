@@ -1,7 +1,7 @@
 """CapstoneScenario —— 冻结的完整交易场景配置（P3）。
 
 一次 MNIST 完整交易的全部冻结输入：数据集/训练器/买方任务/权利/审计市场/
-安全参数/校准与认证 artifact 引用/seed。编排器只读此场景，禁止从 run.py
+安全参数/校准与认证 artifact 引用/seed。编排器只读此场景，禁止从 config
 手填中间量。
 
 所有字段显式给出；可选字段为 None 时显式声明 not_applicable（fail closed，

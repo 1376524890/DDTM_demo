@@ -1,7 +1,7 @@
 # VALOR-v1 最终机制忠实性收敛报告
 
 ## A. HEAD
-- Commit: (见 git log 最新 `git rev-parse HEAD`)
+- Commit: 1015677aa230044c948887a9d9217e567785753f
 
 ## B. Mechanism Closure (FullChainGate MFC-G01..G50)
 完整 FullChainGate 在带 calibration 的完整交易上 **56/56 检查 PASS**（`paper_closure_gate=PASS`）。

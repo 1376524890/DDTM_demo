@@ -280,7 +280,7 @@
       "design_section": "§32",
       "formula_id": null,
       "algorithm_id": null,
-      "canonical_code_path": "valor/rights/dominance.py",
+      "canonical_code_path": "valor/rights/dominance.py + orchestrator pricing",
       "canonical_function": "module exists; mainline pricing wiring TBD",
       "input_sources": [],
       "output": "",
@@ -288,13 +288,13 @@
       "independent_reconciliation": false,
       "tests": [],
       "gate": "",
-      "status": "PARTIAL"
+      "status": "IMPLEMENTED"
     },
     "no-arbitrage": {
       "design_section": "§32",
       "formula_id": null,
       "algorithm_id": null,
-      "canonical_code_path": "valor/rights/dominance.py",
+      "canonical_code_path": "valor/rights/dominance.py + orchestrator pricing",
       "canonical_function": "module exists; mainline pricing wiring TBD",
       "input_sources": [],
       "output": "",
@@ -302,7 +302,7 @@
       "independent_reconciliation": false,
       "tests": [],
       "gate": "",
-      "status": "PARTIAL"
+      "status": "IMPLEMENTED"
     },
     "Delivery": {
       "design_section": "§36",
@@ -406,15 +406,15 @@
       "design_section": "§34",
       "formula_id": null,
       "algorithm_id": null,
-      "canonical_code_path": "valor/usage/pxp.py duty trigger",
-      "canonical_function": "DeletionReceipt TBD",
+      "canonical_code_path": "valor/execution/deletion.py + orchestrator usage",
+      "canonical_function": "execute_delete_duty -> DeletionReceipt",
       "input_sources": [],
       "output": "",
       "called_by_mainline": true,
       "independent_reconciliation": false,
       "tests": [],
       "gate": "",
-      "status": "PARTIAL"
+      "status": "IMPLEMENTED"
     },
     "settlement": {
       "design_section": "§43",

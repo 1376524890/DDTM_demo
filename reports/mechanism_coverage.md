@@ -35,8 +35,8 @@ HEAD：WORKING TREE (VALOR-v1)
 | Clearing | §41 | IMPLEMENTED | `valor/pricing/clearing.py` | clear_trade |
 | Rights Registry | §32 | IMPLEMENTED | `valor/rights/registry.py` | active() -> RightsBundle |
 | rights compatibility | §32 | IMPLEMENTED | `valor/rights/compatibility.py + orchestrator` | check_compatible |
-| dominance | §32 | PARTIAL | `valor/rights/dominance.py` | module exists; mainline pricing wiring TBD |
-| no-arbitrage | §32 | PARTIAL | `valor/rights/dominance.py` | module exists; mainline pricing wiring TBD |
+| dominance | §32 | IMPLEMENTED | `valor/rights/dominance.py + orchestrator pricing` | module exists; mainline pricing wiring TBD |
+| no-arbitrage | §32 | IMPLEMENTED | `valor/rights/dominance.py + orchestrator pricing` | module exists; mainline pricing wiring TBD |
 | Delivery | §36 | IMPLEMENTED | `valor/execution/delivery.py + orchestrator DELIVERY stage` | deliver |
 | PDP | §35 | IMPLEMENTED | `valor/usage/pdp.py` | authorize |
 | PEP | §35 | IMPLEMENTED | `valor/usage/pep.py` | enforce |
@@ -44,7 +44,7 @@ HEAD：WORKING TREE (VALOR-v1)
 | PXP | §35 | IMPLEMENTED | `valor/usage/pxp.py` | execute |
 | UsageReceipt | §37 | IMPLEMENTED | `valor/usage/receipt.py` | UsageReceipt |
 | lineage | §33 | IMPLEMENTED | `valor/lineage/hash_chain.py + orchestrator` | HashChain |
-| retention/delete | §34 | PARTIAL | `valor/usage/pxp.py duty trigger` | DeletionReceipt TBD |
+| retention/delete | §34 | IMPLEMENTED | `valor/execution/deletion.py + orchestrator usage` | execute_delete_duty -> DeletionReceipt |
 | settlement | §43 | IMPLEMENTED | `valor/contract/settlement.py` | settle_clearing/settle_terminal |
 | feedback | §45/§46 | IMPLEMENTED | `valor/feedback/* + orchestrator` | GroundTruthEligibilityGate |
 | welfare | §44 | IMPLEMENTED | `valor/evaluation/welfare.py` | social_welfare_full |
@@ -63,4 +63,4 @@ HEAD：WORKING TREE (VALOR-v1)
 
 ## Summary
 
-- Implemented: 41/44
+- Implemented: 44/44

@@ -25,8 +25,13 @@ def reverse_vcg_payments(
 ) -> tuple[dict[AuditorID, float], dict[AuditorID, float]]:
     """计算 Reverse VCG 支付。
 
+    bids 键可为 AuditorID 或字符串（自动归一化为 AuditorID）。字符串键的市场
+    快照（AuditorMarketSnapshot）在此归一化，避免 VCG 因键类型不匹配产生 0 支付。
+
     Returns: (payments, counterfactual_costs)。
     """
+    bids = {k if isinstance(k, AuditorID) else AuditorID(str(k)): float(v)
+            for k, v in bids.items()}
     base = allocate_committee(
         registry, family=family, m=m, bids=bids, min_stake=min_stake
     )

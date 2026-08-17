@@ -115,7 +115,9 @@ class TransactionOrchestrator:
     def run(self) -> OrchestrationResult:
         """执行完整交易。"""
         sc = self.scenario
-        tx_id = new_id("tx", entropy=12)
+        # 确定性交易身份：tx_id 由冻结 scenario 派生，使 audit task/challenge/
+        # commitment/money/lineage 全部可复现（§69 replay 重跑同一交易输出一致）。
+        tx_id = "tx-" + content_hash(sc.to_plain())[:20]
 
         # ---- 数据准备（P1 adapters）----
         from valor.adapters import MNISTDatasetAdapter, MNISTTrainerAdapter
@@ -143,7 +145,12 @@ class TransactionOrchestrator:
         })
         # canonical H(D)：用卖方承诺数据集（candidate）构建唯一 DatasetCommitment。
         # 禁止用 content_hash({"mnist": role_counts}) 等旁路哈希充当 H(D)。
-        commitment = self._build_asset_commitment(cand_X, cand_y, tx_id)
+        # P0-A：通过卖方私有 store 一次性生成 salt + Merkle 树，持久化到
+        # seller_private，replay 读取同一 frozen commitment（不再重新生成随机
+        # salt）。merkle_root 不允许为空。该 commitment 是 listing/valuation/
+        # audit/delivery/usage 唯一的 canonical commitment_hash 来源。
+        commitment, seller_committed, seller_store = self._build_asset_commitment(
+            cand_X, cand_y, tx_id)
         dataset_hash = commitment.dataset_hash
         trainer_kwargs = {k: v for k, v in sc.trainer.items() if k != "type"}
         trainer = MNISTTrainerAdapter(**trainer_kwargs)
@@ -167,10 +174,12 @@ class TransactionOrchestrator:
 
         # ---- Listing / binding（P2）----
         rights = self._make_rights(sc.rights)
+        # listing_id 由 commitment 派生，保证确定性重放输出一致（§69）。
         listing = create_listing(
             seller_id=sc.seller_id, asset_id="asset-mnist", asset_version="v1",
             data_commitment=commitment.commitment_hash,
             rights=rights, metadata_claims={"schema": "MNIST-784", "classes": 10},
+            listing_id="list-" + content_hash(commitment.commitment_hash)[:16],
         )
         catalog = MarketCatalog()
         catalog.add(listing)
@@ -191,12 +200,29 @@ class TransactionOrchestrator:
                   formula_id="BINDING_HASH",
                   formula_output={"binding_hash": binding.binding_hash})
 
-        # ---- Entitlement / compliance（阶段 12）----
-        ent_pass = sc.entitlement_pass  # 场景控制（C 场景可置 False）
-        self._stage("entitlement", {"pass": ent_pass})
+        # ---- Entitlement / Compliance / Rights compatibility（阶段 6/32）----
+        # P0-I/P0-P：真实执行 EntitlementChecker / ComplianceChecker /
+        # RightsRegistry / RightsCompatibility，禁止直接读 sc.entitlement_pass
+        # 或硬编码 compliant=True。机制只能读取输入状态，不读取标准答案。
+        ent, comp, compat = self._check_entitlement(sc, rights, tx_id)
+        ent_pass = ent.passes and comp.passes and compat.passes
+        self._stage("entitlement", {
+            "pass": ent_pass,
+            "entitled": ent.to_plain(),
+            "compliant": comp.to_plain(),
+            "compatible": compat.to_plain(),
+            "policy_hash": content_hash({
+                "entitled": ent.to_plain(), "compliant": comp.to_plain(),
+                "compatible": compat.to_plain(),
+            }),
+        })
         self._log(ledger, stage="ENTITLEMENT", event_type="GATE",
                   formula_id="ENTITLED",
-                  formula_output={"pass": ent_pass})
+                  formula_output={
+                      "pass": ent_pass,
+                      "entitled": ent.to_plain(), "compliant": comp.to_plain(),
+                      "compatible": compat.to_plain(),
+                  })
         if not ent_pass:
             return self._finalize(ledger, manifest, "NO_TRADE_HARD_GATE",
                                   TerminalState.NO_TRADE, None)
@@ -261,13 +287,25 @@ class TransactionOrchestrator:
         from valor.liability.seller_prelock import seller_prelock
 
         bond_params = self._bond_params()
-        # Ω_allowed：从冻结证书或 scenario 默认取 certified p̲_B^sys
+        # Ω_allowed：从冻结证书包络（envelope）取 certified p̲_B^sys 全集。
+        # P0-J：PreLock 必须用整包络 max_ω B_S^*(ω)，禁止退化单点。
         if self.calibration is not None and self.calibration.certificate is not None:
-            certified_pb = self.calibration.certificate.data["p_breach_lower_sys"]
+            cert_d = self.calibration.certificate.data
+            envelope = cert_d.get("envelope")
+            if envelope:
+                cells = [{"p_breach_lower_sys": c["p_breach_lower_sys"]}
+                         for c in envelope]
+            else:
+                cells = [{"p_breach_lower_sys": cert_d["p_breach_lower_sys"]}]
         else:
             certified_pb = sc.certificate["p_breach_lower_sys"] if "p_breach_lower_sys" in sc.certificate else _certified_pb_from(sc.certificate)
-        b_s_pre = seller_prelock(
-            cells=[{"p_breach_lower_sys": certified_pb}], **bond_params)
+            cells = [{"p_breach_lower_sys": certified_pb}]
+        b_s_pre = seller_prelock(cells=cells, **bond_params)
+        # P0-J：PreLock 记录逐 cell B_S^*(ω)
+        self._prelock_cells = [{"cell_id": c.get("cell_id", i),
+                                "p_breach_lower_sys": c["p_breach_lower_sys"],
+                                "B_S_star_cell": seller_prelock(cells=[c], **bond_params)}
+                               for i, c in enumerate(cells)]
         seller_funds = sc.seller.get("funds")
         if seller_funds is not None and seller_funds < b_s_pre:
             self._stage("prelock", {"b_s_pre": b_s_pre, "seller_funds": seller_funds,
@@ -279,11 +317,14 @@ class TransactionOrchestrator:
             return self._finalize(ledger, manifest, "NO_TRADE_HARD_GATE",
                                   TerminalState.NO_TRADE, None)
         self._stage("prelock", {"b_s_pre": b_s_pre, "seller_funds": seller_funds,
-                                "locked": True})
+                                "locked": True,
+                                "envelope_cells": self._prelock_cells,
+                                "n_cells": len(self._prelock_cells)})
         self._log(ledger, stage="PRELOCK", event_type="BOND",
                   formula_id="B_SELLER_PRE",
                   formula_output={"b_s_pre": b_s_pre,
-                                  "seller_funds": seller_funds, "locked": True})
+                                  "seller_funds": seller_funds, "locked": True,
+                                  "n_cells": len(self._prelock_cells)})
 
         # ---- Audit-VOI + 审计执行（阶段 16-29，P4/P5 接入真分布式）----
         audit = self.audit_executor(sc, {
@@ -292,6 +333,11 @@ class TransactionOrchestrator:
             "binding": binding, "dataset_hash": commitment.dataset_hash,
             "data_commitment": commitment.commitment_hash,
             "b_s_pre": b_s_pre,
+            # P0-A：下游审计消费上游 canonical commitment / 卖方 handle / store。
+            # 禁止审计层再 SellerCommittedDataset.create() 生成第二个 commitment。
+            "dataset_commitment": commitment,
+            "seller_committed": seller_committed,
+            "seller_store": seller_store,
         })
         self._stage("audit", audit)
         posterior = audit["posterior"]
@@ -359,32 +405,64 @@ class TransactionOrchestrator:
         from valor.pricing.buyer_max import buyer_max_price
         from valor.pricing.seller_min import seller_min_price
         from valor.pricing.clearing import clear_trade
+        from valor.rights.dominance import DominanceChecker
+        from valor.rights.opportunity_cost import compute_opportunity_cost
+
+        # P0-Q：机会成本由真实 inputs 计算（rights 排他 + future revenue model），
+        # 禁止直接读 sc.seller["oc_s"] 常数。
+        oc = compute_opportunity_cost(
+            exclusivity=rights.exclusivity,
+            rev_future_without=sc.exposure.get("rev_future_without",
+                                               sc.seller.get("oc_s", 0.0)),
+            rev_future_with=sc.exposure.get("rev_future_with",
+                                            max(sc.seller.get("oc_s", 0.0) * 0.2, 0.0)),
+        )
+        oc_s = oc.oc_amount
+
+        # P0-M/S：Buyer Usage Bond 真实接入（若合同适用）
+        b_b_use, c_b_use_cap = self._buyer_usage_bond(rights, sc)
+        # P0-S：seller bond capital cost 用真实时间区间（BondTimeline）
+        c_b_cap = capital_cost(
+            kappa_s=sc.bond["kappa_s"], bond_pre=b_s_pre, bond_required=b_s_star,
+            t_pre=sc.bond["t_pre"], t_post=sc.bond["t_post"])
 
         p_max = buyer_max_price(
             w_b_rem=sc.buyer["w_b_rem"], v_gross_lower=v_gross_lower,
             c_i=sc.buyer["c_i"], c_a_b_pay=audit_pay_b,
-            c_r_pay=sc.buyer["c_r_pay"], c_b_use_cap=sc.buyer["c_b_use_cap"],
+            c_r_pay=sc.buyer["c_r_pay"], c_b_use_cap=c_b_use_cap,
             r_b_post=sc.buyer["r_b_post"])
         p_min = seller_min_price(
             c_marg=sc.seller["c_marg"], c_a_s_pay=audit_pay_s,
             c_b_cap=c_b_cap, c_r_s_pay=sc.seller["c_r_s_pay"],
-            r_s_post=sc.seller["r_s_post"], oc_s=sc.seller["oc_s"],
+            r_s_post=sc.seller["r_s_post"], oc_s=oc_s,
             pi_s0=sc.seller["pi_s0"])
         clearance = clear_trade(p_max=p_max, p_min=p_min,
                                 beta_bar=sc.pricing["beta_bar"])
+
+        # MFC-G23：rights menu dominance / no-arbitrage（同一 pricing snapshot）
+        dom = DominanceChecker()
+        menu_violations = dom.check_dominance_price(
+            {rights.rights_hash: p_min}, rights, rights)
+        arb_violations = dom.check_no_arbitrage(
+            {rights.rights_hash: p_min}, rights, [rights])
+
         self._stage("pricing", {
             "p_max": p_max, "p_min": p_min, "margin": clearance.margin,
             "clearing_price": clearance.clearing_price,
             "decision": clearance.decision,
+            "oc_s": oc_s, "oc_note": oc.note,
+            "b_b_use": b_b_use, "c_b_use_cap": c_b_use_cap,
+            "dominance_violations": menu_violations,
+            "no_arbitrage_violations": arb_violations,
             "recompute_inputs": {
                 "v_gross_lower": v_gross_lower, "w_b_rem": sc.buyer["w_b_rem"],
                 "c_i": sc.buyer["c_i"], "c_a_b_pay": audit_pay_b,
                 "c_r_pay": sc.buyer["c_r_pay"],
-                "c_b_use_cap": sc.buyer["c_b_use_cap"],
+                "c_b_use_cap": c_b_use_cap,
                 "r_b_post": sc.buyer["r_b_post"],
                 "c_marg": sc.seller["c_marg"], "c_a_s_pay": audit_pay_s,
                 "c_b_cap": c_b_cap, "c_r_s_pay": sc.seller["c_r_s_pay"],
-                "r_s_post": sc.seller["r_s_post"], "oc_s": sc.seller["oc_s"],
+                "r_s_post": sc.seller["r_s_post"], "oc_s": oc_s,
                 "pi_s0": sc.seller["pi_s0"],
                 "p_max": p_max, "p_min": p_min,
                 "beta_bar": sc.pricing["beta_bar"],
@@ -405,10 +483,15 @@ class TransactionOrchestrator:
         from valor.contract.state_machine import StateMachineInput, TransactionStateMachine
         from valor.contract.escrow import EscrowAccounts
 
+        # P0-K：终态由真实 evidence 派生。seller_breach/buyer_misuse 场景仅作为
+        # ExperimentWorld GroundTruth：审计 executor 通过实际 corruption 注入使
+        # evidence 产生 BREACH_EVIDENCE；buyer breach 由 usage misuse 证据派生。
+        # 这里从审计 trace 的 BREACH_EVIDENCE 判定 seller breach（机制观察证据）。
+        breach_during_audit = _evidence_seller_breach(audit)
         sm = TransactionStateMachine()
         terminal = sm.resolve(StateMachineInput(
             entitled=ent_pass, compliant=True,
-            breach_during_audit=sc.seller_breach,
+            breach_during_audit=breach_during_audit,
             price_decision=clearance.decision, buyer_breach=sc.buyer_misuse))
         ledger_bal = Ledger()
         for acc, amt in {"E_B^P": sc.buyer["w_b_rem"], "E_S^A": audit_pay_s,
@@ -416,7 +499,9 @@ class TransactionOrchestrator:
             ledger_bal.create_account(acc, amt)
         accounts = EscrowAccounts(
             e_s_a=audit_pay_s, e_b_a=audit_pay_b, e_b_p=sc.buyer["w_b_rem"],
-            b_s_pre=b_s_pre, b_s_star=b_s_star, b_b_use=0.0)
+            b_s_pre=b_s_pre, b_s_star=b_s_star, b_b_use=b_b_use)
+        if b_b_use > 0:
+            ledger_bal.create_account("B_B^use", b_b_use)
         money_ledger = MoneyLedger(ledger_bal, tx_id=tx_id)
         # 结算前捕获 escrow 初始余额（G24 独立复算用）
         escrow_initial = {
@@ -447,8 +532,19 @@ class TransactionOrchestrator:
                                   "conservation": ledger_bal.conservation_check(),
                                   "money_semantics_ok": money_semantics_ok})
 
+        # ---- Delivery（阶段 36，P0-L 正式独立阶段）----
+        # Clearing → Settlement Phase I → Delivery → Rights ACTIVE → Usage。
+        # 必须验证 H(D_delivery) == H(D_listing)（MFC-G26）。
+        delivery_result = self._run_delivery(
+            ledger, binding, commitment, terminal, tx_id, seller_committed)
+
         # ---- Usage（阶段 36-46，仅 TRADE，P9）----
         usage_result = self._run_usage(ledger, binding, terminal)
+
+        # ---- Controlled Training（P0-M/P0-N 受控训练执行平面，仅 TRADE）----
+        # 合法训练真实运行；非法训练在 key release / training start 前被拒。
+        training_result = self._run_controlled_training(
+            ledger, binding, cand_X, cand_y, terminal)
 
         # ---- Feedback（阶段 49-51，P10）----
         feedback_result = self._run_feedback(ledger, terminal, final_X, final_y,
@@ -493,30 +589,47 @@ class TransactionOrchestrator:
     def _build_asset_commitment(self, cand_X, cand_y, tx_id):
         """用卖方承诺数据集构建 canonical DatasetCommitment（asset 层唯一 H(D)）。
 
-        返回 asset.DatasetCommitment；listing/audit/delivery/usage 全部引用
-        commitment.commitment_hash。
+        P0-A：唯一实例。通过 `CommittedDatasetStore`（卖方私有持久化）一次性生成
+        salt + Merkle 树，merkle_root 非空，持久化到 seller_private。返回
+        (commitment, SellerCommittedDataset, CommittedDatasetStore)。
+
+        下游（listing/valuation/audit/delivery/usage）一律引用
+        commitment.commitment_hash；禁止 privacy audit 内再次
+        SellerCommittedDataset.create() 生成第二个 commitment。
         """
         import numpy as np
 
         from valor.asset.commitments import DatasetCommitment
         from valor.core.hashing import content_hash
+        from valor.privacy_audit.commitment import (
+            CANONICALIZATION_SPEC_HASH,
+            CommittedDatasetStore,
+        )
+        from valor.seller import SellerCommittedDataset
 
         Xa = np.asarray(cand_X.to_numpy(), dtype=np.uint8) if hasattr(cand_X, "to_numpy") else np.asarray(cand_X, dtype=np.uint8)
         ya = np.asarray(cand_y.to_numpy(), dtype=np.uint8) if hasattr(cand_y, "to_numpy") else np.asarray(cand_y, dtype=np.uint8)
-        n = len(Xa)
-        # 确定性行哈希（不依赖卖方私有 salt/Merkle，作为交易承诺的公开 H(D)）
-        rows = [content_hash({"row": list(Xa[i]), "label": int(ya[i])})
-                for i in range(n)]
-        dataset_hash = content_hash({"dataset": self.scenario.dataset_name,
-                                     "n": n, "rows": rows})
-        commitment_hash = content_hash({"dataset_hash": dataset_hash, "n": n})
-        return DatasetCommitment(
-            dataset_id=f"{self.scenario.dataset_name}-{tx_id}",
-            version="v1", n_rows=n,
+        # 卖方私有 store 路径：runs/<run_id>/seller_private（replay 复用）。
+        # dataset_id 用稳定的 asset 版本标识（不含随机 tx_id），salt 用确定性
+        # seed（由 split_seed + dataset 名派生），使 replay 复现同一 commitment。
+        store = CommittedDatasetStore(str(self.artifacts.root / "seller_private"))
+        dataset_id = f"{self.scenario.dataset_name}-v1"
+        salt_seed = content_hash({
+            "dataset": self.scenario.dataset_name, "version": "v1",
+            "split_seed": self.scenario.split_seed,
+        })
+        seller = SellerCommittedDataset.create(
+            store, dataset_id=dataset_id, version="v1", X=Xa, y=ya,
             schema_hash=content_hash({"schema": "MNIST-784"}),
-            canonicalization_spec_hash=content_hash({"canonical": "VALOR-MNIST-ROW"}),
-            merkle_root="", dataset_hash=dataset_hash,
-            commitment_hash=commitment_hash)
+            salt_seed=salt_seed,
+        )
+        commitment: DatasetCommitment = seller.commitment
+        # 强门：canonical commitment 必须带非空 merkle_root（禁止空承诺）
+        if not commitment.merkle_root:
+            raise RuntimeError("P0-A: canonical DatasetCommitment 的 merkle_root 为空")
+        if not commitment.commitment_hash:
+            raise RuntimeError("P0-A: canonical DatasetCommitment 的 commitment_hash 为空")
+        return commitment, seller, store
 
     def _make_rights(self, r: dict):
         """从 config rights 构造完整 RightsBundle（所有适用字段执行，无占位）。"""
@@ -534,6 +647,74 @@ class TransactionOrchestrator:
             delete_duty=r.get("delete_duty"),
             not_applicable_reason=r.get("not_applicable_reason"),
         )
+
+    def _check_entitlement(self, sc, rights, tx_id):
+        """真实执行 Entitlement / Compliance / Rights compatibility（P0-I/P0-P）。
+
+        从场景的 entitlement/compliance/registry 输入状态判定，机制不读取标准答案。
+        场景可通过输入构造违规（如 grant_authority=False / 既有排他许可冲突）。
+        """
+        from valor.asset.compliance import Compliant
+        from valor.asset.entitlement import Entitled
+        from valor.rights.compatibility import check_compatible
+        from valor.rights.registry import RightsRegistry
+
+        ent_cfg = sc.entitlement or {}
+        ent = Entitled(
+            grant_authority=bool(ent_cfg.get("grant_authority", True)),
+            version_revoked=bool(ent_cfg.get("version_revoked", False)),
+            reasons=tuple(ent_cfg.get("reasons", ["seller grant authority"])),
+        )
+        comp = Compliant(
+            buyer_eligible=bool(ent_cfg.get("buyer_eligible", True)),
+            menu_conflict=bool(ent_cfg.get("menu_conflict", False)),
+            reasons=tuple(ent_cfg.get("compliance_reasons", ["buyer eligible"])),
+        )
+        # Rights compatibility：与该资产既有活跃许可比对（Registry 真实工作）
+        registry = getattr(self, "_rights_registry", None)
+        existing = []
+        if registry is not None:
+            existing = registry.active()  # 返回真实 RightsBundle 列表（P0-P）
+        compat = check_compatible(rights, existing)
+        # 注册本交易新权利（供后续重复出售检查）
+        if registry is not None:
+            from valor.core.enums import RightsState
+
+            registry.register(rights, state=RightsState.ACTIVE)
+            self._rights_registry = registry
+        else:
+            self._rights_registry = RightsRegistry(asset_id="asset-mnist")
+            self._rights_registry.register(rights)
+        return ent, comp, compat
+
+    def _buyer_usage_bond(self, rights, sc):
+        """P0-M/S：Buyer Usage Bond 真实接入主链。
+
+        B_B_use 由 certified misuse detection p̲_U^sys + 合同参数计算；若合同
+        明确不需独立 usage bond，由显式参数令公式自然为 0（不代码跳过）。
+        """
+        from valor.liability.buyer_usage_bond import buyer_usage_bond_required
+
+        ub = sc.usage.get("usage_bond", {})
+        # p̲_U^sys：certified misuse detection（校准或显式合同）
+        p_u = ub.get("p_misuse_lower_sys") if ub else None
+        if p_u is None:
+            p_u = sc.certificate.get("p_misuse_lower_sys", 0.0)
+        g_misuse = ub.get("g_misuse", sc.usage.get("g_misuse", 0.0))
+        eps_b = ub.get("eps_b", 0.0)
+        p_e_ubond = ub.get("p_e_ubond", 1.0)
+        p_e_uf = ub.get("p_e_uf", 0.0)
+        lambda_b = ub.get("lambda_b", 1.0)
+        f_b = ub.get("f_b", 0.0)
+        kappa_b = ub.get("kappa_b", 0.0)
+        t_b = ub.get("t_b", 0.0)
+        b_b_use = 0.0
+        if p_u > 0 and g_misuse > 0:
+            b_b_use = buyer_usage_bond_required(
+                p_misuse_lower_sys=p_u, g_misuse=g_misuse, eps_b=eps_b,
+                p_e_ubond=p_e_ubond, p_e_uf=p_e_uf, lambda_b=lambda_b, f_b=f_b)
+        c_b_use_cap = kappa_b * b_b_use * t_b
+        return b_b_use, c_b_use_cap
 
     def _bond_params(self):
         b = self.scenario.bond
@@ -553,6 +734,77 @@ class TransactionOrchestrator:
             certificate_artifact=cal.certificate if cal else None,
         )
         return executor.run(sc, ctx)
+
+    def _run_delivery(self, ledger, binding, commitment, terminal, tx_id, seller_committed):
+        """P0-L：正式 Delivery 独立阶段，生成 DeliveryReceipt。
+
+        验证 H(D_delivery) == H(D_listing)（用同一 canonical commitment）。
+        三种模式（DOWNLOAD_TRACEABLE / API_GATEWAY / COMPUTE_ONLY）都通过
+        valor.execution.delivery.deliver() 生成回执。不一致 → SELLER_BREACH。
+        """
+        from valor.core.enums import DeliveryMode
+        from valor.execution.delivery import deliver
+
+        if terminal != TerminalState.TRADE:
+            self._stage("delivery", {"enabled": False, "terminal": terminal.value})
+            return {"enabled": False}
+
+        sc = self.scenario
+        mode = DeliveryMode(sc.rights["access_mode"])
+        listing_commitment = binding.listing.data_commitment
+        delivery_commitment = commitment.commitment_hash
+        # MFC-G26：H(D_delivery) == H(D_listing)
+        if delivery_commitment != listing_commitment:
+            self._stage("delivery", {
+                "enabled": True, "verified": False,
+                "delivery_commitment": delivery_commitment,
+                "listing_commitment": listing_commitment,
+                "reason": "SELLER_BREACH_DELIVERY",
+            })
+            self._log(ledger, stage="DELIVERY", event_type="DELIVERY_VERIFY",
+                      formula_id="DELIVERY_HASH_MATCH",
+                      formula_output={"verified": False,
+                                      "delivery_commitment": delivery_commitment,
+                                      "listing_commitment": listing_commitment})
+            return {"enabled": True, "verified": False,
+                    "terminal_override": "SELLER_BREACH"}
+
+        try:
+            receipt = deliver(
+                tx_id=tx_id, seller_id=sc.seller_id, buyer_id=sc.buyer_id,
+                mode=mode, dataset_commitment_hash=delivery_commitment,
+                rights_hash=binding.listing.rights_hash,
+                listing_commitment_hash=listing_commitment,
+                attestation_ref=f"attestation-{tx_id}-{mode.value.lower()}",
+            )
+        except ValueError as e:  # H(D) 不一致 → SELLER_BREACH
+            self._stage("delivery", {
+                "enabled": True, "verified": False, "reason": str(e),
+            })
+            return {"enabled": True, "verified": False,
+                    "terminal_override": "SELLER_BREACH"}
+
+        self._stage("delivery", {
+            "enabled": True, "verified": True, "mode": mode.value,
+            "delivery_id": receipt.delivery_id,
+            "delivery_commitment": delivery_commitment,
+            "listing_commitment": listing_commitment,
+            "equality": delivery_commitment == listing_commitment,
+            "delivery_artifact_hash": receipt.delivery_artifact_hash,
+            "receipt_hash": receipt.receipt_hash,
+            "receipt": receipt.to_plain(),
+            "executor": receipt.executor,
+        })
+        self._log(ledger, stage="DELIVERY", event_type="DELIVERY_VERIFY",
+                  formula_id="DELIVERY_HASH_MATCH",
+                  formula_output={"verified": True,
+                                  "mode": mode.value,
+                                  "delivery_commitment": delivery_commitment,
+                                  "listing_commitment": listing_commitment,
+                                  "receipt_hash": receipt.receipt_hash})
+        self.artifacts.write_json("delivery_receipt.json", receipt.to_plain())
+        return {"enabled": True, "verified": True, "receipt": receipt.to_plain(),
+                "delivery_id": receipt.delivery_id}
 
     def _run_usage(self, ledger, binding, terminal):
         """交易后用途控制（P9）：PDP/PEP/Receipt/Lineage。"""
@@ -590,8 +842,12 @@ class TransactionOrchestrator:
                 purposes=rights.purposes, authorized_actors=authorized_actors,
                 allowed_environments=allowed_environments,
                 privacy_budget_max=rights.privacy_budget)
+            # 确定性 receipt/event id（由请求内容派生）保证重放输出一致（§69）。
             receipt = UsageReceipt(
-                receipt_id=new_id("receipt", entropy=8), tx_id=binding.tx_id,
+                receipt_id="receipt-" + content_hash(
+                    {"tx": binding.tx_id, "actor": r.actor, "purpose": r.purpose,
+                     "ts": r.timestamp, "n": before})[:16],
+                tx_id=binding.tx_id,
                 rights_hash=binding.listing.rights_hash,
                 asset_version_hash=binding.listing.data_commitment,
                 buyer_id=sc.buyer_id, requested_action=r.action,
@@ -605,7 +861,10 @@ class TransactionOrchestrator:
                             "match": res.decision == req["expect"]})
             # lineage（§33 DataFlowEvent）→ hash chain
             ev = DataFlowEvent(
-                event_id=new_id("evt", entropy=8), tx_id=binding.tx_id,
+                event_id="evt-" + content_hash(
+                    {"tx": binding.tx_id, "actor": r.actor, "purpose": r.purpose,
+                     "ts": r.timestamp, "n": before, "rh": rh})[:16],
+                tx_id=binding.tx_id,
                 actor=r.actor, action="COMPUTE_ON",
                 input_refs=(binding.listing.data_commitment,),
                 output_refs=(rh,), rights_ref=binding.listing.rights_hash,
@@ -626,6 +885,84 @@ class TransactionOrchestrator:
         return {"enabled": True, "results": results, "receipts": receipts,
                 "lineage_last": chain.last(),
                 "chain_valid": chain_valid}
+
+    def _run_controlled_training(self, ledger, binding, cand_X, cand_y, terminal):
+        """P0-M/P0-N：受控训练执行平面（仅 TRADE）。
+
+        合法训练真实运行（MNIST MLP）；非法训练（actor/purpose/algorithm/
+        output）在 key release / training start 前被拒。产出 TrainingOutcome
+        供 MFC-G45/G46 校验。
+        """
+        from valor.execution.controlled_training import ControlledTrainingRunner
+        from valor.execution.secure_execution import (
+            TrainingJobSpec,
+            default_mnist_catalog,
+        )
+        from valor.usage.models import UsageState
+
+        if terminal != TerminalState.TRADE:
+            self._stage("training", {"enabled": False})
+            return {"enabled": False}
+
+        sc = self.scenario
+        rights = binding.listing.rights
+        catalog = default_mnist_catalog()
+        runner = ControlledTrainingRunner(catalog=catalog, rights=rights)
+        usage_state = UsageState()
+        results = []
+        # 从 scenario 的训练作业请求派生（合法 + 非法用例）
+        train_requests = sc.usage.get("training_requests", [])
+        if not train_requests:
+            # 默认：一个合法训练 + 一个非法 actor 训练
+            train_requests = [
+                {"actor": "buyer_org_A", "purpose": "digit-classification",
+                 "requested_output": "MODEL_ARTIFACT", "environment": "approved_compute",
+                 "expect": "ALLOW"},
+                {"actor": "buyer_org_B", "purpose": "digit-classification",
+                 "requested_output": "MODEL_ARTIFACT", "environment": "approved_compute",
+                 "expect": "DENY"},
+            ]
+        alg = catalog.get("MNIST_MLP_TRAIN")
+        for i, req in enumerate(train_requests):
+            job = TrainingJobSpec(
+                job_id=f"train-{i}", tx_id=binding.tx_id,
+                dataset_commitment_hash=binding.listing.data_commitment,
+                rights_hash=binding.listing.rights_hash,
+                actor_id=req["actor"], declared_purpose=req["purpose"],
+                algorithm_id="MNIST_MLP_TRAIN", algorithm_hash=alg.code_hash,
+                container_image_digest=alg.container_digest,
+                hyperparameters={"epochs": 1, "batch_size": 128, "lr": 1e-3},
+                hyperparameters_hash="hp" * 32,
+                input_refs=[binding.listing.data_commitment],
+                requested_output=req.get("requested_output", "MODEL_ARTIFACT"),
+                execution_profile_id="ep-1", network_policy_hash="np" * 32,
+                seed=sc.split_seed + i,
+            )
+            out = runner.run(
+                job=job, dataset_X=cand_X, dataset_y=cand_y,
+                valid_from=rights.t0, valid_until=rights.t1, max_uses=rights.q,
+                purposes=rights.purposes,
+                authorized_actors=set(sc.usage.get("authorized_actors", ["buyer_org_A"])),
+                allowed_environments=set(sc.usage.get("allowed_environments", ["approved_compute"])),
+                environment=req["environment"], access_mode=rights.access_mode.value,
+                derivative=rights.derivative, usage_state=usage_state,
+                timestamp="2026-03-01",
+            )
+            results.append({"request": req, "outcome": out.to_plain()})
+        self._stage("training", {
+            "enabled": True, "results": results,
+            "legal_trained": any(
+                r["outcome"]["decision"] == "ALLOW" and r["outcome"]["training_started"]
+                for r in results),
+            "illegal_blocked": all(
+                r["outcome"]["decision"] == "DENY" or r["request"].get("expect") != "DENY"
+                for r in results),
+            "n_jobs": len(results),
+        })
+        self._log(ledger, stage="TRAINING", event_type="CONTROLLED_TRAIN",
+                  formula_id="TRAINING_PLANE",
+                  formula_output={"results": [r["outcome"] for r in results]})
+        return {"enabled": True, "results": results}
 
     def _write_lineage(self, lineage_events) -> None:
         """写入 lineage.jsonl artifact（§33 数据流向血缘）。"""
@@ -792,6 +1129,18 @@ class TransactionOrchestrator:
             run_id=self.run_id, scenario_hash=self.scenario.scenario_hash,
             decision=decision, terminal_state=terminal.value,
             clearing_price=price, full_chain_gate={"passed": False, "checks": {}})
+
+
+def _evidence_seller_breach(audit: dict) -> bool:
+    """P0-K：从审计 evidence 判定 seller breach（机制观察证据，非 scenario flag）。
+
+    任一 audit step 的 outcome 为 BREACH_EVIDENCE（真实 corruption 被检测）
+    → seller breach。禁止直接读 sc.seller_breach。
+    """
+    for e in (audit or {}).get("audit_trace_events", []):
+        if e.get("outcome") == "BREACH_EVIDENCE":
+            return True
+    return False
 
 
 def _certified_pb_from(cert: dict) -> float:

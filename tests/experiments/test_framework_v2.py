@@ -123,14 +123,14 @@ def test_ef_g03_role_isolation():
 
 
 # ---- EF-G04 + EF-G07 + EF-G14: immutable, resume, failed retained ----
-def test_ef_g04_g07_g14_run_resume():
+def test_ef_g04_g07_g14_run_resume(tmp_path):
     exp = make_experiment_spec(
         experiment_id="EXP-R", rq="RQ2", methods=("valor", "no_audit"),
         seeds=(1, 2), execution_mode="COMMIT_CHALLENGE",
         calibration_artifact_hash="cal" * 32, certificate_hash="cert" * 32)
     plan = build_paired_plan(experiment=exp, world_factory=_world_factory,
                              method_configs={})
-    store = ArtifactStore("/tmp/ef-store")
+    store = ArtifactStore(str(tmp_path / "ef-store"))
 
     runner = ExperimentRunner(plan=plan, store=store, executor=_executor,
                               manifest_builder=_manifest_builder)
@@ -153,13 +153,13 @@ def test_ef_g04_g07_g14_run_resume():
 
 
 # ---- EF-G14: failed trials retained ----
-def test_ef_g14_failed_retained():
+def test_ef_g14_failed_retained(tmp_path):
     exp = make_experiment_spec(
         experiment_id="EXP-F", rq="RQ2", methods=("valor",),
         seeds=(1,), execution_mode="COMMIT_CHALLENGE")
     plan = build_paired_plan(experiment=exp, world_factory=_world_factory,
                              method_configs={})
-    store = ArtifactStore("/tmp/ef-fail")
+    store = ArtifactStore(str(tmp_path / "ef-fail"))
 
     def bad_executor(*a, **k):
         raise RuntimeError("boom")
@@ -189,17 +189,17 @@ def test_ef_g08_manifest_binds():
 
 
 # ---- EF-G09..G13: analysis ----
-def test_ef_g09_g13_analysis():
+def test_ef_g09_g13_analysis(tmp_path):
     exp = make_experiment_spec(
         experiment_id="EXP-A", rq="RQ2", methods=("no_audit", "valor"),
         seeds=tuple(range(10)), execution_mode="COMMIT_CHALLENGE")
     plan = build_paired_plan(experiment=exp, world_factory=_world_factory,
                              method_configs={})
-    store = ArtifactStore("/tmp/ef-ana")
+    store = ArtifactStore(str(tmp_path / "ef-ana"))
     ExperimentRunner(plan=plan, store=store, executor=_executor,
                      manifest_builder=_manifest_builder).run()
     trial_ids = [t.trial_id for t in plan.trials()]
-    ar = AnalysisRunner(store, "/tmp/ef-ana-out")
+    ar = AnalysisRunner(store, str(tmp_path / "ef-ana-out"))
     result = ar.analyze_pair(trial_ids, metric="detection",
                              proposed="valor", baseline="no_audit")
     # EF-G09: paired metrics（n_worlds = seeds）
@@ -220,10 +220,10 @@ def test_ef_g09_g13_analysis():
 
 
 # ---- EF-G15: artifact_root_hash deterministic ----
-def test_ef_g15_artifact_root_hash():
+def test_ef_g15_artifact_root_hash(tmp_path):
     import json
 
-    store = ArtifactStore("/tmp/ef-hash")
-    h1 = artifact_root_hash("/tmp/ef-hash")
-    h2 = artifact_root_hash("/tmp/ef-hash")
+    store = ArtifactStore(str(tmp_path / "ef-hash"))
+    h1 = artifact_root_hash(str(tmp_path / "ef-hash"))
+    h2 = artifact_root_hash(str(tmp_path / "ef-hash"))
     assert h1 == h2

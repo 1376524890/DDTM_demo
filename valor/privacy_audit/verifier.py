@@ -47,9 +47,6 @@ class AuditExecutionContext:
 class CommitChallengeVerifier:
     """COMMIT_CHALLENGE 模式节点侧验证器。"""
 
-    def __init__(self, node_id: str) -> None:
-        self.node_id = node_id
-
     def verify_task_binding(self, task_hash: str, ctx: AuditExecutionContext) -> bool:
         """校验任务承诺与 commitment/claim 绑定。"""
         return (
@@ -98,7 +95,7 @@ class CommitChallengeVerifier:
 
     def _evidence(self, ctx, primitive_id, *, merkle_ok, result, disclosed_bytes,
                   test_statistic, p_value, opening_hashes) -> PrivacyAuditEvidence:
-        return build_evidence(
+        ev = build_evidence(
             node_id=self.node_id, task_id=ctx.challenge.task_hash if ctx.challenge else "",
             execution_mode=AuditExecutionMode.COMMIT_CHALLENGE.value,
             claim_hash=ctx.claim.claim_hash,
@@ -112,6 +109,36 @@ class CommitChallengeVerifier:
             test_statistic=test_statistic, p_value=p_value,
             result=result.value,
         )
+        return _with_signature(ev, self.signing_key)
+
+    def __init__(self, node_id: str, signing_key=None) -> None:
+        self.node_id = node_id
+        self.signing_key = signing_key  # SigningKeyPair | None
 
 
-__all__ = ["AuditExecutionContext", "CommitChallengeVerifier"]
+def _with_signature(ev: PrivacyAuditEvidence, signing_key) -> PrivacyAuditEvidence:
+    """P0-F：对 evidence canonical payload（不含 signature）用节点私钥签名。
+
+    无密钥（测试/未配置）→ 空签名；scheduler 将此类证据计为
+    INVALID_EVIDENCE_SIGNATURE，不计入 quorum（MFC-G05/G06）。
+    """
+    if signing_key is None:
+        return ev
+    from valor.security.signing import sign_evidence
+
+    sig = sign_evidence(signing_key, ev.to_plain())
+    return PrivacyAuditEvidence(
+        node_id=ev.node_id, task_id=ev.task_id, execution_mode=ev.execution_mode,
+        claim_hash=ev.claim_hash, commitment_hash=ev.commitment_hash,
+        challenge_id=ev.challenge_id, challenge_hash=ev.challenge_hash,
+        opening_indices=ev.opening_indices,
+        opening_commitment_hashes=ev.opening_commitment_hashes,
+        merkle_verification_passed=ev.merkle_verification_passed,
+        disclosed_rows=ev.disclosed_rows, disclosed_bytes=ev.disclosed_bytes,
+        test_statistic=ev.test_statistic, p_value=ev.p_value,
+        result=ev.result, execution_hash=ev.execution_hash,
+        timestamp=ev.timestamp, signature=sig, evidence_id=ev.evidence_id,
+    )
+
+
+__all__ = ["AuditExecutionContext", "CommitChallengeVerifier", "_with_signature"]

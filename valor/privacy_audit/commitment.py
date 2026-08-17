@@ -43,6 +43,21 @@ class CommittedRow:
         return {"index": self.index, "salt": self.salt.hex(), "leaf_hash": self.leaf_hash}
 
 
+def _deterministic_salts(dataset_id: str, version: str, n: int, seed: str) -> list[bytes]:
+    """确定性 salt 派生：salt_i = SHA-256(dataset_id|version|i|seed)。
+
+    使确定性重放能复现同一 commitment（§69 replay 读取同一 frozen artifact）。
+    仅用于原型可复现性；正式部署可用 seller 私有熵替换 seed。
+    """
+    from valor.core.hashing import sha256_hex
+
+    out = []
+    for i in range(n):
+        h = sha256_hex(f"{dataset_id}|{version}|{i}|{seed}".encode("utf-8"))
+        out.append(bytes.fromhex(h)[:32])
+    return out
+
+
 # DatasetCommitment 类型定义在 asset 层（asset/commitments.py），本模块 re-export，
 # 保证全系统只有一个 canonical H(D) 定义。
 
@@ -53,16 +68,28 @@ def build_dataset_commitment(
     X: np.ndarray,
     y: np.ndarray,
     schema_hash: str,
+    salt_seed: str = "",
 ) -> tuple[DatasetCommitment, MerkleTree, list[CommittedRow]]:
     """构建数据集承诺：生成每行 salt → leaf → Merkle 树 → DatasetCommitment。
 
     返回 (commitment, tree, committed_rows)。tree 与 committed_rows（含 salt）
     属于卖方私有，不公开。
+
+    salt_seed：确定性重放的随机源（§69/§50）。asset version 创建时生成一次，
+    卖方私有 store 持久化；replay 必须读取同一 frozen artifact，禁止重放随机
+    生成不同 salt 导致 commitment 变化。独立调用（无 seed）才使用真随机 salt。
     """
     import secrets
 
     n = len(X)
-    salts: list[bytes] = [secrets.token_bytes(32) for _ in range(n)]
+    if salt_seed:
+        # 确定性 salt：同一 (dataset_id, version, index, seed) → 同一 salt
+        salts: list[bytes] = [
+            secrets.token_bytes(32) for _ in range(n)
+        ] if not salt_seed else _deterministic_salts(
+            dataset_id, version, n, salt_seed)
+    else:
+        salts = [secrets.token_bytes(32) for _ in range(n)]
     leaves: list[bytes] = []
     committed_rows: list[CommittedRow] = []
     for i in range(n):
@@ -111,10 +138,11 @@ class CommittedDatasetStore:
         X: np.ndarray,
         y: np.ndarray,
         schema_hash: str,
+        salt_seed: str = "",
     ) -> DatasetCommitment:
         commitment, tree, rows = build_dataset_commitment(
             dataset_id=dataset_id, version=version, X=X, y=y,
-            schema_hash=schema_hash)
+            schema_hash=schema_hash, salt_seed=salt_seed)
         record = {
             "commitment": commitment,
             "tree": tree,

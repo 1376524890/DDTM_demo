@@ -18,10 +18,10 @@ from .binding import TransactionBinding, build_binding
 from .scenario import CapstoneScenario
 from .orchestrator import OrchestrationResult, TransactionOrchestrator, run_capstone
 from .calibration import (
-    AuditLikelihoodCalibrator,
     AuditPolicyCertifier,
     CalibrationBundle,
     DetectionStats,
+    EmpiricalAuditLikelihood,
     FrozenArtifact,
     ValuationCalibrator,
 )
@@ -42,10 +42,10 @@ __all__ = [
     "OrchestrationResult",
     "TransactionOrchestrator",
     "run_capstone",
-    "AuditLikelihoodCalibrator",
     "AuditPolicyCertifier",
     "CalibrationBundle",
     "DetectionStats",
+    "EmpiricalAuditLikelihood",
     "FrozenArtifact",
     "ValuationCalibrator",
     "FullChainGate",

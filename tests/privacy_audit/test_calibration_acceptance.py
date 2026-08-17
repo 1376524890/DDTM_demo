@@ -127,8 +127,12 @@ def test_g11_vcg_payment_in_audit_voi():
 
     X, y = _block(500, seed=1)
     sc = CapstoneScenario(scenario_id="g11", seller_id="s", buyer_id="b")
-    sc.audit["privacy_budget"] = {"max_unique_rows": 200, "max_fraction": 0.4}
+    sc.audit["privacy_budget"] = {
+        "max_unique_rows": 200, "max_fraction": 0.4, "max_bytes": 200 * 784,
+    }
     sc.rights["audit_reveal_max_rows"] = 200
+    sc.rights["audit_reveal_max_fraction"] = 0.4
+    sc.rights["audit_reveal_max_bytes"] = 200 * 784
     clients = {f"node-{i}": TestClient(create_privacy_app(CommitChallengeVerifier(f"node-{i}")))
                for i in range(10)}
 

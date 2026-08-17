@@ -6,11 +6,14 @@ import numpy as np
 import pytest
 
 from valor.engine.calibration import (
-    AuditLikelihoodCalibrator,
+    EMPIRICAL_OUTCOMES,
+    EMPIRICAL_STATES,
     AuditPolicyCertifier,
     DetectionStats,
+    EmpiricalAuditLikelihood,
     FrozenArtifact,
     ValuationCalibrator,
+    freeze_empirical_likelihood,
 )
 
 
@@ -34,16 +37,36 @@ def test_valuation_calibrator_quantile():
     assert 0.0 <= art.data["coverage"] <= 1.0
 
 
-def test_likelihood_derived_from_detection():
-    cal = AuditLikelihoodCalibrator(
-        action_id="a1", breach_family="structural",
-        prior_state_probs={"G": 0.6, "L": 0.2, "B": 0.2})
-    det = DetectionStats(tp=8, fp=1, fn=2, tn=89)
-    rows = cal.likelihood_rows(det)
+def test_likelihood_empirical_from_detection():
+    """唯一正式似然校准 = EmpiricalAuditLikelihood（无人工 L=0.5）。"""
+    lik = EmpiricalAuditLikelihood(action_id="a1", breach_family="structural")
+    # B：真实 breach → BREACH_EVIDENCE 主导
+    for _ in range(8):
+        lik.add("B", "BREACH_EVIDENCE")
+    for _ in range(2):
+        lik.add("B", "PASS")
+    # G：干净 → PASS 主导（少量误报）
+    lik.add("G", "PASS")
+    lik.add("G", "PASS")
+    lik.add("G", "BREACH_EVIDENCE")
+    # L：轻度污染 → CLAIM_NOT_SUPPORTED，与 B 区分
+    lik.add("L", "CLAIM_NOT_SUPPORTED")
+    lik.add("L", "PASS")
+    rows = lik.likelihood_rows()
     # 高敏感度 → BREACH_EVIDENCE 下 B 的概率高
     assert rows["BREACH_EVIDENCE"]["B"] > rows["BREACH_EVIDENCE"]["G"]
-    art = cal.freeze(det=det, policy_hash="p" * 64)
-    assert art.data["sensitivity"] == pytest.approx(8 / 10)
+    assert rows["BREACH_EVIDENCE"]["B"] > rows["BREACH_EVIDENCE"]["L"]
+    # L ≠ B：L 不产生 BREACH_EVIDENCE 主导
+    assert rows["BREACH_EVIDENCE"]["L"] < rows["BREACH_EVIDENCE"]["B"]
+    # 归一化
+    for s in EMPIRICAL_STATES:
+        assert abs(sum(rows[y][s] for y in EMPIRICAL_OUTCOMES) - 1.0) < 1e-9
+    # freeze 确定性
+    art = freeze_empirical_likelihood(
+        lik, policy_hash="p" * 64, calibration_hash="c" * 64)
+    assert art["kind"] == "audit_likelihood"
+    assert art["artifact_hash"] == freeze_empirical_likelihood(
+        lik, policy_hash="p" * 64, calibration_hash="c" * 64)["artifact_hash"]
 
 
 def test_certificate_frozen_p_breach():

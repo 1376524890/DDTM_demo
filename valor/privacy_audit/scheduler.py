@@ -82,6 +82,7 @@ class PrivacyAuditScheduler:
         eta_b: float = 0.0,
         eta_o: float = 0.0,
         timeout_s: float = 10.0,
+        public_keys: dict[str, str] | None = None,  # node_id -> public_key_hex (P0-F)
     ) -> None:
         self.registry = registry
         self.f = f
@@ -93,6 +94,7 @@ class PrivacyAuditScheduler:
         self.eta_b = eta_b
         self.eta_o = eta_o
         self.timeout_s = timeout_s
+        self.public_keys = public_keys or {}
 
     def _default_client(self, node_id: str):
         from .client import PrivacyAuditClient
@@ -160,8 +162,26 @@ class PrivacyAuditScheduler:
             except Exception:
                 offline.append(str(node_id))
 
-        # 6. quorum-by-result
-        results = [e["result"] for e in evidence_plain.values()]
+        # 6. 验签（P0-F / MFC-G05）：非法/缺失签名证据不计入 quorum。
+        #    未配置 public_keys（独立测试）时视为允许（向后兼容单测），但正式
+        #    分布式路径必须提供公钥。scheduler 只统计验签通过的证据。
+        valid_evidence = {}
+        for nid, ev in evidence_plain.items():
+            pk = self.public_keys.get(str(nid))
+            if pk is not None:
+                from valor.security.signing import verify_evidence_signature
+
+                if not verify_evidence_signature(
+                        public_key_hex=pk, evidence_plain=ev,
+                        signature=ev.get("signature", "")):
+                    continue  # INVALID_EVIDENCE_SIGNATURE → 不计入
+            elif ev.get("signature", ""):
+                # 有签名但未提供公钥 → 无法验签，fail closed
+                continue
+            valid_evidence[nid] = ev
+
+        # 6b. quorum-by-result（只统计验签通过的证据）
+        results = [e["result"] for e in valid_evidence.values()]
         counts: dict[str, int] = {}
         for r in results:
             counts[r] = counts.get(r, 0) + 1
@@ -185,7 +205,7 @@ class PrivacyAuditScheduler:
             action_id=action.action_id, task_hash=task_hash,
             challenge=challenge, status=status, cert_result=cert_result,
             committee=committee, payments=payments, mc_a_pay=mc_a_pay,
-            evidence_hashes=[e["evidence_id"] for e in evidence_plain.values()],
+            evidence_hashes=[e["evidence_id"] for e in valid_evidence.values()],
             result_counts=counts, disclosure=disclosure.to_plain(), cost=cost,
         )
 

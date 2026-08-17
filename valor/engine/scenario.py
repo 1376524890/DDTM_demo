@@ -84,6 +84,20 @@ class CapstoneScenario:
         "eta_b": 0.1, "eta_o": 0.0, "seed": 0,
         "cost": 2.0,
         "alpha_shift": 0.01, "label_error_threshold": 0.28,
+        # 审计报价成本项（P0-B，显式配置，禁止默认）
+        "chain_fee": 0.0, "challenge_cost": 0.0, "dispute_cost": 0.0,
+        "max_audit_steps": 10,
+        # 审计市场快照（P0-B）：由 ExperimentWorld / 上游注入，禁止 executor
+        # 内部人工生成 bids。qualified_nodes + bids 显式给出（TEST_FIXTURE 默认）。
+        "market": {
+            "snapshot_id": "mnist-market-v1",
+            "family": "quality",
+            "min_stake": 0.0,
+            "qualified_nodes": [f"node-{i}" for i in range(10)],
+            "bids": {f"node-{i}": round(10.0 + i * 1.5, 2) for i in range(10)},
+            "source_kind": "THREAT_SCENARIO",
+            "source_ref": "scenario.audit.market (TEST_FIXTURE)",
+        },
     })
     # 安全/先验/似然校准 artifact 引用（P6 离线冻结）
     audit_prior: dict[str, Any] = field(default_factory=lambda: {
@@ -160,6 +174,10 @@ class CapstoneScenario:
     seller_breach: bool = False
     buyer_misuse: bool = False
     entitlement_pass: bool = True
+    # P0-I：Entitlement / Compliance 输入状态（机制判定，不读标准答案）。
+    #   grant_authority=False / version_revoked=True → Entitled 失败
+    #   buyer_eligible=False / menu_conflict=True    → Compliant 失败
+    entitlement: dict[str, Any] = field(default_factory=dict)
 
     def to_plain(self) -> dict[str, Any]:
         return {
@@ -189,6 +207,7 @@ class CapstoneScenario:
             "seller_breach": self.seller_breach,
             "buyer_misuse": self.buyer_misuse,
             "entitlement_pass": self.entitlement_pass,
+            "entitlement": self.entitlement,
         }
 
     @property
@@ -240,6 +259,7 @@ def scenario_from_config(cfg: dict) -> CapstoneScenario:
         payoff_matrix=payoff_matrix,
         rights=rights,
         entitlement_pass=ent.get("grant_authority", True),
+        entitlement=ent,
         seller_breach=cfg.get("seller_breach") or False,
         buyer_misuse=cfg.get("buyer_misuse") or False,
     )

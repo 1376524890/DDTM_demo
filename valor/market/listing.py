@@ -95,10 +95,14 @@ def create_listing(
     metadata_claims: dict[str, Any] | None = None,
     provenance: str = "",
     created_at: str = "",
+    listing_id: str = "",
 ) -> Listing:
-    """便捷构造 Listing，自动生成 listing_id 与 metadata claim。"""
+    """便捷构造 Listing，自动生成 listing_id 与 metadata claim。
+
+    listing_id 可显式传入以实现确定性重放（§69）。
+    """
     return Listing(
-        listing_id=new_id("list", entropy=12),
+        listing_id=listing_id or new_id("list", entropy=12),
         seller_id=seller_id,
         asset_id=asset_id,
         asset_version=asset_version,

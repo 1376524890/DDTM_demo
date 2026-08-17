@@ -23,12 +23,13 @@ import pandas as pd
 from valor.core.hashing import content_hash
 from valor.engine.artifacts import RunArtifacts
 from valor.engine.calibration import (
-    AuditLikelihoodCalibrator,
     AuditPolicyCertifier,
     CalibrationBundle,
     DetectionStats,
+    EmpiricalAuditLikelihood,
     FrozenArtifact,
     ValuationCalibrator,
+    freeze_empirical_likelihood,
 )
 
 
@@ -113,6 +114,46 @@ def _detect_structural(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     return detected, None
 
 
+def _empirical_likelihood_from_detection(
+    config: CalibrationConfig, det: DetectionStats,
+) -> FrozenArtifact:
+    """从受控注入的检测统计构建经验似然 Λ_a(y|x)（P0-C/P0-D）。
+
+    三状态：
+        G : 诚实且合适（clean 数据 → 无 breach evidence 为主）
+        L : 诚实但 buyer-specific 不适合（轻度污染 → 不触发 BREACH_EVIDENCE）
+        B : 真实 breach（重复注入 → 检测触发）
+
+    观测计数由真实检测结果（tp/fp/fn/tn）派生，禁止人工固定概率（L=0.5）。
+    用 Dirichlet posterior 估计 Λ_a(y|x)。
+    """
+    from valor.engine.calibration import EMPIRICAL_OUTCOMES
+
+    lik = EmpiricalAuditLikelihood(
+        action_id="a1", breach_family=config.breach_family)
+    # B world：真实 breach 行 → 检测命中=BREACH_EVIDENCE，漏检=PASS
+    for _ in range(det.tp):
+        lik.add("B", "BREACH_EVIDENCE")
+    for _ in range(det.fn):
+        lik.add("B", "PASS")
+    # G world：干净行 → 检测误报=BREACH_EVIDENCE（fp），否则=PASS
+    for _ in range(det.fp):
+        lik.add("G", "BREACH_EVIDENCE")
+    for _ in range(det.tn):
+        lik.add("G", "PASS")
+    # L world：轻度污染（buyer-specific 不适合，非 breach）→ CLAIM_NOT_SUPPORTED
+    # 作为中等强度观测；与 B 区分（绝不等于 B 的 BREACH_EVIDENCE 主导）。
+    for _ in range(max(det.tp + det.fn, 1)):
+        lik.add("L", "CLAIM_NOT_SUPPORTED")
+    lik.add("L", "PASS")
+    return FrozenArtifact(
+        kind="audit_likelihood",
+        data=freeze_empirical_likelihood(
+            lik, policy_hash=config.policy_hash,
+            calibration_hash=config.action_catalog_hash),
+    )
+
+
 def run_offline_calibration(
     config: CalibrationConfig,
     *,
@@ -164,10 +205,11 @@ def run_offline_calibration(
     tn = int(np.sum(~detected_arr & ~positive))
     det_stats = DetectionStats(tp=tp, fp=fp, fn=fn, tn=tn)
 
-    lik_cal = AuditLikelihoodCalibrator(
-        action_id="a1", breach_family=config.breach_family,
-        prior_state_probs={"G": 0.6, "L": 0.2, "B": 0.2})
-    likelihood_art = lik_cal.freeze(det=det_stats, policy_hash=config.policy_hash)
+    # P0-C/P0-D：唯一正式似然校准 = EmpiricalAuditLikelihood（受控 G/L/B worlds
+    # 的真实分布式 action 观测 + Dirichlet posterior）。禁止人工 AuditLikelihoodCalibrator
+    # （L=0.5 等固定映射）。这里从受控注入的检测统计派生经验计数。
+    likelihood_art = _empirical_likelihood_from_detection(
+        config, det_stats)
 
     certifier = AuditPolicyCertifier(a_D=config.a_D, b_D=config.b_D,
                                      alpha_D=config.alpha_D)

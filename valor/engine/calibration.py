@@ -215,52 +215,6 @@ class DetectionStats:
         return {"tp": self.tp, "fp": self.fp, "fn": self.fn, "tn": self.tn}
 
 
-class AuditLikelihoodCalibrator:
-    """由检测统计派生 Λ_j(y, x)，不手填似然。"""
-
-    def __init__(self, *, action_id: str, breach_family: str,
-                 prior_state_probs: dict[str, float]) -> None:
-        self.action_id = action_id
-        self.breach_family = breach_family
-        self.prior_state_probs = prior_state_probs  # {G,L,B}
-
-    def likelihood_rows(self, det: DetectionStats) -> dict[str, dict[str, float]]:
-        """Λ_j(y, x) 由 sensitivity/FPR 派生。
-
-        三态 x∈{G,L,B}；观测 y∈{PASS, QUALITY_FAIL, BREACH_EVIDENCE}。
-        检测对 G/L 无区分（不触发 breach），对 B 触发 BREACH_EVIDENCE。
-        """
-        tpr = det.sensitivity
-        fpr = det.false_positive_rate
-        # 对 Good/Latent：P(BREACH_EVIDENCE)=FPR；P(PASS)=1-FPR
-        # 对 Breach：P(BREACH_EVIDENCE)=TPR；P(PASS)=1-TPR
-        # 三行必须全部非零（bayes_update 需 Σ Λ_j(y,x) π_x > 0 对任意 y）。
-        # QUALITY_FAIL：表示 latent 质量问题的中等强度观测（区分 L 与 G/B）。
-        rows = {
-            "PASS": {
-                "G": 1.0 - fpr, "L": 1.0 - fpr, "B": 1.0 - tpr,
-            },
-            "QUALITY_FAIL": {
-                "G": fpr, "L": 0.5, "B": fpr,
-            },
-            "BREACH_EVIDENCE": {
-                "G": fpr, "L": 0.5, "B": tpr,
-            },
-        }
-        return rows
-
-    def freeze(self, *, det: DetectionStats, policy_hash: str) -> FrozenArtifact:
-        return FrozenArtifact(kind="audit_likelihood", data={
-            "action_id": self.action_id,
-            "breach_family": self.breach_family,
-            "detection_stats": det.to_plain(),
-            "sensitivity": det.sensitivity,
-            "false_positive_rate": det.false_positive_rate,
-            "rows": self.likelihood_rows(det),
-            "policy_hash": policy_hash,
-        })
-
-
 # ---------------------------------------------------------------------------
 # 3. 审计策略证书（Audit Policy Certificate）
 # ---------------------------------------------------------------------------
@@ -273,13 +227,39 @@ class AuditPolicyCertifier:
         self.alpha_D = alpha_D
 
     def certify(self, *, cell_id: str, breach_family: str, tp: int, fn: int,
-                policy_hash: str, action_catalog_hash: str) -> FrozenArtifact:
-        """用实际 TP/FN 计算 Beta 下界，冻结证书。"""
+                policy_hash: str, action_catalog_hash: str,
+                envelope_cells: list[dict] | None = None) -> FrozenArtifact:
+        """用实际 TP/FN 计算 Beta 下界，冻结证书。
+
+        envelope_cells：认证参数包络 Ω_allowed（每项含 cell_id/p_breach_lower_sys
+        或 tp/fn）。PreLock 用整包络 max_ω B_S^*(ω)（P0-J），不退化单点。
+        """
         cat = CertificationCatalog()
         cat.register(CertifiedCell(
             cell_id, self.a_D, self.b_D, self.alpha_D,
             {breach_family: (tp, fn)}))
         p_b_lower = cat.p_breach_lower(cell_id, breach_family)
+        # Ω_allowed：默认单 cell；显式包络时逐 cell 计算 B_S 输入。
+        envelope = []
+        if envelope_cells:
+            for c in envelope_cells:
+                if "p_breach_lower_sys" in c:
+                    envelope.append({"cell_id": c.get("cell_id", cell_id),
+                                     "p_breach_lower_sys": float(c["p_breach_lower_sys"]),
+                                     "breach_family": breach_family})
+                else:
+                    cid = c.get("cell_id", cell_id)
+                    cat.register(CertifiedCell(
+                        cid, self.a_D, self.b_D, self.alpha_D,
+                        {breach_family: (int(c["tp"]), int(c["fn"]))}))
+                    envelope.append({"cell_id": cid,
+                                     "p_breach_lower_sys": cat.p_breach_lower(
+                                         cid, breach_family),
+                                     "breach_family": breach_family})
+        else:
+            envelope = [{"cell_id": cell_id,
+                         "p_breach_lower_sys": p_b_lower,
+                         "breach_family": breach_family}]
         return FrozenArtifact(kind="audit_policy_certificate", data={
             "policy_hash": policy_hash,
             "action_catalog_hash": action_catalog_hash,
@@ -288,6 +268,7 @@ class AuditPolicyCertifier:
             "a_D": self.a_D, "b_D": self.b_D, "alpha_D": self.alpha_D,
             "tp": tp, "fn": fn,
             "p_breach_lower_sys": p_b_lower,
+            "envelope": envelope,
         })
 
     @classmethod
@@ -331,7 +312,6 @@ __all__ = [
     "EMPIRICAL_STATES",
     "EMPIRICAL_OUTCOMES",
     "DEFAULT_DIRICHLET_ALPHA",
-    "AuditLikelihoodCalibrator",
     "AuditPolicyCertifier",
     "CalibrationBundle",
 ]

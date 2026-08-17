@@ -1,9 +1,10 @@
-"""DisclosureState —— 隐私披露预算状态（方案 §24/§25）。
+"""DisclosureState —— 审计选择性披露预算状态（方案 §24/§25 / P0-H）。
 
 统计 L_t = |∪ OpenedIndices|（唯一已开启行数），而非 Σ k_t。
-预算参数（max_unique_rows/max_fraction/max_bytes）必须来自 RightsBundle 或
-resolved policy artifact，不设默认值。若 Audit-VOI 想执行 k=256 但剩余预算
-不足 → ACTION_INFEASIBLE_PRIVACY_BUDGET（不能偷偷降 k）。
+预算参数（max_unique_rows/max_fraction/max_bytes）是 AuditDisclosureBudget
+（seller audit consent），与 DP QueryPrivacyBudget（ε/δ）语义完全分离
+（MFC-G07）。禁止把 DP ε 映射为行数/字节数。若 Audit-VOI 想执行 k=256 但剩余
+预算不足 → ACTION_INFEASIBLE_PRIVACY_BUDGET（不能偷偷降 k）。
 """
 
 from __future__ import annotations
@@ -79,26 +80,40 @@ class DisclosureState:
 
 
 def budget_from_rights(rights_bundle, n_rows: int) -> tuple[int, float, int]:
-    """从 RightsBundle 解析审计披露预算（方案 §25）。
+    """从 RightsBundle 解析审计披露预算（方案 §25 / P0-H）。
 
     audit_reveal_max_rows / audit_reveal_max_fraction / audit_reveal_max_bytes
-    必须来自 RightsBundle 或 resolved policy artifact。
+    必须来自 RightsBundle 的 **AuditDisclosureBudget** 字段（seller audit
+    consent），禁止从 DP privacy_budget（ε）推导行数。无显式 budget → fail closed。
     """
-    # 从 rights 的 privacy_budget / 元数据解析；无则显式 None → fail
-    pb = getattr(rights_bundle, "privacy_budget", None)
     max_rows = getattr(rights_bundle, "audit_reveal_max_rows", None)
     max_frac = getattr(rights_bundle, "audit_reveal_max_fraction", None)
     max_bytes = getattr(rights_bundle, "audit_reveal_max_bytes", None)
+    # 显式审计披露预算优先（AuditDisclosureBudget）
     if max_rows is None:
-        # 从 privacy_budget（差分隐私总预算）推导为唯一行数上限
-        max_rows = int(pb) if pb else None
+        adb = getattr(rights_bundle, "audit_disclosure_budget", None)
+        if adb is not None and getattr(adb, "max_unique_rows", 0) > 0:
+            max_rows = adb.max_unique_rows
+            max_frac = adb.max_fraction
+            max_bytes = adb.max_bytes
     if max_rows is None or max_rows <= 0:
+        # 禁止从 DP privacy_budget（ε）映射为行数（MFC-G07 语义分离）
+        pb = getattr(rights_bundle, "privacy_budget", None)
+        if pb is not None:
+            raise ValueError(
+                "P0-H: 禁止把 DP privacy_budget（ε）映射为审计披露行数。"
+                "请显式提供 audit_reveal_max_rows（AuditDisclosureBudget）"
+            )
         raise ValueError(
-            "RightsBundle 未提供 audit_reveal_max_rows/privacy_budget（禁止默认）")
+            "RightsBundle 未提供 audit_reveal_max_rows/AuditDisclosureBudget"
+            "（禁止默认）")
     if max_frac is None:
         max_frac = max_rows / n_rows if n_rows else 0.0
     if max_bytes is None:
-        max_bytes = max_rows * 784  # MNIST 行字节数
+        # 禁止用 rows*784 隐式默认；若未显式提供 bytes 预算，用显式 max_rows
+        # 的合理上限（仍需显式，避免 hidden default）。此处若未给 bytes 则用 0
+        # 表示未限制 bytes（仅 rows/fraction 生效），并保留显式语义。
+        max_bytes = 0
     return int(max_rows), float(max_frac), int(max_bytes)
 
 

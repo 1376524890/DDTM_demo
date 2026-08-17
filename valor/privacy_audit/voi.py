@@ -77,6 +77,8 @@ class PrivacyAuditVOIExecutor:
         n_nodes: int = 10,
         f: int = 2,
         seller_store: CommittedDatasetStore | None = None,
+        seller_committed=None,  # P0-A：上游 SellerCommittedDataset（优先，禁止再 commit）
+        dataset_commitment=None,  # P0-A：上游 canonical DatasetCommitment
         node_client_factory: Callable[[str], Any] | None = None,
         certificate_artifact=None,
     ) -> None:
@@ -91,11 +93,35 @@ class PrivacyAuditVOIExecutor:
         self.node_client_factory = node_client_factory
         self.certificate_artifact = certificate_artifact
         self._store = seller_store or CommittedDatasetStore("seller_private")
+        self._seller = seller_committed
+        self._upstream_commitment = dataset_commitment
         self._commitment: DatasetCommitment | None = None
         self._claim: AggregateClaim | None = None
 
     def _ensure_committed(self, tx_id: str) -> tuple[DatasetCommitment, AggregateClaim]:
-        """卖方承诺候选数据 + 生成声明（交易绑定后、挑战前）。"""
+        """卖方承诺候选数据 + 生成声明（交易绑定后、挑战前）。
+
+        P0-A：若上游已提供 canonical SellerCommittedDataset / DatasetCommitment，
+        直接消费，禁止再次 SellerCommittedDataset.create() 生成第二个 commitment。
+        仅当独立运行（无上游）时才在本地创建唯一实例。
+        """
+        if self._seller is not None:
+            self._commitment = self._seller.commitment
+            self._claim = claim_from_data(
+                claim_type=self.claim_type, X=np.asarray(self.candidate_X),
+                y=np.asarray(self.candidate_y),
+                dataset_commitment_hash=self._seller.commitment.commitment_hash,
+            )
+            return self._seller.commitment, self._claim
+        if self._upstream_commitment is not None:
+            self._commitment = self._upstream_commitment
+            self._claim = claim_from_data(
+                claim_type=self.claim_type, X=np.asarray(self.candidate_X),
+                y=np.asarray(self.candidate_y),
+                dataset_commitment_hash=self._upstream_commitment.commitment_hash,
+            )
+            return self._upstream_commitment, self._claim
+        # 无上游：本地唯一创建（独立 privacy audit 运行路径）
         dataset_id = f"cand-{tx_id}"
         from valor.seller import SellerCommittedDataset
 
@@ -136,18 +162,30 @@ class PrivacyAuditVOIExecutor:
         tx_id = str(ctx["binding"].tx_id)
         commitment, claim = self._ensure_committed(tx_id)
 
-        # 披露预算（来自 scenario 或 rights；显式）
+        # 披露预算（P0-H）：必须来自 AuditDisclosureBudget / 显式 audit consent。
+        # 禁止从 DP privacy_budget（ε）映射行数，禁止 max_fraction=0.5 /
+        # max_bytes=rows*784 隐式默认。
         budget_cfg = sc.audit.get("privacy_budget", {})
         n_rows = commitment.n_rows
         max_rows = budget_cfg.get("max_unique_rows",
                                   sc.rights.get("audit_reveal_max_rows"))
         if max_rows is None:
-            raise ValueError("需显式 audit_reveal_max_rows/privacy_budget（禁止默认）")
+            raise ValueError(
+                "需显式 audit_reveal_max_rows（AuditDisclosureBudget），"
+                "禁止默认/DP 映射")
+        max_frac = budget_cfg.get("max_fraction",
+                                  sc.rights.get("audit_reveal_max_fraction"))
+        if max_frac is None:
+            raise ValueError("需显式 audit_reveal_max_fraction（禁止默认 0.5）")
+        max_bytes = budget_cfg.get("max_bytes",
+                                   sc.rights.get("audit_reveal_max_bytes"))
+        if max_bytes is None:
+            raise ValueError("需显式 audit_reveal_max_bytes（禁止 rows*784 默认）")
         disclosure = DisclosureState(
             dataset_commitment_hash=commitment.commitment_hash,
             max_unique_rows=int(max_rows),
-            max_fraction=budget_cfg.get("max_fraction", 0.5),
-            max_bytes=budget_cfg.get("max_bytes", int(max_rows) * 784),
+            max_fraction=float(max_frac),
+            max_bytes=int(max_bytes),
             _n_rows=n_rows)
 
         registry = self._registry()
@@ -168,12 +206,14 @@ class PrivacyAuditVOIExecutor:
         loss = LossMatrix(loss=sc.loss_matrix)
 
         # action catalog：k 作为不同 action（似然用校准 artifact 或默认）
+        # expected_cash_cost 由市场报价产生，禁止 0.0 占位（P0-B/P0-C）。
         catalog = ActionCatalog()
         for k in self.challenge_sizes:
             lik_rows = self._likelihood_rows()
             lik = ActionLikelihood(action_id=f"a-{k}", rows=lik_rows)
             catalog.register(CertifiedAction(
-                f"a-{k}", lik, expected_cash_cost=0.0, payer="SELLER"))
+                f"a-{k}", lik, expected_cash_cost=self._quote_cost(k, registry, bids),
+                payer="SELLER"))
 
         steps = []
         posterior = belief.to_plain()
@@ -203,6 +243,7 @@ class PrivacyAuditVOIExecutor:
                 "unique_disclosure_after": disclosure.unique_disclosure,
                 "cost": res.cost.to_plain(),
                 "result_counts": res.result_counts,
+                "payer": "SELLER",
             })
 
         # 认证 p̲_B^sys（冻结证书或默认）
@@ -217,9 +258,9 @@ class PrivacyAuditVOIExecutor:
                 {"breach": (cert["tp"], cert["fn"])}))
             p_b_lower = cat.p_breach_lower("c1", "breach")
 
-        total_pay = sum(s["mc_a_pay"] for s in steps)
-        audit_pay_s = total_pay * 0.5
-        audit_pay_b = total_pay * 0.5
+        # 逐 action 按 payer 归属（P0-B / MFC-G08）：本策略全 SELLER → 全记 seller
+        audit_pay_s = sum(s["mc_a_pay"] for s in steps if s.get("payer", "SELLER") == "SELLER")
+        audit_pay_b = sum(s["mc_a_pay"] for s in steps if s.get("payer", "SELLER") == "BUYER")
 
         return PrivacyAuditVOIResult(
             posterior=posterior, p_breach_lower_sys=p_b_lower,
@@ -229,6 +270,24 @@ class PrivacyAuditVOIExecutor:
             action_catalog_hash=catalog.catalog_hash,
             audit_policy_hash=content_hash({"policy_id": "cc-audit"}),
         )
+
+    def _quote_cost(self, k: int, registry, bids) -> float:
+        """对 action k 生成市场报价（Reverse VCG expected cash cost）。
+
+        用真实 registry+bids（由上游注入），禁止 0.0 / config cost 占位（P0-B）。
+        """
+        from valor.core.errors import CounterfactualInfeasibleError
+
+        m = self.m
+        try:
+            from valor.market.reverse_vcg import reverse_vcg_payments
+
+            payments, _ = reverse_vcg_payments(
+                registry, family="quality", m=m, bids=bids,
+                min_stake=0.0)
+            return float(sum(payments.values()))
+        except CounterfactualInfeasibleError:
+            return float("inf")
 
     def _likelihood_rows(self) -> dict:
         """似然行（P6 校准后应来自 artifact；此处默认结构）。"""

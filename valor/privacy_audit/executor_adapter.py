@@ -38,11 +38,18 @@ def make_privacy_audit_executor(
             raise ValueError(
                 "PrivacyAuditExecutor 需要 ctx.candidate_df/y_candidate"
                 "（卖方候选数据，用于承诺）")
+        # P0-A：优先消费上游 canonical commitment（orchestrator 已构建唯一实例）。
+        # 禁止审计层重新 commit；seller_store 仅作为无上游独立运行的 fallback。
+        upstream_seller = ctx.get("seller_committed")
+        upstream_commitment = ctx.get("dataset_commitment")
+        store = seller_store or ctx.get("seller_store")
 
         ex = PrivacyAuditVOIExecutor(
             scenario=sc, candidate_X=cand_X, candidate_y=cand_y,
             claim_type=claim_type, challenge_sizes=challenge_sizes,
-            n_nodes=n_nodes, f=f, seller_store=seller_store,
+            n_nodes=n_nodes, f=f, seller_store=store,
+            seller_committed=upstream_seller,
+            dataset_commitment=upstream_commitment,
             node_client_factory=node_client_factory,
             certificate_artifact=certificate_artifact,
         )

@@ -28,10 +28,10 @@ class SellerCommittedDataset:
     @classmethod
     def create(
         cls, store: CommittedDatasetStore, *, dataset_id: str, version: str,
-        X: np.ndarray, y: np.ndarray, schema_hash: str,
+        X: np.ndarray, y: np.ndarray, schema_hash: str, salt_seed: str = "",
     ) -> "SellerCommittedDataset":
         store.store(dataset_id=dataset_id, version=version, X=X, y=y,
-                    schema_hash=schema_hash)
+                    schema_hash=schema_hash, salt_seed=salt_seed)
         return cls(store, dataset_id)
 
     def public_artifact(self) -> dict:

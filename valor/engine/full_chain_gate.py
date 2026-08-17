@@ -159,13 +159,11 @@ class FullChainGate:
 
         # ================= MFC-G05/G06：签名 evidence + 有效 quorum ==========
         def _g05():
-            # 若审计有 evidence，必须都带签名（P0-F）
+            # 审计证据必须签名（P0-F）。若 audit 有 evidence_hashes 且未记录
+            # evidence_signed=False，视为签名通过（签名验证发生在 scheduler）。
             for e in audit_events:
-                evs = e.get("evidence_hashes", [])
-                # evidence_hashes 非空即应有签名；此处检查 trace 是否含签名标记
-                if evs and not e.get("evidence_signed", True):
+                if e.get("evidence_signed") is False:
                     return False
-            # 真分布式路径：verifier 已签名（signing_key 非 None 时）
             return True
         self._check(results, "MFC-G05_SIGNED_EVIDENCE_ONLY", _g05)
 

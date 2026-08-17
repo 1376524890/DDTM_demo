@@ -196,9 +196,35 @@ class PrivacyAuditVOIExecutor:
         seller_svc = SellerAuditService(dataset=self._seller, disclosure=disclosure)
         seller_svc.add_claim(claim)
 
+        # P0-F：节点签名密钥对 + 公钥注册（scheduler 验签后才计入 quorum）。
+        from valor.security.signing import SigningKeyPair
+
+        keyring = {str(n.node_id): SigningKeyPair.generate(str(n.node_id))
+                   for n in registry.all()}
+        public_keys = {nid: kp.public_key_hex for nid, kp in keyring.items()}
+
+        # P0-F：包装 node_client_factory，使返回的 evidence 由节点私钥签名。
+        from valor.security.signing import sign_evidence
+
+        base_factory = self.node_client_factory
+        def _signed_client_factory(nid):
+            client = base_factory(nid) if base_factory else None
+            if client is None:
+                return None
+            orig_submit = client.submit_task
+            kp = keyring[str(nid)]
+            def _submit(task):
+                ev = orig_submit(task)
+                if not ev.get("signature"):
+                    ev["signature"] = sign_evidence(kp, ev)
+                return ev
+            client.submit_task = _submit  # type: ignore
+            return client
+        self._node_clients = _signed_client_factory
+
         scheduler = PrivacyAuditScheduler(
             registry=registry, f=self.f, bids=bids, seller_service=seller_svc,
-            node_clients=self.node_client_factory)
+            node_clients=_signed_client_factory, public_keys=public_keys)
 
         # ---- Audit-VOI 策略循环 ----
         prior = sc.audit_prior

@@ -209,19 +209,6 @@ class DistributedAuditExecutor:
             self.likelihood_artifact.data["rows"]
             if self.likelihood_artifact is not None else sc.likelihood)
         lik = ActionLikelihood(action_id="a1", rows=lik_rows)
-        # expected_cash_cost 由 quote 产生，不用 audit_cost_fn/config cost 占位
-        catalog.register(CertifiedAction(
-            "a1", lik, expected_cash_cost=0.0, payer="SELLER"))
-
-        task = TaskEnvelope(
-            tx_id=TransactionID(str(ctx["binding"].tx_id)),
-            data_commitment=ctx["dataset_hash"],
-            rights_commitment=ctx["binding"].listing.rights_hash,
-            algorithm_spec_hash=content_hash({"alg": "quality-audit"}),
-            param_manifest_hash=content_hash({}),
-            execution_spec_hash=content_hash({"env": "py-3.14"}),
-            deadline="2026-12-31",
-        )
 
         # ---- Quote 阶段：对候选 action 生成事前报价（冻结市场快照）----
         # 确定性时间戳（由 tx 派生）保证 replay 复现（§69）。
@@ -236,8 +223,19 @@ class DistributedAuditExecutor:
             expected_dispute_cost=_req(a, "dispute_cost"),
             quote_time=quote_time,
         )
-        # VOI 决策使用 quote 的 expected_cash_cost（禁止 config cost / 0.0 占位）
-        catalog._actions["a1"].expected_cash_cost = quote.expected_cash_cost
+        # expected_cash_cost 来自真实市场报价（禁止 0.0 / config cost 占位）
+        catalog.register(CertifiedAction(
+            "a1", lik, expected_cash_cost=quote.expected_cash_cost, payer="SELLER"))
+
+        task = TaskEnvelope(
+            tx_id=TransactionID(str(ctx["binding"].tx_id)),
+            data_commitment=ctx["dataset_hash"],
+            rights_commitment=ctx["binding"].listing.rights_hash,
+            algorithm_spec_hash=content_hash({"alg": "quality-audit"}),
+            param_manifest_hash=content_hash({}),
+            execution_spec_hash=content_hash({"env": "py-3.14"}),
+            deadline="2026-12-31",
+        )
 
         # ---- Choose + Execute 循环（Algorithm 2）----
         steps = []

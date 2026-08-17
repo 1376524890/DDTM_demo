@@ -237,18 +237,17 @@ def scenario_from_config(cfg: dict) -> CapstoneScenario:
     else:
         payoff_matrix = _MNIST_PAYOFF  # MNIST 默认 10x10
 
-    rights = cfg.get("rights", {
-        "r_class": "data", "access_mode": "COMPUTE_ONLY",
-        "t0": "2026-01-01T00:00:00Z", "t1": "2026-12-31T00:00:00Z",
-        "q": 3, "purposes": ["digit-classification"],
-        "scope": "buyer_org_A", "exclusivity": False,
-        "redistribution": False, "derivative": True,
-        "not_applicable_reason": None,
-    })
     def _req(key: str) -> Any:
         if key not in cfg or cfg[key] is None:
             raise ValueError(f"[scenario_from_config] 正式交易 config 缺失必需字段: {key!r}")
         return cfg[key]
+
+    # P0-Q：正式交易 config 的 rights 必须显式给出（fail closed，禁止业务默认）。
+    rights = _req("rights")
+    if not isinstance(rights, dict) or "access_mode" not in rights:
+        raise ValueError(
+            "[scenario_from_config] 正式交易 config 必须显式提供 rights（含 access_mode），"
+            "禁止业务默认")
 
     ent = cfg.get("entitlement") or {}
     sc = CapstoneScenario(

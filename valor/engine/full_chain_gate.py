@@ -108,7 +108,15 @@ class FullChainGate:
              "--root", str(repo / "valor")],
             capture_output=True, text=True, timeout=120,
         )
-        return "未发现业务默认值" in proc.stdout or "未发现" in proc.stdout
+        biz_ok = "未发现业务默认值" in proc.stdout or "未发现" in proc.stdout
+        # MFC-G43：禁止模式扫描（expected_cash_cost=0 / total_pay*0.5 / 手工 TP-FN）
+        proc2 = subprocess.run(
+            [sys.executable, str(repo / "scripts" / "check_forbidden_patterns.py"),
+             "--root", str(repo / "valor")],
+            capture_output=True, text=True, timeout=120,
+        )
+        forb_ok = "未发现禁止模式" in proc2.stdout
+        return biz_ok and forb_ok
 
     def run(self) -> dict:
         results: dict[str, bool] = {}

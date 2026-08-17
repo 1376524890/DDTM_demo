@@ -489,10 +489,12 @@ class TransactionOrchestrator:
         # 这里从审计 trace 的 BREACH_EVIDENCE 判定 seller breach（机制观察证据）。
         breach_during_audit = _evidence_seller_breach(audit)
         sm = TransactionStateMachine()
+        # P0-K：buyer breach 不在此处用 scenario flag 判定；由 usage evidence
+        # 事后派生（MFC-G30）。此处只处理 entitled/audit/price。
         terminal = sm.resolve(StateMachineInput(
             entitled=ent_pass, compliant=True,
             breach_during_audit=breach_during_audit,
-            price_decision=clearance.decision, buyer_breach=sc.buyer_misuse))
+            price_decision=clearance.decision, buyer_breach=False))
         self._stage("state", {"terminal": terminal.value})
         ledger_bal = Ledger()
         for acc, amt in {"E_B^P": sc.buyer["w_b_rem"], "E_S^A": audit_pay_s,
@@ -915,21 +917,6 @@ class TransactionOrchestrator:
                 mode=rights.access_mode.value,
             )
 
-        self._stage("usage", {"enabled": True, "results": results,
-                              "lineage_last": chain.last(),
-                              "chain_valid": chain_valid,
-                              "n_requests": len(results),
-                              "buyer_breach": buyer_breach,
-                              "buyer_breach_reasons": buyer_breach_res["reasons"],
-                              "usage_violation_evidence": [e.to_plain() for e in evidences],
-                              "deletion": deletion})
-        self._log(ledger, stage="USAGE", event_type="PEP_ENFORCE",
-                  formula_id="PEP",
-                  formula_output={"results": results, "lineage_last": chain.last(),
-                                  "chain_valid": chain_valid,
-                                  "buyer_breach": buyer_breach,
-                                  "buyer_breach_reasons": buyer_breach_res["reasons"]})
-        self._write_lineage(lineage_events)
         # MFC-G36：OpenLineage 兼容导出（权威血缘仍是 hash-chain）
         try:
             from valor.lineage.openlineage_adapter import export_usage_events
@@ -938,6 +925,23 @@ class TransactionOrchestrator:
             self.artifacts.write_json("openlineage.json", ol_export.to_plain())
         except Exception:  # noqa: BLE001  OpenLineage 导出为 interop，失败不阻断
             ol_export = None
+
+        self._stage("usage", {"enabled": True, "results": results,
+                              "lineage_last": chain.last(),
+                              "chain_valid": chain_valid,
+                              "n_requests": len(results),
+                              "buyer_breach": buyer_breach,
+                              "buyer_breach_reasons": buyer_breach_res["reasons"],
+                              "usage_violation_evidence": [e.to_plain() for e in evidences],
+                              "deletion": deletion,
+                              "openlineage_export": bool(ol_export)})
+        self._log(ledger, stage="USAGE", event_type="PEP_ENFORCE",
+                  formula_id="PEP",
+                  formula_output={"results": results, "lineage_last": chain.last(),
+                                  "chain_valid": chain_valid,
+                                  "buyer_breach": buyer_breach,
+                                  "buyer_breach_reasons": buyer_breach_res["reasons"]})
+        self._write_lineage(lineage_events)
         return {"enabled": True, "results": results, "receipts": receipts,
                 "lineage_last": chain.last(),
                 "chain_valid": chain_valid,

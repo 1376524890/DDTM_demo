@@ -69,9 +69,25 @@ def scenario_c2_seller_breach() -> CapstoneScenario:
 
 
 def scenario_c3_buyer_misuse() -> CapstoneScenario:
-    """买方交易后违规使用 → BUYER_BREACH。"""
+    """买方交易后违规使用 → BUYER_BREACH。
+
+    P0-K：buyer breach 由真实 misuse 注入派生（重复未经授权用途/越权），
+    Mechanism 观察 UsageViolationEvidence 后产生 BUYER_BREACH（不读标准答案）。
+    """
     sc = _base_scenario("C3")
     sc.buyer_misuse = True
+    # 重复越权用途请求 → BuyerBreachResolver 判定 breach（repeated_threshold=3）
+    sc.usage_requests = [
+        {"actor": "buyer_org_A", "purpose": "marketing",
+         "environment": "approved_compute", "timestamp": "2026-03-01T00:00:00Z",
+         "action": "compute", "expect": "DENY"},
+        {"actor": "buyer_org_A", "purpose": "marketing",
+         "environment": "approved_compute", "timestamp": "2026-03-02T00:00:00Z",
+         "action": "compute", "expect": "DENY"},
+        {"actor": "buyer_org_A", "purpose": "marketing",
+         "environment": "approved_compute", "timestamp": "2026-03-03T00:00:00Z",
+         "action": "compute", "expect": "DENY"},
+    ]
     return sc
 
 

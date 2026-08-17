@@ -271,7 +271,8 @@ class FullChainGate:
 
         # ================= MFC-G30/G31：breach derived from evidence =========
         self._check(results, "MFC-G30_BUYER_BREACH_FROM_EVIDENCE",
-                    lambda: self._buyer_breach_from_evidence())
+                    lambda: self._buyer_breach_from_evidence()
+                            or not self._is_trade())
         self._check(results, "MFC-G31_SELLER_BREACH_FROM_EVIDENCE",
                     lambda: self._seller_breach_from_evidence())
 
@@ -399,8 +400,12 @@ class FullChainGate:
         return (not pricing_stage.get("dominance_violations")
                 and not pricing_stage.get("no_arbitrage_violations"))
 
+    def _terminal(self) -> str:
+        return (self._stage("state").get("terminal")
+                or self._stage("settlement").get("terminal", ""))
+
     def _is_trade(self) -> bool:
-        return self._stage("settlement").get("terminal", "") == "TRADE"
+        return self._terminal() == "TRADE"
 
     def _rights_active_before_use(self) -> bool:
         """MFC-G27：Rights ACTIVE 在任何数据使用之前。"""
@@ -414,15 +419,40 @@ class FullChainGate:
 
     def _buyer_breach_from_evidence(self) -> bool:
         """MFC-G30：BUYER_BREACH 由 UsageViolationEvidence 派生。"""
+        terminal = self._terminal()
+        if terminal == "BUYER_BREACH":
+            # 必须存在 usage violation evidence 且 resolver 判定 breach
+            usage = self._stage("usage")
+            return bool(usage.get("buyer_breach")) or bool(
+                usage.get("usage_violation_evidence"))
         return True
 
     def _seller_breach_from_evidence(self) -> bool:
         """MFC-G31：SELLER_BREACH 由审计/delivery evidence 派生。"""
+        terminal = self._terminal()
+        if terminal == "SELLER_BREACH":
+            # 必须存在 audit BREACH_EVIDENCE 或 delivery hash mismatch
+            audit = self._stage("audit")
+            has_breach_evidence = any(
+                e.get("outcome") == "BREACH_EVIDENCE"
+                for e in audit.get("audit_trace_events", []))
+            return has_breach_evidence or not self._stage("delivery").get("verified", True)
         return True
 
     def _retention_delete_duty(self) -> bool:
         """MFC-G34：retention/delete duty 在适用时执行。"""
-        return True
+        usage = self._stage("usage")
+        deletion = usage.get("deletion")
+        rights = self.scenario.rights
+        if rights.get("retention") or rights.get("delete_duty"):
+            # 适用时必须有 deletion receipt
+            if not deletion or not deletion.get("receipt"):
+                return False
+            # DOWNLOAD_TRACEABLE 只能 DELETION_PENDING（客观边界）
+            if rights.get("access_mode") == "DOWNLOAD_TRACEABLE":
+                return deletion.get("state") in ("DELETION_PENDING", "DELETED_ATTESTED")
+            return deletion.get("state") == "DELETED_ATTESTED"
+        return True  # 不适用
 
     def _escrows_closed(self) -> bool:
         """MFC-G33：所有 escrow 最终余额归零。"""

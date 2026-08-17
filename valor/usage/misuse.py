@@ -81,8 +81,22 @@ def evidence_from_deny(
         "隐私预算超限": UsageViolationType.PRIVACY_BUDGET_EXCEEDED,
         "权利已撤销": UsageViolationType.USE_AFTER_EXPIRY,
     }
-    vtype = vmap.get(violations[0], "USAGE_VIOLATION") if violations \
-        else "USAGE_VIOLATION"
+    # 优先报告"真实越权"型违规（actor/purpose/env/export），而非使用次数超限：
+    # 次数超限可能是合法主体用完配额，不代表 buyer misuse breach。
+    priority = [
+        UsageViolationType.UNAUTHORIZED_PURPOSE,
+        UsageViolationType.UNAUTHORIZED_ACTOR,
+        UsageViolationType.UNAUTHORIZED_ENVIRONMENT,
+        UsageViolationType.EXPORT_BYPASS,
+        UsageViolationType.REDISSEMINATION,
+        UsageViolationType.SUBLICENSE,
+        UsageViolationType.DELETE_DUTY_VIOLATION,
+        UsageViolationType.PRIVACY_BUDGET_EXCEEDED,
+        UsageViolationType.USE_AFTER_EXPIRY,
+        UsageViolationType.USAGE_COUNT_EXCEEDED,
+    ]
+    vtypes = [vmap.get(v, "USAGE_VIOLATION") for v in violations]
+    vtype = next((t for t in priority if t in vtypes), "USAGE_VIOLATION")
     return UsageViolationEvidence(
         evidence_id="uv-" + content_hash({
             "r": receipt_id, "t": tx_id, "a": request.actor,

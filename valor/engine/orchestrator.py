@@ -493,6 +493,7 @@ class TransactionOrchestrator:
             entitled=ent_pass, compliant=True,
             breach_during_audit=breach_during_audit,
             price_decision=clearance.decision, buyer_breach=sc.buyer_misuse))
+        self._stage("state", {"terminal": terminal.value})
         ledger_bal = Ledger()
         for acc, amt in {"E_B^P": sc.buyer["w_b_rem"], "E_S^A": audit_pay_s,
                          "E_B^A": audit_pay_b, "B_S^pre": b_s_pre}.items():
@@ -540,6 +541,10 @@ class TransactionOrchestrator:
 
         # ---- Usage（阶段 36-46，仅 TRADE，P9）----
         usage_result = self._run_usage(ledger, binding, terminal)
+        # P0-N/MFC-G30：buyer breach 由 UsageViolationEvidence 派生 → 更新终态
+        if terminal == TerminalState.TRADE and usage_result.get("buyer_breach"):
+            terminal = TerminalState.BUYER_BREACH
+            self._stage("state", {"terminal": terminal.value})
 
         # ---- Controlled Training（P0-M/P0-N 受控训练执行平面，仅 TRADE）----
         # 合法训练真实运行；非法训练在 key release / training start 前被拒。
@@ -858,6 +863,7 @@ class TransactionOrchestrator:
             receipts.append(receipt.to_plain())
             results.append({"request": req, "decision": res.decision,
                             "expected": req["expect"],
+                            "violations": list(res.violations),
                             "match": res.decision == req["expect"]})
             # lineage（§33 DataFlowEvent）→ hash chain
             ev = DataFlowEvent(
@@ -873,18 +879,63 @@ class TransactionOrchestrator:
             prev_hash = chain.append(ev)
             lineage_events.append(ev)
         chain_valid = chain.verify(lineage_events)
+
+        # P0-N：从 UsageViolationEvidence 派生 buyer breach（MFC-G30）。
+        # Mechanism 不读取 scenario 标准答案；违规由真实 DENY 请求派生。
+        from valor.usage.misuse import BuyerBreachResolver, evidence_from_deny
+
+        evidences = []
+        for i, res in enumerate(results):
+            if res["decision"] == "DENY":
+                req = sc.usage_requests[i]
+                r = UsageRequest(actor=req["actor"], purpose=req["purpose"],
+                                 environment=req["environment"],
+                                 timestamp=req["timestamp"])
+                ev = evidence_from_deny(
+                    receipt_id=receipts[i]["receipt_id"] if i < len(receipts) else "",
+                    tx_id=binding.tx_id, request=r,
+                    violations=res.get("violations", ["USAGE_VIOLATION"]),
+                    contract_clause="usage-rights",
+                    severity=2 if req.get("actor") != sc.buyer_id else 1,
+                )
+                evidences.append(ev)
+        resolver = BuyerBreachResolver(repeated_threshold=3)
+        buyer_breach_res = resolver.resolve(evidences)
+        buyer_breach = bool(buyer_breach_res["breach"])
+
+        # P0-N/MFC-G34：retention / deleteDuty 适用时执行受控删除
+        deletion = None
+        if rights.retention or rights.delete_duty:
+            from valor.execution.deletion import execute_delete_duty
+
+            deletion = execute_delete_duty(
+                tx_id=binding.tx_id, dataset_commitment=binding.listing.data_commitment,
+                buyer=sc.buyer_id, environment="approved_compute",
+                derived_artifact_refs=[r.get("receipt_hash", "") for r in receipts],
+                mode=rights.access_mode.value,
+            )
+
         self._stage("usage", {"enabled": True, "results": results,
                               "lineage_last": chain.last(),
                               "chain_valid": chain_valid,
-                              "n_requests": len(results)})
+                              "n_requests": len(results),
+                              "buyer_breach": buyer_breach,
+                              "buyer_breach_reasons": buyer_breach_res["reasons"],
+                              "usage_violation_evidence": [e.to_plain() for e in evidences],
+                              "deletion": deletion})
         self._log(ledger, stage="USAGE", event_type="PEP_ENFORCE",
                   formula_id="PEP",
                   formula_output={"results": results, "lineage_last": chain.last(),
-                                  "chain_valid": chain_valid})
+                                  "chain_valid": chain_valid,
+                                  "buyer_breach": buyer_breach,
+                                  "buyer_breach_reasons": buyer_breach_res["reasons"]})
         self._write_lineage(lineage_events)
         return {"enabled": True, "results": results, "receipts": receipts,
                 "lineage_last": chain.last(),
-                "chain_valid": chain_valid}
+                "chain_valid": chain_valid,
+                "buyer_breach": buyer_breach,
+                "buyer_breach_reasons": buyer_breach_res["reasons"],
+                "usage_violation_evidence": [e.to_plain() for e in evidences]}
 
     def _run_controlled_training(self, ledger, binding, cand_X, cand_y, terminal):
         """P0-M/P0-N：受控训练执行平面（仅 TRADE）。

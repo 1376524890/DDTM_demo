@@ -290,7 +290,8 @@ class FullChainGate:
         self._check(results, "MFC-G35_LINEAGE_HASH_CHAIN_VALID",
                     lambda: s("usage").get("chain_valid", False)
                             or self._stage("state").get("terminal") != "TRADE")
-        self._check(results, "MFC-G36_OPENLINEAGE_CONSISTENT", lambda: True)
+        self._check(results, "MFC-G36_OPENLINEAGE_CONSISTENT",
+                    lambda: self._openlineage_consistent())
 
         # ================= MFC-G37：final eval unreadable ===================
         self._check(results, "MFC-G37_FINALEVAL_UNREADABLE_PRE_TERMINAL",
@@ -438,6 +439,12 @@ class FullChainGate:
                 for e in audit.get("audit_trace_events", []))
             return has_breach_evidence or not self._stage("delivery").get("verified", True)
         return True
+
+    def _openlineage_consistent(self) -> bool:
+        """MFC-G36：OpenLineage 导出一致性（若启用）。"""
+        usage = self._stage("usage")
+        return (usage.get("openlineage_export", False)
+                or not self._is_trade())
 
     def _retention_delete_duty(self) -> bool:
         """MFC-G34：retention/delete duty 在适用时执行。"""

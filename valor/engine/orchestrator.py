@@ -930,12 +930,21 @@ class TransactionOrchestrator:
                                   "buyer_breach": buyer_breach,
                                   "buyer_breach_reasons": buyer_breach_res["reasons"]})
         self._write_lineage(lineage_events)
+        # MFC-G36：OpenLineage 兼容导出（权威血缘仍是 hash-chain）
+        try:
+            from valor.lineage.openlineage_adapter import export_usage_events
+
+            ol_export = export_usage_events(lineage_events)
+            self.artifacts.write_json("openlineage.json", ol_export.to_plain())
+        except Exception:  # noqa: BLE001  OpenLineage 导出为 interop，失败不阻断
+            ol_export = None
         return {"enabled": True, "results": results, "receipts": receipts,
                 "lineage_last": chain.last(),
                 "chain_valid": chain_valid,
                 "buyer_breach": buyer_breach,
                 "buyer_breach_reasons": buyer_breach_res["reasons"],
-                "usage_violation_evidence": [e.to_plain() for e in evidences]}
+                "usage_violation_evidence": [e.to_plain() for e in evidences],
+                "openlineage_export": bool(ol_export)}
 
     def _run_controlled_training(self, ledger, binding, cand_X, cand_y, terminal):
         """P0-M/P0-N：受控训练执行平面（仅 TRADE）。

@@ -68,8 +68,20 @@ def _D_audit_action_provenance(orch) -> bool:
 
 
 def _E_auditor_no_full_data(orch) -> bool:
-    """auditor 只收 openings；commitment 唯一。"""
-    return True  # 架构保证：auditor 只收 PrivacyAuditTask
+    """auditor 只收 openings；commitment 唯一（从运行证据验证）。"""
+    audit = orch._stages.get("audit")
+    if not audit or not audit.output:
+        return False
+    if audit.output.get("execution_mode") != "COMMIT_CHALLENGE":
+        return False
+    events = audit.output.get("audit_trace_events", [])
+    if not events:
+        return False
+    # 审计 trace 不允许出现全量数据字段
+    forbidden = {"full_data", "committed_data", "candidate_df", "seller_store"}
+    return not any(
+        forbidden & set(e.keys()) for e in events
+    )
 
 
 def _F_model_from_allowed_job(orch) -> bool:

@@ -1148,7 +1148,8 @@ class TransactionOrchestrator:
         if terminal == TerminalState.TRADE and eligible:
             # 真实发生：ground truth（scenario 控制 seller 是否真实 breach）
             # vs 审计证据结果（audit outcome）。TP/FN 由对比派生，禁止硬编码。
-            gt_breach = bool(sc.seller_breach)
+            # P0-K：feedback 的 ground truth 使用显式实验输入，不读 scenario label。
+            gt_breach = bool(sc.audit.get("ground_truth_seller_breach", False))
             outcome = (audit or {}).get("audit_trace_events") or []
             # 审计对 breach 的判定：evidence 是否出现 BREACH_EVIDENCE
             aud_breach = any(

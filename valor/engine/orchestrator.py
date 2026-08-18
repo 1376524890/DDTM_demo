@@ -546,6 +546,10 @@ class TransactionOrchestrator:
         # 必须验证 H(D_delivery) == H(D_listing)（MFC-G26）。
         delivery_result = self._run_delivery(
             ledger, binding, commitment, terminal, tx_id, seller_committed)
+        # P0-L：Delivery 失败必须改变终态（terminal_override 不能无人消费）。
+        if delivery_result.get("verified") is False and terminal == TerminalState.TRADE:
+            terminal = TerminalState.SELLER_BREACH
+            self._stage("state", {"terminal": terminal.value})
 
         # ---- Usage（阶段 36-46，仅 TRADE，P9）----
         usage_result = self._run_usage(ledger, binding, terminal)
@@ -824,6 +828,9 @@ class TransactionOrchestrator:
         mode = DeliveryMode(sc.rights["access_mode"])
         listing_commitment = binding.listing.data_commitment
         delivery_commitment = commitment.commitment_hash
+        # C6/Delivery fail：ExperimentWorld 显式注入交付替换。
+        if sc.audit.get("delivery_hash_mismatch"):
+            delivery_commitment = "mismatch"
         # MFC-G26：H(D_delivery) == H(D_listing)
         if delivery_commitment != listing_commitment:
             self._stage("delivery", {

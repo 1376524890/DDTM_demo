@@ -79,6 +79,35 @@ def test_c4_no_quorum(tmp_path):
     assert res.terminal_state in ("NO_TRADE", "TRADE")
 
 
+def test_c6_delivery_fail(tmp_path):
+    """交付替换 → H(D) mismatch → SELLER_BREACH，Rights 不 ACTIVE。"""
+    sc = scenario_c0_normal()
+    sc.buyer["w_b_rem"] = 1000.0
+    sc.seller["pi_s0"] = 0.0
+    sc.exposure["rev_future_without"] = 0.0
+    sc.exposure["rev_future_with"] = 0.0
+    sc.seller["c_marg"] = 0.0
+    sc.seller["c_r_s_pay"] = 0.0
+    sc.seller["r_s_post"] = 0.0
+    sc.buyer["r_b_post"] = 0.0
+    sc.audit["market"]["bids"] = {f"node-{i}": 0.0 for i in range(10)}
+    sc.bond.update({
+        "g_dev": 0.0, "eps_s": 0.0, "p_e_bond": 1.0, "p_e_f": 0.0,
+        "lambda_s": 1.0, "f_s": 0.0, "kappa_s": 0.0, "t_pre": 0.0, "t_post": 0.0,
+    })
+    sc.audit["delivery_hash_mismatch"] = True
+    from valor.engine.orchestrator import TransactionOrchestrator
+
+    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c6"))
+    res = orch.run()
+    assert res.terminal_state == "SELLER_BREACH"
+    delivery = orch._stages["delivery"].output
+    assert delivery.get("verified") is False
+    # 终态非 TRADE → usage/training 不启用
+    assert orch._stages["usage"].output.get("enabled") is False
+    assert orch._stages["training"].output.get("enabled") is False
+
+
 def test_c7_illegal_training_denied(tmp_path):
     """非法训练（未授权 actor）→ 无 key release / 无 training。"""
     sc = scenario_c0_normal()

@@ -149,7 +149,8 @@ def settle_terminal(
         _t("B_S^pre", "buyer", bond_slashed, "罚没卖方 bond")
         if accounts.b_s_pre - bond_slashed > 1e-9:
             _t("B_S^pre", "seller", accounts.b_s_pre - bond_slashed, "预锁剩余返还")
-        _pay_audit(money, accounts, audit_pay_s, audit_pay_b)
+        if not audits_already_paid:
+            _pay_audit(money, accounts, audit_pay_s, audit_pay_b)
         _refund_audit_escrow_remainder(money)
         if money.ledger.balance("B_S^*") > 1e-9:
             _t("B_S^*", "buyer", money.ledger.balance("B_S^*"), "责任保证金罚没")

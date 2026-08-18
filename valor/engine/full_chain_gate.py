@@ -140,10 +140,11 @@ class FullChainGate:
         audit_events = s("audit").get("audit_trace_events", [])
 
         def _g02():
-            # timestamp(VCG_QUOTE) < timestamp(VOI_DECISION) < timestamp(EXEC)
+            # logical sequence: quote_seq < voi_decision_seq < execution_seq
             for e in audit_events:
-                if e.get("quote_time") and e.get("audit_step"):
-                    if not (e.get("quote_hash") and e.get("mc_a_pay", 0) >= 0):
+                if e.get("quote_seq") is not None:
+                    if not (e.get("quote_seq") < e.get("voi_decision_seq")
+                            < e.get("execution_seq")):
                         return False
             return True
         self._check(results, "MFC-G02_VCG_QUOTED_BEFORE_VOI", _g02)

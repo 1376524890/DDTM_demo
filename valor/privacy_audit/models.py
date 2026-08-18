@@ -71,6 +71,7 @@ class PrivacyAuditAction:
     computation_cost_model_id: str = "auditor_rows"
     likelihood_model_id: str = "cc_calibrated"
     execution_spec_hash: str = ""
+    action_profile_hash: str = ""
 
     def to_plain(self) -> dict:
         return {
@@ -87,6 +88,7 @@ class PrivacyAuditAction:
             "computation_cost_model_id": self.computation_cost_model_id,
             "likelihood_model_id": self.likelihood_model_id,
             "execution_spec_hash": self.execution_spec_hash,
+            "action_profile_hash": self.action_profile_hash,
         }
 
 

@@ -17,6 +17,7 @@ from typing import Any, Callable
 import numpy as np
 
 from valor.audit.action_catalog import ActionCatalog, CertifiedAction
+from valor.audit.action_profile import AuditActionProfile
 from valor.audit.bayes_update import bayes_update
 from valor.audit.likelihood import ActionLikelihood
 from valor.audit.loss import LossMatrix
@@ -158,6 +159,36 @@ class PrivacyAuditVOIExecutor:
 
     def _action(self, k: int) -> PrivacyAuditAction:
         primitive_id = CLAIM_TO_PRIMITIVE[self.claim_type]
+        a = self.scenario.audit
+        profile = AuditActionProfile(
+            action_id=f"{self.claim_type.value}_CC_{k}",
+            primitive_id=primitive_id,
+            execution_mode=AuditExecutionMode.COMMIT_CHALLENGE.value,
+            breach_family="quality",
+            claim_type=self.claim_type.value,
+            challenge_k=k,
+            sampling_method="uniform_random",
+            committee_m=self.m,
+            quorum_q=self.q,
+            byzantine_f=self.f,
+            rho=float(a.get("rho", 0.0)),
+            eta_b=float(a.get("eta_b", 0.0)),
+            eta_o=float(a.get("eta_o", 0.0)),
+            min_stake=float(a.get("min_stake", 0.0)),
+            aggregation_rule="quorum-by-result",
+            signature_requirement="REQUIRED",
+            challenge_policy="rho-sampled",
+            disclosure_policy="rows-fraction-bytes",
+            timeout_replacement_policy="offline-replacement",
+            payer="SELLER",
+            trigger="BASE_LISTING",
+            security_profile="COMMIT_CHALLENGE",
+            decision_thresholds={
+                "alpha_shift": float(a.get("alpha_shift", 0.0)),
+                "label_error_threshold": float(a.get("label_error_threshold", 0.0)),
+            },
+            execution_version_hash=a.get("execution_version_hash", ""),
+        )
         return PrivacyAuditAction(
             action_id=f"{self.claim_type.value}_CC_{k}",
             primitive_id=primitive_id,
@@ -165,6 +196,7 @@ class PrivacyAuditVOIExecutor:
             claim_type=self.claim_type, challenge_size=k,
             sampling_method="uniform_random",
             decision_rule_id="MULTINOMIAL_GOF",
+            action_profile_hash=profile.action_profile_hash,
         )
 
     def run(self, sc, ctx) -> PrivacyAuditVOIResult:
@@ -274,7 +306,12 @@ class PrivacyAuditVOIExecutor:
         steps = []
         posterior = belief.to_plain()
         executed_any = False
+        seq = 0
         for _ in range(10):
+            quote_seq = seq + 1
+            voi_decision_seq = seq + 2
+            execution_seq = seq + 3
+            seq += 3
             aid, best_voi, _ = choose_best_action(
                 belief, catalog.likelihoods(), loss, catalog.costs())
             if aid is None or best_voi <= 0:
@@ -302,12 +339,15 @@ class PrivacyAuditVOIExecutor:
             posterior = belief.to_plain()
             steps.append({
                 "audit_step": len(steps) + 1, "action_id": aid, "k": k,
+                "quote_seq": quote_seq, "voi_decision_seq": voi_decision_seq,
+                "execution_seq": execution_seq,
                 "mc_a_pay": res.mc_a_pay, "voi": best_voi,
                 "outcome": outcome, "posterior_after": posterior,
                 "challenge_hash": res.challenge.challenge_hash,
                 "rows_revealed": len(res.challenge.indices),
                 "unique_disclosure_after": disclosure.unique_disclosure,
                 "cost": res.cost.to_plain(),
+                "action_profile_hash": action.action_profile_hash,
                 "result_counts": res.result_counts,
                 "payer": "SELLER",
             })

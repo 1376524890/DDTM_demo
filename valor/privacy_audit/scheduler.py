@@ -138,6 +138,7 @@ class PrivacyAuditScheduler:
             "payer": action.payer,
             "trigger": action.trigger,
             "execution_spec_hash": action.execution_spec_hash,
+            "action_profile_hash": action.action_profile_hash,
         })
         challenge = generate_challenge(
             task_binding_hash=task_binding_hash, task_hash=task_binding_hash,

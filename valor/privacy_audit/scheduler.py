@@ -122,16 +122,30 @@ class PrivacyAuditScheduler:
         mc_a_pay = float(sum(payments.values()))
 
         # 2. 全局挑战（commitment 之后）
-        task_hash_base = f"{tx_id}-{action.action_id}"
+        task_binding_hash = content_hash({
+            "tx_id": tx_id,
+            "action_id": action.action_id,
+            "commitment_hash": commitment.commitment_hash,
+            "claim_hash": claim.claim_hash,
+            "primitive_id": action.primitive_id,
+            "execution_mode": action.execution_mode.value,
+            "challenge_size": action.challenge_size,
+            "sampling_method": action.sampling_method,
+            "decision_rule_id": action.decision_rule_id,
+            "payer": action.payer,
+            "trigger": action.trigger,
+            "execution_spec_hash": action.execution_spec_hash,
+        })
         challenge = generate_challenge(
-            task_hash=task_hash_base, action_id=action.action_id,
+            task_binding_hash=task_binding_hash, task_hash=task_binding_hash,
+            action_id=action.action_id,
             n_rows=commitment.n_rows, k=action.challenge_size,
         )
         # 3. 检查披露预算
         indices = list(challenge.indices)
         if not disclosure.can_reveal(indices):
             return PrivacyAuditActionResult(
-                action_id=action.action_id, task_hash=task_hash_base,
+                action_id=action.action_id, task_hash=task_binding_hash,
                 challenge=challenge, status="ACTION_INFEASIBLE_PRIVACY_BUDGET",
                 cert_result=None, committee=committee, payments=payments,
                 mc_a_pay=0.0, evidence_hashes=[], result_counts={},
@@ -145,9 +159,10 @@ class PrivacyAuditScheduler:
 
         # 5. 构造任务派发 committee
         task = PrivacyAuditTask(
-            task_id=task_id or f"{task_hash_base}-{challenge.challenge_id[:8]}",
+            task_id=task_id or f"{task_binding_hash[:16]}-{challenge.challenge_id[:8]}",
             tx_id=tx_id, commitment=commitment, claim=claim,
             primitive_id=action.primitive_id,
+            task_binding_hash=task_binding_hash,
             execution_mode=action.execution_mode, challenge=challenge,
             openings=openings)
         task_hash = task.task_hash

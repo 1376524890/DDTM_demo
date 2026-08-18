@@ -20,17 +20,22 @@ from valor.core.hashing import content_hash, sha256_hex
 @dataclass(frozen=True)
 class RowChallenge:
     challenge_id: str
-    task_hash: str
+    task_binding_hash: str
     action_id: str
     nonce: str
     indices: tuple[int, ...]
     generated_at: str
     challenge_hash: str
 
+    @property
+    def task_hash(self) -> str:
+        """Backwards-compatible alias for the pre-challenge task binding hash."""
+        return self.task_binding_hash
+
     def to_plain(self) -> dict:
         return {
             "challenge_id": self.challenge_id,
-            "task_hash": self.task_hash,
+            "task_binding_hash": self.task_binding_hash,
             "action_id": self.action_id,
             "nonce": self.nonce,
             "indices": list(self.indices),
@@ -40,8 +45,11 @@ class RowChallenge:
 
     @classmethod
     def from_plain(cls, d: dict) -> "RowChallenge":
+        binding = d.get("task_binding_hash") or d.get("task_hash")
+        if binding is None:
+            raise ValueError("RowChallenge requires task_binding_hash")
         return cls(
-            challenge_id=d["challenge_id"], task_hash=d["task_hash"],
+            challenge_id=d["challenge_id"], task_binding_hash=binding,
             action_id=d["action_id"], nonce=d["nonce"],
             indices=tuple(d["indices"]), generated_at=d["generated_at"],
             challenge_hash=d["challenge_hash"],
@@ -51,6 +59,7 @@ class RowChallenge:
 def generate_challenge(
     *,
     task_hash: str,
+    task_binding_hash: str | None = None,
     action_id: str,
     n_rows: int,
     k: int,
@@ -58,14 +67,15 @@ def generate_challenge(
 ) -> RowChallenge:
     """生成全局挑战（所有 committee auditor 验证同一批 openings）。
 
-    seed = H(taskHash ∥ actionID ∥ challengeNonce)
+    seed = H(taskBindingHash ∥ actionID ∥ challengeNonce)
     """
     if k > n_rows:
         raise ValueError(f"k={k} > n_rows={n_rows}")
+    binding = task_binding_hash or task_hash
     nonce = nonce or secrets.token_bytes(32)
     seed_hex = sha256_hex(
         content_hash({
-            "taskHash": task_hash, "actionID": action_id,
+            "taskBindingHash": binding, "actionID": action_id,
             "challengeNonce": nonce.hex(),
         }).encode())
     seed = int(seed_hex[:8], 16)
@@ -74,12 +84,12 @@ def generate_challenge(
     challenge_id = f"challenge-{sha256_hex(seed_hex.encode())[:12]}"
     generated_at = datetime.now(timezone.utc).isoformat()
     challenge_hash = sha256_hex(content_hash({
-        "challenge_id": challenge_id, "task_hash": task_hash,
+        "challenge_id": challenge_id, "task_binding_hash": binding,
         "action_id": action_id, "nonce": nonce.hex(), "indices": list(indices),
         "generated_at": generated_at,
     }).encode())
     return RowChallenge(
-        challenge_id=challenge_id, task_hash=task_hash, action_id=action_id,
+        challenge_id=challenge_id, task_binding_hash=binding, action_id=action_id,
         nonce=nonce.hex(), indices=indices, generated_at=generated_at,
         challenge_hash=challenge_hash,
     )

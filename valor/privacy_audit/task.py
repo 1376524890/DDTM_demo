@@ -26,14 +26,32 @@ class PrivacyAuditTask:
     commitment: DatasetCommitment
     claim: AggregateClaim
     primitive_id: str
+    task_binding_hash: str = ""
     execution_mode: AuditExecutionMode = AuditExecutionMode.COMMIT_CHALLENGE
     challenge: RowChallenge | None = None
     openings: list[RowOpening] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        if not self.task_binding_hash:
+            self.task_binding_hash = sha256_hex(content_hash({
+                "tx_id": self.tx_id,
+                "task_id": self.task_id,
+                "commitment_hash": self.commitment.commitment_hash,
+                "claim_hash": self.claim.claim_hash,
+                "primitive_id": self.primitive_id,
+                "execution_mode": self.execution_mode.value,
+            }).encode())
+
     @property
     def task_hash(self) -> str:
+        """Finalized task hash: task_binding_hash + challenge + openings.
+
+        The challenge is generated from task_binding_hash, so this final hash
+        is not self-referential.
+        """
         return sha256_hex(content_hash({
             "task_id": self.task_id, "tx_id": self.tx_id,
+            "task_binding_hash": self.task_binding_hash,
             "commitment_hash": self.commitment.commitment_hash,
             "claim_hash": self.claim.claim_hash,
             "primitive_id": self.primitive_id,
@@ -46,6 +64,7 @@ class PrivacyAuditTask:
         return {
             "task_id": self.task_id,
             "tx_id": self.tx_id,
+            "task_binding_hash": self.task_binding_hash,
             "commitment": self.commitment.to_plain(),
             "claim": self.claim.to_plain(),
             "primitive_id": self.primitive_id,
@@ -62,6 +81,7 @@ class PrivacyAuditTask:
             commitment=DatasetCommitment.from_plain(d["commitment"]),
             claim=AggregateClaim.from_plain(d["claim"]),
             primitive_id=d["primitive_id"],
+            task_binding_hash=d.get("task_binding_hash", ""),
             execution_mode=AuditExecutionMode(d["execution_mode"]),
             challenge=(RowChallenge.from_plain(d["challenge"])
                        if d.get("challenge") else None),

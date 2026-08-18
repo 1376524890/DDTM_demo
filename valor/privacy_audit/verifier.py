@@ -47,11 +47,11 @@ class AuditExecutionContext:
 class CommitChallengeVerifier:
     """COMMIT_CHALLENGE 模式节点侧验证器。"""
 
-    def verify_task_binding(self, task_hash: str, ctx: AuditExecutionContext) -> bool:
+    def verify_task_binding(self, task_binding_hash: str, ctx: AuditExecutionContext) -> bool:
         """校验任务承诺与 commitment/claim 绑定。"""
         return (
             ctx.challenge is not None
-            and ctx.challenge.task_hash == task_hash
+            and ctx.challenge.task_binding_hash == task_binding_hash
             and len(ctx.openings) > 0
             and len(ctx.openings) == len(ctx.challenge.indices)
         )
@@ -64,10 +64,10 @@ class CommitChallengeVerifier:
         return True
 
     def execute(
-        self, task_hash: str, primitive_id: str, ctx: AuditExecutionContext,
+        self, task_binding_hash: str, primitive_id: str, ctx: AuditExecutionContext,
     ) -> PrivacyAuditEvidence:
         """执行一次 COMMIT_CHALLENGE 审计。"""
-        if not self.verify_task_binding(task_hash, ctx):
+        if not self.verify_task_binding(task_binding_hash, ctx):
             # 任务绑定失败 → BREACH_EVIDENCE
             return self._evidence(
                 ctx, primitive_id, merkle_ok=False,
@@ -96,7 +96,7 @@ class CommitChallengeVerifier:
     def _evidence(self, ctx, primitive_id, *, merkle_ok, result, disclosed_bytes,
                   test_statistic, p_value, opening_hashes) -> PrivacyAuditEvidence:
         ev = build_evidence(
-            node_id=self.node_id, task_id=ctx.challenge.task_hash if ctx.challenge else "",
+            node_id=self.node_id, task_id=ctx.challenge.task_binding_hash if ctx.challenge else "",
             execution_mode=AuditExecutionMode.COMMIT_CHALLENGE.value,
             claim_hash=ctx.claim.claim_hash,
             commitment_hash=ctx.commitment.commitment_hash,

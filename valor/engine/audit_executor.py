@@ -229,7 +229,7 @@ class DistributedAuditExecutor:
 
         task = TaskEnvelope(
             tx_id=TransactionID(str(ctx["binding"].tx_id)),
-            data_commitment=ctx["dataset_hash"],
+            data_commitment=ctx["data_commitment"],
             rights_commitment=ctx["binding"].listing.rights_hash,
             algorithm_spec_hash=content_hash({"alg": "quality-audit"}),
             param_manifest_hash=content_hash({}),

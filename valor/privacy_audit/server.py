@@ -34,7 +34,8 @@ def create_privacy_app(verifier: CommitChallengeVerifier) -> FastAPI:
             challenge=task.challenge, openings=task.openings,
         )
         ev: PrivacyAuditEvidence = verifier.execute(
-            task_hash=task.task_hash, primitive_id=task.primitive_id, ctx=ctx)
+            task_binding_hash=task.task_binding_hash,
+            primitive_id=task.primitive_id, ctx=ctx)
         _evidence[ev.evidence_id] = ev.to_plain()
         return ev.to_plain()
 

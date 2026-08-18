@@ -76,7 +76,7 @@ def _run_commit_challenge(
     verifier = CommitChallengeVerifier("node-0")
     ctx = AuditExecutionContext(
         commitment=seller.commitment, claim=claim, challenge=ch, openings=opens)
-    ev = verifier.execute(task_hash=f"t-{seed}",
+    ev = verifier.execute(task_binding_hash=f"t-{seed}",
                           primitive_id="LabelDistributionAudit", ctx=ctx)
     return ev.result
 

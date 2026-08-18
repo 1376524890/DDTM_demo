@@ -81,6 +81,7 @@ class PrivacyAuditVOIExecutor:
         dataset_commitment=None,  # P0-A：上游 canonical DatasetCommitment
         node_client_factory: Callable[[str], Any] | None = None,
         certificate_artifact=None,
+        allow_independent_commit: bool = False,  # TEST_ONLY: 独立运行无上游时允许本地 commit
     ) -> None:
         self.scenario = scenario
         self.candidate_X = candidate_X
@@ -92,6 +93,7 @@ class PrivacyAuditVOIExecutor:
         self.m, self.q = 3 * f + 1, 2 * f + 1
         self.node_client_factory = node_client_factory
         self.certificate_artifact = certificate_artifact
+        self.allow_independent_commit = allow_independent_commit
         self._store = seller_store or CommittedDatasetStore("seller_private")
         self._seller = seller_committed
         self._upstream_commitment = dataset_commitment
@@ -122,6 +124,13 @@ class PrivacyAuditVOIExecutor:
             )
             return self._upstream_commitment, self._claim
         # 无上游：本地唯一创建（独立 privacy audit 运行路径）
+        # 仅允许 TEST_ONLY 独立运行；production mainline 必须消费上游 canonical
+        # DatasetCommitment，禁止第二条构造路径。
+        if not self.allow_independent_commit:
+            raise ValueError(
+                "P0-A: 缺少上游 DatasetCommitment；production 不允许本地再生成 commitment。"
+                "独立测试请显式 allow_independent_commit=True"
+            )
         dataset_id = f"cand-{tx_id}"
         from valor.seller import SellerCommittedDataset
 

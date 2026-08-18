@@ -107,3 +107,13 @@ def test_challenge_task_binding_fails_closed():
     ev_bad = verifier.execute(task_binding_hash="wrong-binding",
                               primitive_id="LabelDistributionAudit", ctx=ctx_bad)
     assert ev_bad.result == "BREACH_EVIDENCE"
+
+
+def test_no_dataset_hash_used_as_task_data_commitment():
+    """P0-A grep invariant: audit TaskEnvelope must use canonical commitment_hash."""
+    import re
+    from pathlib import Path
+
+    src = Path("valor/engine/audit_executor.py").read_text(encoding="utf-8")
+    assert "data_commitment=ctx[\"data_commitment\"]" in src
+    assert "data_commitment=ctx[\"dataset_hash\"]" not in src

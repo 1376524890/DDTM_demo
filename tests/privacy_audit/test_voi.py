@@ -53,6 +53,7 @@ def test_voi_runs_commit_challenge():
                                 fromlist=["CommittedDatasetStore"])
         .CommittedDatasetStore("/tmp/pa-voi"),
         node_client_factory=_client_factory(),
+        allow_independent_commit=True,
     )
     ctx = {"binding": type("B", (), {"tx_id": "tx-1"})()}
     res = ex.run(sc, ctx)
@@ -80,6 +81,7 @@ def test_disclosure_accumulates_and_budget_limits():
                                 fromlist=["CommittedDatasetStore"])
         .CommittedDatasetStore("/tmp/pa-voi2"),
         node_client_factory=_client_factory(),
+        allow_independent_commit=True,
     )
     ctx = {"binding": type("B", (), {"tx_id": "tx-2"})()}
     res = ex.run(sc, ctx)

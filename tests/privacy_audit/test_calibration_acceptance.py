@@ -148,7 +148,8 @@ def test_g11_vcg_payment_in_audit_voi():
         claim_type=ClaimType.LABEL_DISTRIBUTION,
         challenge_sizes=[64], n_nodes=10, f=2,
         seller_store=CommittedDatasetStore("/tmp/pa-g11"),
-        node_client_factory=lambda nid: _A(clients[str(nid)]))
+        node_client_factory=lambda nid: _A(clients[str(nid)]),
+        allow_independent_commit=True)
     res = ex.run(sc, {"binding": type("B", (), {"tx_id": "tx-g11"})()})
     if res.action_results:
         assert res.action_results[0]["mc_a_pay"] > 0

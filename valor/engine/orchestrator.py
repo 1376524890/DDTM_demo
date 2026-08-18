@@ -247,14 +247,24 @@ class TransactionOrchestrator:
         u_plus = utility_from_artifact(
             plus_art.y_true, plus_art.y_pred, payoff, deployment_scale=n_b)
         delta_u = u_plus - u_base
-        l_comp = sc.exposure["l_comp"]
+        from valor.valuation.exposure import competition_externality
+
+        # P0-Q：L_comp 由 MarketExposureState + rights exclusivity 计算，禁止 config 手填。
+        l_comp = competition_externality(
+            exposure=float(sc.exposure["exposure"]),
+            exclusivity=rights.exclusivity,
+            sensitivity=float(sc.exposure.get("competition_sensitivity", 1.0)),
+        )
         v_gross = delta_u - l_comp
         # 保守下界：V̲_gross = V̂_gross + Q_{α_V}(e)，e = V^real - V̂（加法，非减法）。
         # 优先用离线 calibration（P6）residual 分位数；无 calibration 时测试用 0。
         if self.calibration is not None and self.calibration.valuation is not None:
             residual_q = self.calibration.valuation.data["residual_quantile"]
         else:
-            residual_q = 0.0
+            # P0-Q：无 calibration 时只能使用显式 TEST_FIXTURE residual，禁止隐式 0。
+            if "residual_quantile" not in sc.valuation:
+                raise ValueError("P0-Q: residual_quantile 缺失（禁止隐式 0）")
+            residual_q = float(sc.valuation["residual_quantile"])
         v_gross_lower = v_gross + residual_q
 
         # confusion matrix（供 G9 独立复算；joint = confusion / N_eval）
@@ -411,12 +421,13 @@ class TransactionOrchestrator:
 
         # P0-Q：机会成本由真实 inputs 计算（rights 排他 + future revenue model），
         # 禁止直接读 sc.seller["oc_s"] 常数。
+        # P0-Q：OC_S 必须来自显式 future revenue 模型输入，禁止 oc_s / oc_s*0.2 兜底。
+        if "rev_future_without" not in sc.exposure or "rev_future_with" not in sc.exposure:
+            raise ValueError("P0-Q: OC_S 需要显式 rev_future_without/with（禁止默认）")
         oc = compute_opportunity_cost(
             exclusivity=rights.exclusivity,
-            rev_future_without=sc.exposure.get("rev_future_without",
-                                               sc.seller.get("oc_s", 0.0)),
-            rev_future_with=sc.exposure.get("rev_future_with",
-                                            max(sc.seller.get("oc_s", 0.0) * 0.2, 0.0)),
+            rev_future_without=float(sc.exposure["rev_future_without"]),
+            rev_future_with=float(sc.exposure["rev_future_with"]),
         )
         oc_s = oc.oc_amount
 

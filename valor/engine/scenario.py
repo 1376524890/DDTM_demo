@@ -141,7 +141,12 @@ class CapstoneScenario:
     })
     pricing: dict[str, Any] = field(default_factory=lambda: {"beta_bar": 0.5})
     exposure: dict[str, Any] = field(default_factory=lambda: {
-        "l_comp": 2.0, "exclusivity": False, "competition_sensitivity": 1.0,
+        "exposure": 2.0, "exclusivity": False, "competition_sensitivity": 1.0,
+        "rev_future_without": 10.0, "rev_future_with": 8.0,
+    })
+    # P0-R/P0-Q：估值下界 residual 显式 fixture；production 必须来自 calibration artifact。
+    valuation: dict[str, Any] = field(default_factory=lambda: {
+        "residual_quantile": 0.0,
     })
     # 交易后使用序列（P9）
     # 交易后使用环境（P9）
@@ -210,6 +215,7 @@ class CapstoneScenario:
             "seller": self.seller,
             "pricing": self.pricing,
             "exposure": self.exposure,
+            "valuation": self.valuation,
             "usage": self.usage,
             "usage_requests": self.usage_requests,
             "feedback": self.feedback,

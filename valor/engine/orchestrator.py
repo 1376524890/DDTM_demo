@@ -1218,9 +1218,9 @@ class TransactionOrchestrator:
         report_json = {
             "run_id": self.run_id,
             "scenario_hash": self.scenario.scenario_hash,
-            "decision": clearance.decision,
+            "decision": clearance.decision if clearance else "NO_TRADE_HARD_GATE",
             "terminal_state": terminal.value,
-            "clearing_price": clearance.clearing_price,
+            "clearing_price": clearance.clearing_price if clearance else None,
             "stages": {k: v.to_plain() for k, v in self._stages.items()},
         }
         self.artifacts.write_report(report_json, json.dumps(report_json, indent=2))

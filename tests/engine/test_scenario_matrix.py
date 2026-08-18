@@ -108,6 +108,49 @@ def test_c6_delivery_fail(tmp_path):
     assert orch._stages["training"].output.get("enabled") is False
 
 
+def test_c13_prelock_insufficient_funds(tmp_path):
+    """卖方资金不足以预锁 → 不进入审计，直接 NO_TRADE。"""
+    sc = scenario_c0_normal()
+    sc.seller["funds"] = 0.0
+    from valor.engine.orchestrator import TransactionOrchestrator
+
+    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c13"))
+    res = orch.run()
+    assert res.terminal_state == "NO_TRADE"
+    assert orch._stages["prelock"].output.get("locked") is False
+
+
+def test_c14_buyer_usage_bond_slash(tmp_path):
+    """BUYER_BREACH 时 usage bond 在 Phase II 被罚没给 seller。"""
+    sc = scenario_c3_buyer_misuse()
+    sc.buyer["w_b_rem"] = 1000.0
+    sc.seller["pi_s0"] = 0.0
+    sc.exposure["rev_future_without"] = 0.0
+    sc.exposure["rev_future_with"] = 0.0
+    sc.seller["c_marg"] = 0.0
+    sc.seller["c_r_s_pay"] = 0.0
+    sc.seller["r_s_post"] = 0.0
+    sc.buyer["r_b_post"] = 0.0
+    sc.audit["market"]["bids"] = {f"node-{i}": 0.0 for i in range(10)}
+    sc.bond.update({
+        "g_dev": 0.0, "eps_s": 0.0, "p_e_bond": 1.0, "p_e_f": 0.0,
+        "lambda_s": 1.0, "f_s": 0.0, "kappa_s": 0.0, "t_pre": 0.0, "t_post": 0.0,
+    })
+    sc.usage["usage_bond"] = {
+        "p_misuse_lower_sys": 0.9, "g_misuse": 10.0, "eps_b": 0.0,
+        "p_e_ubond": 1.0, "p_e_uf": 0.0, "lambda_b": 1.0, "f_b": 0.0,
+    }
+    from valor.engine.orchestrator import TransactionOrchestrator
+
+    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c14"))
+    res = orch.run()
+    assert res.terminal_state == "BUYER_BREACH"
+    settlement = orch._stages["settlement"].output
+    money = [e for e in settlement.get("money_events", [])]
+    assert any(e["from_account"] == "B_B^use" and e["to_account"] == "seller"
+               for e in money)
+
+
 def test_c7_illegal_training_denied(tmp_path):
     """非法训练（未授权 actor）→ 无 key release / 无 training。"""
     sc = scenario_c0_normal()

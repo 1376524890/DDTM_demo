@@ -1,0 +1,5 @@
+VALOR-v1 Phase 0 baseline pytest summary
+Command: .venv/bin/python -m pytest -q
+Result: 265 passed, 229 warnings in 1594.41s (0:26:34)
+Warnings include sklearn ConvergenceWarning, scipy invalid value divide, fastapi StarletteDeprecationWarning.
+NOTE: full raw log was not persisted on the first run; this summary is the baseline result. A future verification run should persist the full log.

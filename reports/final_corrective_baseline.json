@@ -1,0 +1,255 @@
+{
+  "report": "final_corrective_baseline",
+  "generated_at": "2026-08-18T09:45:00+08:00",
+  "branch": "VALOR-v1",
+  "head_commit": "0e93f685948f91b018740a4f17e76015455e1a13",
+  "worktree": "dirty",
+  "worktree_notes": "untracked AGENTS.md only; no business code changes in Phase 0",
+  "design_truth": {
+    "file": "VALOR_可实施原型系统_完整数学代码闭环与开发规范.md",
+    "sha256": "d72fcb402fc3d50ecac52eabec0c5ba61c40f75a450caef01fe65175baab6a97"
+  },
+  "environment": {
+    "python": "3.14.6",
+    "pytest": "9.1.1",
+    "venv": ".venv",
+    "package": "valor 0.2.0 editable",
+    "cryptography_note": "downgraded .venv cryptography to 49.0.0 because 50.0.0 wheel requires GLIBC_2.33; host is GLIBC 2.31"
+  },
+  "baseline_commands": {
+    "git_status_short": "?? AGENTS.md",
+    "check_business_defaults": {
+      "command": ".venv/bin/python scripts/check_business_defaults.py --root valor",
+      "exit_code": 0,
+      "output": "OK: 未发现业务默认值。"
+    },
+    "check_forbidden_patterns": {
+      "command": ".venv/bin/python scripts/check_forbidden_patterns.py --root valor",
+      "exit_code": 0,
+      "output": "未发现禁止模式（200 文件）"
+    },
+    "pytest_first_run": {
+      "result": "265 passed, 229 warnings in 1594.41s",
+      "note": "full log not captured on first run; summary persisted to reports/verification/pytest_baseline.txt"
+    },
+    "reverse_self_audit": {
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "reports/verification/reverse_audit_baseline.txt",
+      "note": "not trustworthy: _E_auditor_no_full_data returns True with architecture-guarantee comment"
+    }
+  },
+  "existing_reports": {
+    "mechanism_coverage_json": "stale/manually-authored; claims 44/44 IMPLEMENTED; references old HEAD 1015677",
+    "final_closure_report": "stale; claims paper_mechanism_closure=PASS; no mutation evidence"
+  },
+  "p0_inventory": [
+    {
+      "id": "P0-A",
+      "title": "Canonical DatasetCommitment provenance unified",
+      "status": "OPEN",
+      "evidence": [
+        "audit_executor.TaskEnvelope.data_commitment uses ctx['dataset_hash'] instead of commitment.commitment_hash",
+        "privacy_audit/distributed task hashes have separate task_binding/finalized_task semantics not fully defined"
+      ]
+    },
+    {
+      "id": "P0-B",
+      "title": "VCG quote strictly before VOI choose",
+      "status": "OPEN",
+      "evidence": [
+        "PrivacyAuditVOIExecutor builds hardcoded bids 10.0+i",
+        "DistributedAuditExecutor uses fixed quote_time == execution_time, no logical event sequence"
+      ]
+    },
+    {
+      "id": "P0-C",
+      "title": "Action-specific likelihood bound to full action profile",
+      "status": "OPEN",
+      "evidence": [
+        "Default executor only defines action a1 with a minimal profile hash",
+        "PrivacyAuditVOIExecutor._likelihood_rows falls back to scenario.likelihood",
+        "No full AuditActionProfile fields are bound to likelihood/certificate"
+      ]
+    },
+    {
+      "id": "P0-D",
+      "title": "R_cal runs real distributed audit actions for G/L/B",
+      "status": "OPEN",
+      "evidence": [
+        "calibration_runner._empirical_likelihood_from_detection manually adds L -> CLAIM_NOT_SUPPORTED observations",
+        "No distributed audit execution during calibration",
+        "No role_manifest.json or overlap matrix"
+      ]
+    },
+    {
+      "id": "P0-E",
+      "title": "Independent full-policy R_cert",
+      "status": "OPEN",
+      "evidence": [
+        "CalibrationConfig.__post_init__ uses placeholder hashes",
+        "Certificate uses the same TP/FN as R_cal",
+        "No independent R_cert policy runs or full envelope traversal"
+      ]
+    },
+    {
+      "id": "P0-F",
+      "title": "Signed evidence required before quorum",
+      "status": "OPEN",
+      "evidence": [
+        "PrivacyAuditScheduler counts unsigned evidence when public_keys is empty",
+        "DistributedAuditScheduler mainline path uses unsigned evidence_provider output"
+      ]
+    },
+    {
+      "id": "P0-G",
+      "title": "COMMIT_CHALLENGE privacy audit in transaction mainline",
+      "status": "OPEN",
+      "evidence": [
+        "Default production audit executor is DistributedAuditExecutor using generic DistributedAuditScheduler + in-process provider",
+        "PrivacyAuditScheduler only wired via explicit test adapter"
+      ]
+    },
+    {
+      "id": "P0-H",
+      "title": "DP/query budget vs audit disclosure budget separated semantically",
+      "status": "OPEN",
+      "evidence": [
+        "FullChainGate._dp_disclosure_separated returns True when privacy_budget is empty",
+        "No mainline invariant proves semantic separation"
+      ]
+    },
+    {
+      "id": "P0-I",
+      "title": "Entitlement/Compliance provenance + fail closed",
+      "status": "OPEN",
+      "evidence": [
+        "orchestrator._check_entitlement uses grant_authority default True and buyer_eligible default True",
+        "No EntitlementEvidence / AuthorityRecord inputs"
+      ]
+    },
+    {
+      "id": "P0-J",
+      "title": "Seller PreLock uses full certified envelope",
+      "status": "OPEN",
+      "evidence": [
+        "Without calibration, prelock falls back to single scenario certificate cell",
+        "R_cert does not currently certify a full allowed envelope"
+      ]
+    },
+    {
+      "id": "P0-K",
+      "title": "Breach fully derived from observed evidence",
+      "status": "OPEN",
+      "evidence": [
+        "audit_executor._breach_evidence_wrapper forces BREACH_EVIDENCE when sc.seller_breach=True",
+        "orchestrator._run_feedback reads sc.seller_breach for TP/FN"
+      ]
+    },
+    {
+      "id": "P0-L",
+      "title": "Delivery independent stage, failure changes terminal",
+      "status": "OPEN",
+      "evidence": [
+        "Delivery returns terminal_override=SELLER_BREACH but caller does not consume it",
+        "Delivery failure does not prevent later usage/training/settlement"
+      ]
+    },
+    {
+      "id": "P0-M",
+      "title": "Controlled training genuinely isolated",
+      "status": "OPEN",
+      "evidence": [
+        "ControlledTrainingRunner._train executes in-process with dataset_X/dataset_y",
+        "LocalIsolatedProvider only returns a capability flag, no subprocess/worker evidence",
+        "TrainingOutcome.raw_data_access=False is self-reported"
+      ]
+    },
+    {
+      "id": "P0-N",
+      "title": "Illegal training rejected before capability release",
+      "status": "OPEN",
+      "evidence": [
+        "Provider can be bypassed by calling _train directly",
+        "No worker_started=False evidence from a real provider"
+      ]
+    },
+    {
+      "id": "P0-O",
+      "title": "Two-phase settlement lifecycle",
+      "status": "OPEN",
+      "evidence": [
+        "Orchestrator calls single settle() before delivery/usage",
+        "Per-auditor VCG payments aggregated to 'auditor'",
+        "Usage bond may be returned before buyer breach is resolved"
+      ]
+    },
+    {
+      "id": "P0-P",
+      "title": "Rights lifecycle ACTIVE after verified delivery",
+      "status": "OPEN",
+      "evidence": [
+        "RightsRegistry registers rights as ACTIVE during entitlement stage",
+        "No PROPOSED/RESERVED -> ACTIVE transition after delivery verified"
+      ]
+    },
+    {
+      "id": "P0-Q",
+      "title": "Pricing inputs real provenance",
+      "status": "OPEN",
+      "evidence": [
+        "l_comp read directly from sc.exposure['l_comp']",
+        "OC_S uses rev_future_without/with fallback to oc_s and oc_s*0.2",
+        "residual_q falls back to 0.0 without calibration",
+        "Capital cost uses scenario t_pre/t_post instead of ledger timeline"
+      ]
+    },
+    {
+      "id": "P0-R",
+      "title": "FinalEvaluation physically isolated",
+      "status": "OPEN",
+      "evidence": [
+        "final_X/final_y materialized at start of orchestrator.run()",
+        "No AccessGuard prevents pre-terminal reads"
+      ]
+    },
+    {
+      "id": "P0-S",
+      "title": "Bond capital cost from real timeline; usage bond not silently zero",
+      "status": "OPEN",
+      "evidence": [
+        "capital_cost uses scenario t_pre/t_post",
+        "_buyer_usage_bond defaults usage-bond parameters to 0/1 and can return 0 without NotApplicableReason"
+      ]
+    },
+    {
+      "id": "P0-T",
+      "title": "FullChainGate/reverse audit no false-pass",
+      "status": "OPEN",
+      "evidence": [
+        "FullChainGate._role_isolation_ok/_trainer_scope_ok return True",
+        "delivery.get('verified', True), G08 always True, G44 accepts FULL_DATA_REFERENCE",
+        "reverse_self_audit._E_auditor_no_full_data returns True",
+        "coverage JSON is hand-authored"
+      ]
+    }
+  ],
+  "dependency_order": [
+    "canonical commitment and privacy task binding",
+    "privacy audit mainline, signatures, process isolation",
+    "action profiles and VCG-before-VOI",
+    "real R_cal distributed empirical likelihood",
+    "independent R_cert and policy envelope",
+    "remove scenario-label/expect leakage",
+    "entitlement/compliance/rights lifecycle",
+    "two-phase settlement",
+    "isolated controlled training",
+    "FinalEvaluation isolation",
+    "pricing input provenance",
+    "static scanners semantic completeness",
+    "mechanism invariant gate and mutation tests",
+    "scenario matrix and reverse self-audit rewrite",
+    "machine-generated coverage and final reports"
+  ],
+  "closure": "FAIL"
+}

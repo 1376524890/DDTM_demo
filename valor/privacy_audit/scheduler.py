@@ -83,6 +83,7 @@ class PrivacyAuditScheduler:
         eta_o: float = 0.0,
         timeout_s: float = 10.0,
         public_keys: dict[str, str] | None = None,  # node_id -> public_key_hex (P0-F)
+        require_signature: bool = True,  # P0-F: production fail-closed
     ) -> None:
         self.registry = registry
         self.f = f
@@ -95,6 +96,7 @@ class PrivacyAuditScheduler:
         self.eta_o = eta_o
         self.timeout_s = timeout_s
         self.public_keys = public_keys or {}
+        self.require_signature = require_signature
 
     def _default_client(self, node_id: str):
         from .client import PrivacyAuditClient
@@ -178,20 +180,28 @@ class PrivacyAuditScheduler:
                 offline.append(str(node_id))
 
         # 6. 验签（P0-F / MFC-G05）：非法/缺失签名证据不计入 quorum。
-        #    未配置 public_keys（独立测试）时视为允许（向后兼容单测），但正式
-        #    分布式路径必须提供公钥。scheduler 只统计验签通过的证据。
+        #    production 默认 require_signature=True：缺失公钥/签名一律 fail closed。
+        #    TEST_ONLY 可显式 require_signature=False，但不得进入 paper closure。
         valid_evidence = {}
         for nid, ev in evidence_plain.items():
             pk = self.public_keys.get(str(nid))
-            if pk is not None:
+            if self.require_signature:
+                if pk is None or not ev.get("signature"):
+                    continue  # INVALID_EVIDENCE_SIGNATURE → 不计入
                 from valor.security.signing import verify_evidence_signature
 
                 if not verify_evidence_signature(
                         public_key_hex=pk, evidence_plain=ev,
                         signature=ev.get("signature", "")):
                     continue  # INVALID_EVIDENCE_SIGNATURE → 不计入
+            elif ev.get("signature", "") and pk is not None:
+                from valor.security.signing import verify_evidence_signature
+
+                if not verify_evidence_signature(
+                        public_key_hex=pk, evidence_plain=ev,
+                        signature=ev.get("signature", "")):
+                    continue
             elif ev.get("signature", ""):
-                # 有签名但未提供公钥 → 无法验签，fail closed
                 continue
             valid_evidence[nid] = ev
 

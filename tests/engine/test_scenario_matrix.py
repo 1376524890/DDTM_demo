@@ -59,6 +59,26 @@ def test_c5_disclosure_budget_infeasible(tmp_path):
     assert audit.get("unique_disclosure", 0) <= 8
 
 
+def test_c4_no_quorum(tmp_path):
+    """审计节点离线过多 → 无一致 quorum → 审计不产生 CERTIFIED 结果。"""
+    sc = scenario_c0_normal()
+    sc.audit["offline_nodes"] = [f"node-{i}" for i in range(6)]
+    sc.audit["privacy_budget"] = {
+        "max_unique_rows": 200, "max_fraction": 0.3, "max_bytes": 200 * 784,
+    }
+    sc.rights["audit_reveal_max_rows"] = 200
+    sc.rights["audit_reveal_max_fraction"] = 0.3
+    sc.rights["audit_reveal_max_bytes"] = 200 * 784
+    from valor.engine.orchestrator import TransactionOrchestrator
+
+    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c4"))
+    res = orch.run()
+    audit = orch._stages["audit"].output
+    # 无 quorum → 不产生 CERTIFIED action trace
+    assert len(audit.get("audit_trace_events", [])) == 0
+    assert res.terminal_state in ("NO_TRADE", "TRADE")
+
+
 def test_c7_illegal_training_denied(tmp_path):
     """非法训练（未授权 actor）→ 无 key release / 无 training。"""
     sc = scenario_c0_normal()

@@ -269,7 +269,10 @@ class PrivacyAuditVOIExecutor:
         from valor.security.signing import sign_evidence
 
         base_factory = self.node_client_factory
+        offline_set = set(str(x) for x in sc.audit.get("offline_nodes", []))
         def _signed_client_factory(nid):
+            if str(nid) in offline_set:
+                raise ConnectionError(f"offline node {nid} (test scenario)")
             client = base_factory(nid) if base_factory else None
             if client is None:
                 return None

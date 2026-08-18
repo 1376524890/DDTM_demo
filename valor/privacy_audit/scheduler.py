@@ -174,9 +174,9 @@ class PrivacyAuditScheduler:
         evidence_plain = {}
         offline = []
         for node_id in committee:
-            client = self.node_clients(node_id) if self.node_clients \
-                else self._default_client(node_id)
             try:
+                client = self.node_clients(node_id) if self.node_clients \
+                    else self._default_client(node_id)
                 evidence_plain[str(node_id)] = client.submit_task(task)
             except Exception:
                 offline.append(str(node_id))

@@ -137,8 +137,9 @@ class TransactionOrchestrator:
         cand_y = split.frame(y, split.seller_candidate_idx)
         teval_X = split.frame(X, split.transaction_eval_idx)
         teval_y = split.frame(y, split.transaction_eval_idx)
-        final_X = split.frame(X, split.final_evaluation_idx)
-        final_y = split.frame(y, split.final_evaluation_idx)
+        # P0-R：FinalEvaluation 不得在交易终态前 materialize。
+        # 只保存索引引用，feedback 阶段（终态冻结后）才 resolve。
+        final_eval_indices = split.final_evaluation_idx
 
         split_hash = content_hash({
             "n": dman.n_samples, "roles": dman.role_counts, "seed": sc.split_seed,
@@ -554,7 +555,8 @@ class TransactionOrchestrator:
             ledger, binding, cand_X, cand_y, terminal)
 
         # ---- Feedback（阶段 49-51，P10）----
-        feedback_result = self._run_feedback(ledger, terminal, final_X, final_y,
+        feedback_result = self._run_feedback(ledger, terminal, X, y,
+                                             final_eval_indices,
                                              base_X, base_y, cand_X, cand_y,
                                              payoff, audit)
 
@@ -1061,7 +1063,8 @@ class TransactionOrchestrator:
         self.artifacts.write_jsonl(
             "lineage.jsonl", [e.to_plain() for e in lineage_events])
 
-    def _run_feedback(self, ledger, terminal, final_X, final_y, base_X, base_y,
+    def _run_feedback(self, ledger, terminal, X_all_raw, y_all_raw,
+                      final_eval_indices, base_X, base_y,
                       cand_X, cand_y, payoff, audit=None):
         """反馈（P10）：Θ_t → Θ_{t+1} + realised Data-VOI。
 
@@ -1080,7 +1083,11 @@ class TransactionOrchestrator:
         n_b = sc.buyer_task["deployment_scale"]
 
         realised = None
-        if terminal == TerminalState.TRADE and len(final_X) > 0:
+        if terminal == TerminalState.TRADE and len(final_eval_indices) > 0:
+            # P0-R：终态冻结后才 resolve FinalEvaluation（AccessGuard 语义）。
+            idx = np.sort(np.asarray(final_eval_indices, dtype=int))
+            final_X = X_all_raw.iloc[idx].reset_index(drop=True)
+            final_y = y_all_raw.iloc[idx].reset_index(drop=True)
             # 用交易评估集训练 base 与 base+candidate，在 FinalEvaluation 上算 realised ΔU
             from valor.adapters import MNISTTrainerAdapter
 

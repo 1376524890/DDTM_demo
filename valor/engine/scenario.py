@@ -183,7 +183,10 @@ class CapstoneScenario:
     # P0-I：Entitlement / Compliance 输入状态（机制判定，不读标准答案）。
     #   grant_authority=False / version_revoked=True → Entitled 失败
     #   buyer_eligible=False / menu_conflict=True    → Compliant 失败
-    entitlement: dict[str, Any] = field(default_factory=dict)
+    entitlement: dict[str, Any] = field(default_factory=lambda: {
+        "grant_authority": True, "version_revoked": False,
+        "buyer_eligible": True, "menu_conflict": False,
+    })
 
     def to_plain(self) -> dict[str, Any]:
         return {

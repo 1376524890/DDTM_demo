@@ -63,6 +63,8 @@ class TerminalState(str, Enum):
 class RightsState(str, Enum):
     """持续权利状态（规范 §43/§63）。TRADE 不表示权利生命周期结束。"""
 
+    PROPOSED = "PROPOSED"
+    RESERVED = "RESERVED"
     ACTIVE = "ACTIVE"
     SUSPENDED = "SUSPENDED"
     EXPIRED = "EXPIRED"

@@ -665,19 +665,26 @@ class TransactionOrchestrator:
         """
         from valor.asset.compliance import Compliant
         from valor.asset.entitlement import Entitled
+        from valor.core.enums import RightsState
         from valor.rights.compatibility import check_compatible
         from valor.rights.registry import RightsRegistry
 
         ent_cfg = sc.entitlement or {}
+        if not all(k in ent_cfg for k in
+                   ("grant_authority", "version_revoked",
+                    "buyer_eligible", "menu_conflict")):
+            raise ValueError(
+                "P0-I: Entitlement/Compliance 缺失必需输入，禁止默认值"
+            )
         ent = Entitled(
-            grant_authority=bool(ent_cfg.get("grant_authority", True)),
-            version_revoked=bool(ent_cfg.get("version_revoked", False)),
-            reasons=tuple(ent_cfg.get("reasons", ["seller grant authority"])),
+            grant_authority=bool(ent_cfg["grant_authority"]),
+            version_revoked=bool(ent_cfg["version_revoked"]),
+            reasons=tuple(ent_cfg.get("reasons", ())),
         )
         comp = Compliant(
-            buyer_eligible=bool(ent_cfg.get("buyer_eligible", True)),
-            menu_conflict=bool(ent_cfg.get("menu_conflict", False)),
-            reasons=tuple(ent_cfg.get("compliance_reasons", ["buyer eligible"])),
+            buyer_eligible=bool(ent_cfg["buyer_eligible"]),
+            menu_conflict=bool(ent_cfg["menu_conflict"]),
+            reasons=tuple(ent_cfg.get("compliance_reasons", ())),
         )
         # Rights compatibility：与该资产既有活跃许可比对（Registry 真实工作）
         registry = getattr(self, "_rights_registry", None)
@@ -687,13 +694,11 @@ class TransactionOrchestrator:
         compat = check_compatible(rights, existing)
         # 注册本交易新权利（供后续重复出售检查）
         if registry is not None:
-            from valor.core.enums import RightsState
-
-            registry.register(rights, state=RightsState.ACTIVE)
+            registry.register(rights, state=RightsState.PROPOSED)
             self._rights_registry = registry
         else:
             self._rights_registry = RightsRegistry(asset_id="asset-mnist")
-            self._rights_registry.register(rights)
+            self._rights_registry.register(rights, state=RightsState.PROPOSED)
         return ent, comp, compat
 
     def _buyer_usage_bond(self, rights, sc):
@@ -841,6 +846,12 @@ class TransactionOrchestrator:
                                   "delivery_commitment": delivery_commitment,
                                   "listing_commitment": listing_commitment,
                                   "receipt_hash": receipt.receipt_hash})
+        # P0-P：Delivery verified 后 Rights 才 ACTIVE。
+        if getattr(self, "_rights_registry", None) is not None:
+            from valor.core.enums import RightsState
+
+            self._rights_registry.update_state(
+                binding.listing.rights.rights_hash, RightsState.ACTIVE)
         self.artifacts.write_json("delivery_receipt.json", receipt.to_plain())
         return {"enabled": True, "verified": True, "receipt": receipt.to_plain(),
                 "delivery_id": receipt.delivery_id}

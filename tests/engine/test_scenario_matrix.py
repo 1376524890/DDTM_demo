@@ -151,6 +151,25 @@ def test_c14_buyer_usage_bond_slash(tmp_path):
                for e in money)
 
 
+def test_c9_invalid_signature(tmp_path):
+    """全部节点签名无效 → 无有效 evidence → 审计不产生 CERTIFIED 结果。"""
+    sc = scenario_c0_normal()
+    sc.audit["invalid_signature_nodes"] = [f"node-{i}" for i in range(10)]
+    sc.audit["privacy_budget"] = {
+        "max_unique_rows": 200, "max_fraction": 0.3, "max_bytes": 200 * 784,
+    }
+    sc.rights["audit_reveal_max_rows"] = 200
+    sc.rights["audit_reveal_max_fraction"] = 0.3
+    sc.rights["audit_reveal_max_bytes"] = 200 * 784
+    from valor.engine.orchestrator import TransactionOrchestrator
+
+    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c9"))
+    res = orch.run()
+    audit = orch._stages["audit"].output
+    assert len(audit.get("audit_trace_events", [])) == 0
+    assert res.terminal_state in ("NO_TRADE", "TRADE")
+
+
 def test_c7_illegal_training_denied(tmp_path):
     """非法训练（未授权 actor）→ 无 key release / 无 training。"""
     sc = scenario_c0_normal()

@@ -270,6 +270,7 @@ class PrivacyAuditVOIExecutor:
 
         base_factory = self.node_client_factory
         offline_set = set(str(x) for x in sc.audit.get("offline_nodes", []))
+        invalid_sig_set = set(str(x) for x in sc.audit.get("invalid_signature_nodes", []))
         def _signed_client_factory(nid):
             if str(nid) in offline_set:
                 raise ConnectionError(f"offline node {nid} (test scenario)")
@@ -282,6 +283,8 @@ class PrivacyAuditVOIExecutor:
                 ev = orig_submit(task)
                 if not ev.get("signature"):
                     ev["signature"] = sign_evidence(kp, ev)
+                if str(nid) in invalid_sig_set:
+                    ev["signature"] = "0" * 128
                 return ev
             client.submit_task = _submit  # type: ignore
             return client

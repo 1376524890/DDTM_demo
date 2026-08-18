@@ -1,0 +1,24 @@
+{
+  "report": "final_mechanism_closure_v2",
+  "head_commit": "d06e5f1",
+  "worktree": "clean",
+  "pytest": "285 passed",
+  "mechanism_invariant_scan": "PASS",
+  "unresolved_P0": [
+    "P0-D: R_cal not yet fully distributed commit-challenge in calibration_runner",
+    "P0-E: independent R_cert full-policy envelope not fully rerun",
+    "P0-C: action profile binding to likelihood/certificate still partial",
+    "P0-Q: pricing provenance improved but not fully DAG-audited",
+    "P0-S: bond capital timeline still uses scenario t_pre/t_post",
+    "P0-T: FullChainGate mutation coverage still partial"
+  ],
+  "unresolved_mechanism_gaps": [
+    "scenario matrix C10/C11/C12 not implemented",
+    "coverage JSON still hand-authored and not machine-generated",
+    "final reverse_self_audit provenance graph not fully machine-verified"
+  ],
+  "mutation_survivors": 0,
+  "mutation_tests": 7,
+  "false_pass_gates": "not fully audited",
+  "paper_mechanism_closure": "FAIL"
+}

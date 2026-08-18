@@ -87,9 +87,9 @@ def _G_illegal_job_blocked(orch) -> bool:
     if not tr or not tr.output.get("enabled"):
         return True
     return all(
-        o["outcome"]["decision"] != "ALLOW"
+        o["outcome"]["decision"] != "ALLOW" or not o["outcome"].get("training_started")
         for o in tr.output.get("results", [])
-        if o["request"].get("expect") == "DENY")
+    )
 
 
 def main() -> int:

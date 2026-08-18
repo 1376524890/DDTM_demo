@@ -27,9 +27,9 @@ def test_usage_enforcement_and_lineage(tmp_path):
     # 3 次正确用途 ALLOW，之后超限/错误主体/错误用途 DENY
     assert decisions[:3] == ["ALLOW", "ALLOW", "ALLOW"]
     assert "DENY" in decisions[3:]
-    # 每个请求的 decision 与预期一致
-    for r in usage["results"]:
-        assert r["decision"] == r["expected"]
+    # 每个请求的 decision 与场景预期一致（ExperimentExpectation 在测试层比较）
+    for r, req in zip(usage["results"], sc.usage_requests):
+        assert r["decision"] == req["expect"]
 
 
 def test_usage_disabled_when_no_trade(tmp_path):

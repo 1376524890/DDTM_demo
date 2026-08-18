@@ -551,9 +551,8 @@ class FullChainGate:
         if not tr.get("enabled"):
             return self._stage("state").get("terminal") != "TRADE"
         for r in tr.get("results", []):
-            req = r.get("request", {})
             out = r.get("outcome", {})
-            if req.get("expect") == "DENY":
+            if out.get("decision") == "DENY":
                 if out.get("key_released") or out.get("training_started") \
                         or out.get("raw_data_access"):
                     return False

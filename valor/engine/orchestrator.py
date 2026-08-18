@@ -894,9 +894,7 @@ class TransactionOrchestrator:
             rh = receipt.receipt_hash()
             receipts.append(receipt.to_plain())
             results.append({"request": req, "decision": res.decision,
-                            "expected": req["expect"],
-                            "violations": list(res.violations),
-                            "match": res.decision == req["expect"]})
+                            "violations": list(res.violations)})
             # lineage（§33 DataFlowEvent）→ hash chain
             ev = DataFlowEvent(
                 event_id="evt-" + content_hash(
@@ -1049,7 +1047,7 @@ class TransactionOrchestrator:
                 r["outcome"]["decision"] == "ALLOW" and r["outcome"]["training_started"]
                 for r in results),
             "illegal_blocked": all(
-                r["outcome"]["decision"] == "DENY" or r["request"].get("expect") != "DENY"
+                r["outcome"]["decision"] != "ALLOW" or not r["outcome"].get("training_started")
                 for r in results),
             "n_jobs": len(results),
         })

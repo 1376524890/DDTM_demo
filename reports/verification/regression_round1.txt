@@ -1,0 +1,133 @@
+..F................................................F.................... [ 65%]
+......................................                                   [100%]
+=================================== FAILURES ===================================
+________________________ test_c3_buyer_misuse_terminal _________________________
+
+tmp_path = PosixPath('/tmp/pytest-of-gb/pytest-24/test_c3_buyer_misuse_terminal0')
+
+    def test_c3_buyer_misuse_terminal(tmp_path):
+>       res = run_capstone(scenario_c3_buyer_misuse(), run_dir=str(tmp_path))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/engine/test_acceptance.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+valor/engine/orchestrator.py:1294: in run_capstone
+    return TransactionOrchestrator(scenario, **kwargs).run()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+valor/engine/orchestrator.py:562: in run
+    settle_res = settle_terminal(
+valor/contract/settlement.py:160: in settle_terminal
+    _pay_audit(money, accounts, audit_pay_s, audit_pay_b)
+valor/contract/settlement.py:59: in _pay_audit
+    money.transfer(Transfer("E_S^A", "auditor", audit_pay_s,
+valor/contract/money_event.py:88: in transfer
+    self.ledger.transfer(t)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <valor.contract.accounts.Ledger object at 0x7f1425ce90>
+t = Transfer(from_account='E_S^A', to_account='auditor', amount=119.0, reason='基础审计支付给审计员', currency_unit='CU')
+
+    def transfer(self, t: Transfer) -> None:
+        if t.amount < 0:
+            raise LedgerError("转账金额不能为负")
+        if t.from_account not in self._accounts:
+            self._accounts[t.from_account] = 0.0
+        if t.to_account not in self._accounts:
+            self._accounts[t.to_account] = 0.0
+        if self._accounts[t.from_account] < t.amount:
+>           raise LedgerError(
+                f"{t.from_account} 余额不足: 需 {t.amount}，有 "
+                f"{self._accounts[t.from_account]}"
+            )
+E           valor.contract.accounts.LedgerError: E_S^A 余额不足: 需 119.0，有 0.0
+
+valor/contract/accounts.py:62: LedgerError
+_____________________________ test_c3_buyer_breach _____________________________
+
+tmp_path = PosixPath('/tmp/pytest-of-gb/pytest-24/test_c3_buyer_breach0')
+
+    def test_c3_buyer_breach(tmp_path):
+        """成交后真实 misuse → evidence → BUYER_BREACH。"""
+>       res = run_capstone(scenario_c3_buyer_misuse(), run_dir=str(tmp_path / "c3"))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/engine/test_scenario_matrix.py:40: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+valor/engine/orchestrator.py:1294: in run_capstone
+    """便捷入口：运行一次 capstone 交易。"""
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+valor/engine/orchestrator.py:562: in run
+    settle_res = settle_terminal(
+valor/contract/settlement.py:160: in settle_terminal
+    _pay_audit(money, accounts, audit_pay_s, audit_pay_b)
+valor/contract/settlement.py:59: in _pay_audit
+    money.transfer(Transfer("E_S^A", "auditor", audit_pay_s,
+valor/contract/money_event.py:88: in transfer
+    self.ledger.transfer(t)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <valor.contract.accounts.Ledger object at 0x7f7e7f0530>
+t = Transfer(from_account='E_S^A', to_account='auditor', amount=119.0, reason='基础审计支付给审计员', currency_unit='CU')
+
+    def transfer(self, t: Transfer) -> None:
+        if t.amount < 0:
+            raise LedgerError("转账金额不能为负")
+        if t.from_account not in self._accounts:
+            self._accounts[t.from_account] = 0.0
+        if t.to_account not in self._accounts:
+            self._accounts[t.to_account] = 0.0
+        if self._accounts[t.from_account] < t.amount:
+>           raise LedgerError(
+                f"{t.from_account} 余额不足: 需 {t.amount}，有 "
+                f"{self._accounts[t.from_account]}"
+            )
+E           valor.contract.accounts.LedgerError: E_S^A 余额不足: 需 119.0，有 0.0
+
+valor/contract/accounts.py:62: LedgerError
+=============================== warnings summary ===============================
+.venv/lib/python3.14/site-packages/fastapi/testclient.py:1
+  /home/gb/DDTM_demo/.venv/lib/python3.14/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/engine/test_calibration_wiring.py: 11 warnings
+tests/engine/test_full_chain_gate.py: 6 warnings
+  /home/gb/DDTM_demo/.venv/lib/python3.14/site-packages/sklearn/linear_model/_logistic.py:599: ConvergenceWarning: lbfgs failed to converge after 1000 iteration(s) (status=1):
+  STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT
+  
+  Increase the number of iterations to improve the convergence (max_iter=1000).
+  You might also want to scale the data as shown in:
+      https://scikit-learn.org/stable/modules/preprocessing.html
+  Please also refer to the documentation for alternative solver options:
+      https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression
+    n_iter_i = _check_optimize_result(
+
+tests/engine/test_calibration_wiring.py::test_calibration_runner_produces_bundle
+tests/engine/test_calibration_wiring.py::test_capstone_with_calibration
+tests/engine/test_full_chain_gate.py::test_full_chain_gate_with_calibration
+  /home/gb/DDTM_demo/.venv/lib/python3.14/site-packages/sklearn/linear_model/_logistic.py:599: ConvergenceWarning: lbfgs failed to converge after 2000 iteration(s) (status=1):
+  STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT
+  
+  Increase the number of iterations to improve the convergence (max_iter=2000).
+  You might also want to scale the data as shown in:
+      https://scikit-learn.org/stable/modules/preprocessing.html
+  Please also refer to the documentation for alternative solver options:
+      https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression
+    n_iter_i = _check_optimize_result(
+
+tests/engine/test_real_evidence.py: 4 warnings
+tests/engine/test_real_evidence_quorum.py: 6 warnings
+  /home/gb/DDTM_demo/.venv/lib/python3.14/site-packages/sklearn/linear_model/_logistic.py:599: ConvergenceWarning: lbfgs failed to converge after 300 iteration(s) (status=1):
+  STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT
+  
+  Increase the number of iterations to improve the convergence (max_iter=300).
+  You might also want to scale the data as shown in:
+      https://scikit-learn.org/stable/modules/preprocessing.html
+  Please also refer to the documentation for alternative solver options:
+      https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression
+    n_iter_i = _check_optimize_result(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/engine/test_acceptance.py::test_c3_buyer_misuse_terminal - valor...
+FAILED tests/engine/test_scenario_matrix.py::test_c3_buyer_breach - valor.con...
+2 failed, 108 passed, 31 warnings in 1012.49s (0:16:52)

@@ -46,11 +46,11 @@ def base():
     return sc, orch._stages, manifest, ledger, orch._stages["audit"].output.get("audit_trace_events", [])
 
 
-def _eval(sc, stages, manifest, ledger, replay=True):
+def _eval(sc, stages, manifest, ledger, replay=True, final_eval_leak=False):
     return evaluate_full_chain(
         scenario=sc, manifest=manifest, ledger=ledger,
         stages=stages, replay_consistent=replay,
-        final_eval_accessed_before_decision=False,
+        final_eval_accessed_before_decision=final_eval_leak,
     )
 
 
@@ -95,3 +95,16 @@ def test_mutation_price_fails_g19(base):
     stages["pricing"].output["p_max"] += 1.0
     gate = _eval(sc, stages, manifest, ledger)
     assert gate["checks"]["MFC-G19_PMAX_RECONCILES"] is False
+
+
+def test_mutation_final_eval_leak_fails_g37(base):
+    sc, stages, manifest, ledger, _ = base
+    gate = _eval(sc, copy.deepcopy(stages), manifest, ledger,
+                 replay=True, final_eval_leak=True)
+    assert gate["checks"]["MFC-G37_FINALEVAL_UNREADABLE_PRE_TERMINAL"] is False
+
+
+def test_mutation_replay_fails_g50(base):
+    sc, stages, manifest, ledger, _ = base
+    gate = _eval(sc, copy.deepcopy(stages), manifest, ledger, replay=False)
+    assert gate["checks"]["MFC-G50_DETERMINISTIC_REPLAY"] is False

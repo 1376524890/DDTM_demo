@@ -65,6 +65,9 @@ def scenario_c2_seller_breach() -> CapstoneScenario:
     """卖方数据/版本篡改 → SELLER_BREACH。"""
     sc = _base_scenario("C2")
     sc.seller_breach = True
+    # P0-K：真实 corruption 输入（审计层篡改 opening → BREACH_EVIDENCE），
+    # 不是 mechanism 读取 seller_breach 标签。
+    sc.audit["tamper_openings"] = True
     return sc
 
 

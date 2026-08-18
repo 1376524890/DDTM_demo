@@ -205,6 +205,27 @@ class PrivacyAuditVOIExecutor:
         seller_svc = SellerAuditService(dataset=self._seller, disclosure=disclosure)
         seller_svc.add_claim(claim)
 
+        # P0-K/P0-L：真实 corruption 由 ExperimentWorld 通过显式机制输入构造
+        # （sc.audit.tamper_openings），不是读 scenario.seller_breach 标签。
+        tamper_openings = bool(sc.audit.get("tamper_openings", False))
+
+        def _seller_open(challenge):
+            opens = seller_svc.process_challenge(challenge)
+            if tamper_openings and opens:
+                from .canonicalize import canonical_mnist_row, canonical_row_from_payload
+                from .opening import make_opening
+
+                o = opens[0]
+                idx, img, label = canonical_row_from_payload(
+                    o.row_payload, index=o.index)
+                img = img.copy()
+                img[0] = (int(img[0]) + 1) % 256
+                opens[0] = make_opening(
+                    index=o.index,
+                    row_payload=canonical_mnist_row(o.index, img, label),
+                    salt=bytes.fromhex(o.salt), proof=o.proof)
+            return opens
+
         # P0-F：节点签名密钥对 + 公钥注册（scheduler 验签后才计入 quorum）。
         from valor.security.signing import SigningKeyPair
 
@@ -252,21 +273,31 @@ class PrivacyAuditVOIExecutor:
 
         steps = []
         posterior = belief.to_plain()
+        executed_any = False
         for _ in range(10):
             aid, best_voi, _ = choose_best_action(
                 belief, catalog.likelihoods(), loss, catalog.costs())
             if aid is None or best_voi <= 0:
-                break
+                if executed_any:
+                    break
+                # BASE_LISTING 基础审计至少执行一次（定价前验证承诺，Alg2）
+                aid = f"a-{self.challenge_sizes[0]}"
+                best_voi = 0.0
+            executed_any = True
             k = int(aid.split("-")[-1])  # aid="a-64" → 64
             action = self._action(k)
             res = scheduler.run(
                 action, tx_id=tx_id, commitment=commitment, claim=claim,
-                disclosure=disclosure)
+                disclosure=disclosure, seller_open_fn=_seller_open)
             if res.status == "ACTION_INFEASIBLE_PRIVACY_BUDGET":
                 break
             if res.status != "CERTIFIED":
                 break
-            outcome = "PASS" if res.cert_result == "PASS" else "QUALITY_FAIL"
+            outcome = res.cert_result
+            if outcome == "INCONCLUSIVE":
+                outcome = "QUALITY_FAIL"
+            if outcome not in ("PASS", "QUALITY_FAIL", "BREACH_EVIDENCE", "INCONCLUSIVE"):
+                outcome = "QUALITY_FAIL"
             belief = bayes_update(belief, catalog.get(aid).likelihood.row(outcome))
             posterior = belief.to_plain()
             steps.append({

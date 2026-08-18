@@ -87,6 +87,12 @@ class CapstoneScenario:
         # 审计报价成本项（P0-B，显式配置，禁止默认）
         "chain_fee": 0.0, "challenge_cost": 0.0, "dispute_cost": 0.0,
         "max_audit_steps": 10,
+        # AuditDisclosureBudget（P0-H）：显式 rows/fraction/bytes，禁止 DP ε 映射
+        "privacy_budget": {
+            "max_unique_rows": 200,
+            "max_fraction": 0.3,
+            "max_bytes": 200 * 784,
+        },
         # 审计市场快照（P0-B）：由 ExperimentWorld / 上游注入，禁止 executor
         # 内部人工生成 bids。qualified_nodes + bids 显式给出（TEST_FIXTURE 默认）。
         "market": {

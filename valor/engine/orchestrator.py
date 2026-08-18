@@ -731,16 +731,46 @@ class TransactionOrchestrator:
         }
 
     def _default_audit_executor(self, sc, ctx):
-        """默认审计执行器：真分布式审计（P4 quorum-by-result + P5 VCG cost + 证据后验）。"""
-        from .audit_executor import DistributedAuditExecutor
+        """默认审计执行器：COMMIT_CHALLENGE 隐私审计进入正式交易 mainline。
 
+        使用 PrivacyAuditScheduler（选择性披露 + signed evidence + quorum-by-result），
+        不再使用 generic DistributedAuditScheduler + in-process evidence_provider。
+        """
+        from fastapi.testclient import TestClient
+
+        from valor.privacy_audit import (
+            ClaimType,
+            CommitChallengeVerifier,
+            create_privacy_app,
+        )
+        from valor.privacy_audit.executor_adapter import make_privacy_audit_executor
+
+        n_nodes = int(sc.audit.get("n_nodes", 10))
+        f = int(sc.audit.get("f", 2))
+        clients = {
+            f"node-{i}": TestClient(
+                create_privacy_app(CommitChallengeVerifier(f"node-{i}")))
+            for i in range(n_nodes)
+        }
+
+        class _NodeClient:
+            def __init__(self, tc):
+                self._tc = tc
+
+            def submit_task(self, task):
+                r = self._tc.post("/privacy/tasks", json=task.to_plain())
+                r.raise_for_status()
+                return r.json()
+
+        factory = lambda nid: _NodeClient(clients[str(nid)])  # noqa: E731
         cal = self.calibration
-        executor = DistributedAuditExecutor(
-            sc,
-            likelihood_artifact=cal.likelihood if cal else None,
+        executor = make_privacy_audit_executor(
+            claim_type=ClaimType.LABEL_DISTRIBUTION,
+            challenge_sizes=[32, 64], n_nodes=n_nodes, f=f,
+            node_client_factory=factory,
             certificate_artifact=cal.certificate if cal else None,
         )
-        return executor.run(sc, ctx)
+        return executor(sc, ctx)
 
     def _run_delivery(self, ledger, binding, commitment, terminal, tx_id, seller_committed):
         """P0-L：正式 Delivery 独立阶段，生成 DeliveryReceipt。

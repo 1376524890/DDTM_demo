@@ -21,6 +21,7 @@ from typing import Any, Callable
 
 import numpy as np
 
+from valor.core.hashing import content_hash
 from valor.core.ids import AuditorID
 from valor.market.reverse_vcg import reverse_vcg_payments
 from valor.security.bft import p_live_binomial, p_safe_binomial

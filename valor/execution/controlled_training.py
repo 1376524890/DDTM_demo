@@ -116,9 +116,12 @@ class ControlledTrainingRunner:
                 training_started=False, model_created=False,
                 job_spec_hash=job.job_spec_hash, reason="key 未释放",
             )
-        # ---- 真实训练（本地隔离，buyer 不接触 raw data）----
+        # ---- 真实训练（进程隔离 worker，buyer 不接触 raw data）----
         try:
-            metrics, model_hash = self._train(job, dataset_X, dataset_y)
+            worker_out = self.provider.execute(job, dataset_X, dataset_y)
+            metrics = worker_out.get("metrics", {})
+            model_hash = worker_out.get("model_artifact_hash", "")
+            worker_pid = worker_out.get("worker_pid")
         except Exception as e:  # noqa: BLE001
             return TrainingOutcome(
                 decision="DENY", key_released=True, raw_data_access=False,
@@ -132,6 +135,7 @@ class ControlledTrainingRunner:
             training_started=True, model_created=True,
             job_spec_hash=job.job_spec_hash, metrics=metrics,
             model_artifact_hash=model_hash,
+            worker_pid=worker_pid,
         )
 
     def _train(self, job: TrainingJobSpec, X, y) -> tuple[dict, str]:

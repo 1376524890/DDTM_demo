@@ -168,6 +168,7 @@ class TrainingOutcome:
     job_spec_hash: str = ""
     metrics: dict = field(default_factory=dict)  # train_loss/eval_loss/accuracy
     model_artifact_hash: str = ""
+    worker_pid: int | None = None
     reason: str = ""
 
     def to_plain(self) -> dict:
@@ -177,6 +178,7 @@ class TrainingOutcome:
             "training_started": self.training_started,
             "model_created": self.model_created, "job_spec_hash": self.job_spec_hash,
             "metrics": self.metrics, "model_artifact_hash": self.model_artifact_hash,
+            "worker_pid": self.worker_pid,
             "reason": self.reason,
         }
 
@@ -200,6 +202,42 @@ class LocalIsolatedProvider:
         if not key_release_decision.get("allow", False):
             return {"key_released": False, "capability_ref": ""}
         return {"key_released": True, "capability_ref": f"cap-{data_ref}-{job_spec_hash}"}
+
+    def execute(self, job: "TrainingJobSpec", dataset_X, dataset_y) -> dict:
+        """Run certified training in a real subprocess worker.
+
+        The orchestrator process passes a protected dataset file path and a
+        serialized job spec, never an in-memory dataframe object.
+        """
+        import json
+        import os
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        import numpy as np
+
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(repo_root)
+        with tempfile.TemporaryDirectory(prefix="valor-worker-") as td:
+            data_path = os.path.join(td, "dataset.npz")
+            np.savez_compressed(
+                data_path,
+                X=np.asarray(dataset_X, dtype=np.uint8),
+                y=np.asarray(dataset_y, dtype=np.int64),
+            )
+            proc = subprocess.run(
+                [sys.executable, "-m", "valor.execution.secure_worker",
+                 data_path, json.dumps(job.to_plain())],
+                capture_output=True, text=True, env=env, timeout=900,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"isolated training worker failed: {proc.stderr[-1000:]}"
+                )
+            return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
 __all__ = [

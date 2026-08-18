@@ -72,6 +72,7 @@ def test_legal_training_runs():
     assert out.raw_data_access is False  # buyer 不接触 raw data
     assert "accuracy" in out.metrics and "eval_loss" in out.metrics
     assert out.model_artifact_hash
+    assert out.worker_pid is not None  # real subprocess worker evidence
 
 
 def test_illegal_actor_denied():

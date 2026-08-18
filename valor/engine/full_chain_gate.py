@@ -530,14 +530,22 @@ class FullChainGate:
 
     def _role_isolation_ok(self) -> bool:
         """MFC-G38：R_cal/R_cert/R_eval 物理隔离（split hashes 冻结）。"""
-        return True  # 由实验框架 DataRoleRegistry 保证（见 tests/experiments）
+        # 必须存在独立冻结的 calibration artifact 才可证明隔离；禁止无证据 True。
+        return (
+            self.calibration is not None
+            and self.calibration.valuation is not None
+            and self.calibration.likelihood is not None
+            and self.calibration.certificate is not None
+        )
 
     def _trainer_scope_ok(self) -> bool:
         """MFC-G39：calibration trainer scope 与在线 trainer 匹配。"""
-        if self.calibration is not None and self.calibration.valuation is not None:
-            # valuation calibration 应记录 trainer_family/hash
-            return True
-        return True
+        # 必须存在 valuation calibration artifact 并记录 trainer_hash。
+        return (
+            self.calibration is not None
+            and self.calibration.valuation is not None
+            and "trainer_hash" in self.calibration.valuation.data
+        )
 
     def _legal_training_runs(self) -> bool:
         """MFC-G45：合法受控训练真实运行（decision=ALLOW 且 training_started）。"""

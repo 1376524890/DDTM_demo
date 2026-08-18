@@ -27,6 +27,7 @@ def _ctx(sc, n_nodes=8):
             "listing": type("L", (), {"rights_hash": "r" * 64})(),
         })(),
         "dataset_hash": "d" * 64,
+        "data_commitment": "c" * 64,
     }
 
 

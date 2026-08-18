@@ -50,19 +50,6 @@ def _req(cfg: dict, key: str) -> float:
     return float(cfg[key])
 
 
-def _breach_evidence_wrapper(base: EvidenceProvider) -> EvidenceProvider:
-    """P0-K：seller breach 场景 → 真实 corruption 被检测，evidence 全 BREACH_EVIDENCE。
-
-    机制观察证据（非 scenario flag 直接定终态）；base 为真实质量证据源。
-    """
-    def provider(node_id: str, task) -> dict:
-        res = dict(base(node_id, task))
-        res["result"] = "BREACH_EVIDENCE"
-        res["outcome"] = "BREACH_EVIDENCE"
-        return res
-    return provider
-
-
 def _default_evidence_provider(results_by_node: dict[str, str]) -> EvidenceProvider:
     """构造确定性 evidence provider：按节点固定返回结果。"""
     def provider(node_id: str, task) -> dict:
@@ -187,11 +174,6 @@ class DistributedAuditExecutor:
                 )
                 self.evidence_provider = prov
                 self._quality_result = prov.real_result
-                # P0-K：seller breach 场景 = 真实 corruption 注入 → evidence 必须
-                # 产生 BREACH_EVIDENCE（机制观察证据，非 scenario flag 直接定终态）。
-                if bool(sc.seller_breach):
-                    base = self.evidence_provider
-                    self.evidence_provider = _breach_evidence_wrapper(base)
             else:
                 # 无候选数据：仅允许显式 override（测试/非 MNIST），禁止默认全 PASS
                 default_results = {str(nid): "PASS" for nid in snapshot.qualified_nodes}

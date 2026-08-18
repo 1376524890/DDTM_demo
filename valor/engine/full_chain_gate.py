@@ -509,9 +509,10 @@ class FullChainGate:
 
     def _auditor_no_full_dataset(self) -> bool:
         """MFC-G44：auditor 进程不持有全量数据（进程隔离架构保证）。"""
-        # 审计执行模式为 COMMIT_CHALLENGE（auditor 只收 task/openings）
-        mode = self._stage("audit").get("execution_mode", "COMMIT_CHALLENGE")
-        return mode in ("COMMIT_CHALLENGE", "FULL_DATA_REFERENCE")
+        # P0-G/P0-T：paper privacy closure 只接受 COMMIT_CHALLENGE。
+        # FULL_DATA_REFERENCE 不能作为 privacy-safe 模式计入 closure。
+        mode = self._stage("audit").get("execution_mode")
+        return mode == "COMMIT_CHALLENGE"
 
     def _deny_before_key_release(self) -> bool:
         """MFC-G29：非法训练 DENY 发生在 key release / data 访问之前。"""

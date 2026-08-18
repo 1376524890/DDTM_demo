@@ -116,6 +116,7 @@ def settle_terminal(
     bond_slash_fraction: float = 1.0,
     money: "MoneyLedger | None" = None,
     tx_id: str = "",
+    audits_already_paid: bool = False,
 ) -> SettlementResult:
     """P0-O Settlement Phase II（Delivery verified / 终态资金流）。"""
     money = money or MoneyLedger(ledger, tx_id=tx_id)
@@ -157,10 +158,12 @@ def settle_terminal(
         if accounts.e_b_p - price > 1e-9:
             _t("E_B^P", "buyer", accounts.e_b_p - price, "purchase escrow 余量返还")
         _t("B_B^use", "seller", accounts.b_b_use, "买方 usage bond 罚没")
-        _pay_audit(money, accounts, audit_pay_s, audit_pay_b)
+        if not audits_already_paid:
+            _pay_audit(money, accounts, audit_pay_s, audit_pay_b)
         _refund_audit_escrow_remainder(money)
-        if accounts.b_s_pre > 0:
-            _t("B_S^pre", "seller", accounts.b_s_pre, "返还预锁")
+        pre_bal = money.ledger.balance("B_S^pre")
+        if pre_bal > 1e-9:
+            _t("B_S^pre", "seller", pre_bal, "返还预锁")
         if money.ledger.balance("B_S^*") > 1e-9:
             _t("B_S^*", "seller", money.ledger.balance("B_S^*"), "bond 到期返还")
     else:

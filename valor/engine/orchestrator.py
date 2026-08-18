@@ -528,6 +528,7 @@ class TransactionOrchestrator:
             "B_B^use": ledger_bal.balance("B_B^use"),
         }
         # P0-O：Settlement Phase I（Clearing 后、Delivery 前）只调整预锁并支付已发生审计。
+        phase1_called = terminal == TerminalState.TRADE
         if terminal == TerminalState.TRADE:
             phase1 = settle_clearing(
                 decision="TRADE", ledger=ledger_bal, accounts=accounts,
@@ -563,7 +564,8 @@ class TransactionOrchestrator:
             terminal=terminal, ledger=ledger_bal, accounts=accounts,
             price=clearance.clearing_price or 0.0,
             audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
-            money=money_ledger, tx_id=tx_id)
+            money=money_ledger, tx_id=tx_id,
+            audits_already_paid=phase1_called)
         self._stage("settlement", {
             "terminal": terminal.value,
             "bond_slashed": settle_res.bond_slashed,

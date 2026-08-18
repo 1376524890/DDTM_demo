@@ -480,7 +480,7 @@ class TransactionOrchestrator:
         # ---- Settlement（阶段 35，P8 MoneyLedger 语义）----
         from valor.contract.accounts import Ledger
         from valor.contract.money_event import MoneyLedger
-        from valor.contract.settlement import settle
+        from valor.contract.settlement import settle_clearing, settle_terminal
         from valor.contract.state_machine import StateMachineInput, TransactionStateMachine
         from valor.contract.escrow import EscrowAccounts
 
@@ -516,25 +516,18 @@ class TransactionOrchestrator:
             "B_S^*": ledger_bal.balance("B_S^*"),
             "B_B^use": ledger_bal.balance("B_B^use"),
         }
-        settle_res = settle(
-            terminal=terminal, ledger=ledger_bal, accounts=accounts,
-            price=clearance.clearing_price or 0.0,
-            audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
-            money=money_ledger, tx_id=tx_id)
+        # P0-O：Settlement Phase I（Clearing 后、Delivery 前）只调整预锁并支付已发生审计。
+        if terminal == TerminalState.TRADE:
+            phase1 = settle_clearing(
+                decision="TRADE", ledger=ledger_bal, accounts=accounts,
+                audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
+                money=money_ledger, tx_id=tx_id)
+            self._stage("settlement_phase1", {
+                "phase": phase1.get("phase"),
+                "transfers": phase1.get("transfers", []),
+                "conservation": ledger_bal.conservation_check(),
+            })
         money_semantics_ok = money_ledger.validate_semantics()
-        self._stage("settlement", {
-            "terminal": terminal.value, "bond_slashed": settle_res.bond_slashed,
-            "conservation": ledger_bal.conservation_check(),
-            "money_semantics_ok": money_semantics_ok,
-            "transfers": [t.to_plain() for t in settle_res.transfers],
-            "money_events": [e.to_plain() for e in money_ledger.events],
-            "escrow_initial_balances": escrow_initial,
-        })
-        self._log(ledger, stage="SETTLEMENT", event_type="SETTLE",
-                  formula_id="SETTLE_PHASE1",
-                  formula_output={"terminal": terminal.value,
-                                  "conservation": ledger_bal.conservation_check(),
-                                  "money_semantics_ok": money_semantics_ok})
 
         # ---- Delivery（阶段 36，P0-L 正式独立阶段）----
         # Clearing → Settlement Phase I → Delivery → Rights ACTIVE → Usage。
@@ -553,6 +546,27 @@ class TransactionOrchestrator:
         # 合法训练真实运行；非法训练在 key release / training start 前被拒。
         training_result = self._run_controlled_training(
             ledger, binding, cand_X, cand_y, terminal)
+
+        # P0-O：Settlement Phase II（Delivery / Usage 生命周期结束后）。
+        settle_res = settle_terminal(
+            terminal=terminal, ledger=ledger_bal, accounts=accounts,
+            price=clearance.clearing_price or 0.0,
+            audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
+            money=money_ledger, tx_id=tx_id)
+        self._stage("settlement", {
+            "terminal": terminal.value,
+            "bond_slashed": settle_res.bond_slashed,
+            "conservation": ledger_bal.conservation_check(),
+            "money_semantics_ok": money_ledger.validate_semantics(),
+            "transfers": [t.to_plain() for t in settle_res.transfers],
+            "money_events": [e.to_plain() for e in money_ledger.events],
+            "escrow_initial_balances": escrow_initial,
+        })
+        self._log(ledger, stage="SETTLEMENT", event_type="SETTLE_PHASE2",
+                  formula_id="SETTLE_PHASE2",
+                  formula_output={"terminal": terminal.value,
+                                  "conservation": ledger_bal.conservation_check(),
+                                  "money_semantics_ok": money_ledger.validate_semantics()})
 
         # ---- Feedback（阶段 49-51，P10）----
         feedback_result = self._run_feedback(ledger, terminal, X, y,

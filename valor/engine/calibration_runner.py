@@ -64,12 +64,10 @@ class CalibrationConfig:
     candidate_frac: float = 0.2
 
     def __post_init__(self) -> None:
-        from valor.core.hashing import content_hash
-
         if self.policy_hash is None:
-            self.policy_hash = content_hash({"policy_id": "calibration-default"})
+            raise ValueError("policy_hash 缺失（禁止占位 hash）")
         if self.action_catalog_hash is None:
-            self.action_catalog_hash = content_hash({"action": "quality-audit"})
+            raise ValueError("action_catalog_hash 缺失（禁止占位 hash）")
 
 
 def _inject_missingness(df: pd.DataFrame, frac: float, seed: int) -> pd.DataFrame:

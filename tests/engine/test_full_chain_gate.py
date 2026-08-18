@@ -30,7 +30,8 @@ def test_full_chain_gate_with_calibration(tmp_path):
                             y_historical=handle.y.iloc[:300],
                             dataset_hash="d" * 64, trainer_hash="t" * 64, seed=0,
                             payoff_matrix=[[1.0, -2.0], [-5.0, 3.0]],
-                            deployment_scale=1000, n_pseudo_trades=3)
+                            deployment_scale=1000, n_pseudo_trades=3,
+                            policy_hash="p" * 64, action_catalog_hash="a" * 64)
     bundle = run_offline_calibration(cfg, run_dir=str(tmp_path / "cal"))
     sc = CapstoneScenario(scenario_id="gate-2", seller_id="seller-1",
                           buyer_id="buyer-1")

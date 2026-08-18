@@ -15,6 +15,7 @@ def _cal_config(handle, n=300):
         dataset_hash="d" * 64, trainer_hash="t" * 64, seed=0,
         payoff_matrix=[[1.0, -2.0], [-5.0, 3.0]],
         deployment_scale=1000, n_pseudo_trades=3,
+        policy_hash="p" * 64, action_catalog_hash="a" * 64,
     )
 
 

@@ -38,7 +38,9 @@ def capstone_trial_executor(method_id: str, config: dict, world) -> dict:
         dataset_hash=world.dataset_manifest_hash,
         trainer_hash="t" * 64, seed=sh.calibration,
         payoff_matrix=[[1.0, -2.0], [-5.0, 3.0]],
-        deployment_scale=1000, n_pseudo_trades=2),
+        deployment_scale=1000, n_pseudo_trades=2,
+        policy_hash=world.world_id + "-policy",
+        action_catalog_hash=world.world_id + "-catalog"),
         run_dir=f"/tmp/ef-cal-{world.world_id}")
 
     sc = CapstoneScenario(

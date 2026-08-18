@@ -90,6 +90,8 @@ def cmd_calibration_run(config_path: str) -> int:
         payoff_matrix=_req("payoff_matrix"),
         deployment_scale=_req("deployment_scale"),
         n_pseudo_trades=_req("n_pseudo_trades"),
+        policy_hash=_req("policy_hash"),
+        action_catalog_hash=_req("action_catalog_hash"),
     )
     bundle = run_offline_calibration(cal_cfg, run_dir=_req("run_dir"))
     print(json.dumps(bundle.to_plain(), ensure_ascii=False, indent=2))

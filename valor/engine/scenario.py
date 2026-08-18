@@ -272,7 +272,9 @@ def scenario_from_config(cfg: dict) -> CapstoneScenario:
         split_seed=ds.get("seed", 0),
         payoff_matrix=payoff_matrix,
         rights=rights,
-        entitlement_pass=ent.get("grant_authority", True),
+        entitlement_pass=(
+            ent["grant_authority"] if "grant_authority" in ent else False
+        ),
         entitlement=ent,
         seller_breach=cfg.get("seller_breach") or False,
         buyer_misuse=cfg.get("buyer_misuse") or False,

@@ -264,7 +264,7 @@ class FullChainGate:
         self._check(results, "MFC-G25_DELIVERY_EXISTS",
                     lambda: bool(s("delivery")))
         self._check(results, "MFC-G26_DELIVERY_HASH_MATCHES_TRANSACTION",
-                    lambda: s("delivery").get("verified", True))
+                    lambda: s("delivery").get("verified", False))
 
         # ================= MFC-G27..G29：rights ACTIVE / receipt / DENY =====
         self._check(results, "MFC-G27_RIGHTS_ACTIVE_BEFORE_USE",
@@ -421,7 +421,7 @@ class FullChainGate:
 
     def _rights_active_before_use(self) -> bool:
         """MFC-G27：Rights ACTIVE 在任何数据使用之前。"""
-        return self._stage("delivery").get("verified", True) and bool(
+        return self._stage("delivery").get("verified", False) and bool(
             self._stage("usage"))
 
     def _usage_has_receipts(self) -> bool:
@@ -448,7 +448,7 @@ class FullChainGate:
             has_breach_evidence = any(
                 e.get("outcome") == "BREACH_EVIDENCE"
                 for e in audit.get("audit_trace_events", []))
-            return has_breach_evidence or not self._stage("delivery").get("verified", True)
+            return has_breach_evidence or not self._stage("delivery").get("verified", False)
         return True
 
     def _openlineage_consistent(self) -> bool:

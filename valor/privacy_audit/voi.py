@@ -23,6 +23,7 @@ from valor.audit.likelihood import ActionLikelihood
 from valor.audit.loss import LossMatrix
 from valor.audit.state_model import StateBelief
 from valor.audit.voi import choose_best_action, marginal_value_of_audit
+from valor.core.enums import ExecutionMode
 from valor.core.hashing import content_hash
 from valor.core.ids import AuditorID
 from valor.distributed.node_state import AuditorNode, NodeRegistry
@@ -33,6 +34,7 @@ from .disclosure import DisclosureState
 from .models import AuditExecutionMode, ClaimType, PrivacyAuditAction
 from .scheduler import PrivacyAuditActionResult, PrivacyAuditScheduler
 from .primitives import CLAIM_TO_PRIMITIVE
+from .process_isolated import AuditorIdentityRegistry
 
 
 # k 候选（可配置；每个是一个 action）
@@ -82,6 +84,9 @@ class PrivacyAuditVOIExecutor:
         dataset_commitment=None,  # P0-A：上游 canonical DatasetCommitment
         node_client_factory: Callable[[str], Any] | None = None,
         certificate_artifact=None,
+        execution_mode: ExecutionMode = ExecutionMode.TEST_FIXTURE,
+        auditor_identity_registry: AuditorIdentityRegistry | None = None,
+        public_keys: dict[str, str] | None = None,
         allow_independent_commit: bool = False,  # TEST_ONLY: 独立运行无上游时允许本地 commit
     ) -> None:
         self.scenario = scenario
@@ -94,6 +99,9 @@ class PrivacyAuditVOIExecutor:
         self.m, self.q = 3 * f + 1, 2 * f + 1
         self.node_client_factory = node_client_factory
         self.certificate_artifact = certificate_artifact
+        self.execution_mode = execution_mode
+        self.auditor_identity_registry = auditor_identity_registry
+        self.public_keys = public_keys
         self.allow_independent_commit = allow_independent_commit
         self._store = seller_store or CommittedDatasetStore("seller_private")
         self._seller = seller_committed
@@ -157,6 +165,43 @@ class PrivacyAuditVOIExecutor:
             reg.register(AuditorNode(AuditorID(f"node-{i}"), ("quality",), 1.0, 100.0 + i))
         return reg
 
+    def _market_snapshot(self, sc, ctx):
+        """AuditMarketSnapshot must come from upstream (ExperimentWorld/ctx/scenario.audit.market).
+
+        PrivacyAuditVOIExecutor never generates bids/stake/qualified nodes itself.
+        """
+        from valor.audit.market_quote import AuditMarketSnapshot
+
+        injected = ctx.get("market_snapshot")
+        if injected is not None:
+            if isinstance(injected, AuditMarketSnapshot):
+                return injected
+            if isinstance(injected, dict):
+                return AuditMarketSnapshot(
+                    snapshot_id=injected.get("snapshot_id", "mkt"),
+                    family=injected.get("family", "quality"),
+                    qualified_nodes=injected["qualified_nodes"],
+                    bids={str(k): float(v) for k, v in injected["bids"].items()},
+                    min_stake=float(injected.get("min_stake", 0.0)),
+                    source_kind=injected.get("source_kind", "MARKET_DISCOVERED"),
+                    source_ref=injected.get("source_ref", ""),
+                )
+        mkt = sc.audit.get("market")
+        if mkt is None or not mkt.get("bids"):
+            raise ValueError(
+                "AuditMarketSnapshot must be injected via ctx['market_snapshot'] "
+                "or scenario.audit['market']; hardcoded bids are forbidden"
+            )
+        return AuditMarketSnapshot(
+            snapshot_id=mkt.get("snapshot_id", "scenario-market"),
+            family=mkt.get("family", "quality"),
+            qualified_nodes=[str(x) for x in mkt["qualified_nodes"]],
+            bids={str(k): float(v) for k, v in mkt["bids"].items()},
+            min_stake=float(mkt.get("min_stake", 0.0)),
+            source_kind=mkt.get("source_kind", "THREAT_SCENARIO"),
+            source_ref=mkt.get("source_ref", "scenario.audit.market"),
+        )
+
     def _action(self, k: int) -> PrivacyAuditAction:
         primitive_id = CLAIM_TO_PRIMITIVE[self.claim_type]
         a = self.scenario.audit
@@ -171,10 +216,10 @@ class PrivacyAuditVOIExecutor:
             committee_m=self.m,
             quorum_q=self.q,
             byzantine_f=self.f,
-            rho=float(a.get("rho", 0.0)),
-            eta_b=float(a.get("eta_b", 0.0)),
-            eta_o=float(a.get("eta_o", 0.0)),
-            min_stake=float(a.get("min_stake", 0.0)),
+            rho=float(a["rho"]),
+            eta_b=float(a["eta_b"]),
+            eta_o=float(a["eta_o"]),
+            min_stake=float(a["min_stake"]),
             aggregation_rule="quorum-by-result",
             signature_requirement="REQUIRED",
             challenge_policy="rho-sampled",
@@ -184,10 +229,10 @@ class PrivacyAuditVOIExecutor:
             trigger="BASE_LISTING",
             security_profile="COMMIT_CHALLENGE",
             decision_thresholds={
-                "alpha_shift": float(a.get("alpha_shift", 0.0)),
-                "label_error_threshold": float(a.get("label_error_threshold", 0.0)),
+                "alpha_shift": float(a["alpha_shift"]),
+                "label_error_threshold": float(a["label_error_threshold"]),
             },
-            execution_version_hash=a.get("execution_version_hash", ""),
+            execution_version_hash=a["execution_version_hash"],
         )
         return PrivacyAuditAction(
             action_id=f"{self.claim_type.value}_CC_{k}",
@@ -229,17 +274,22 @@ class PrivacyAuditVOIExecutor:
             max_bytes=int(max_bytes),
             _n_rows=n_rows)
 
-        registry = self._registry()
-        bids = {AuditorID(str(n.node_id)): 10.0 + i
-                for i, n in enumerate(registry.all())}
+        snapshot = self._market_snapshot(sc, ctx)
+        registry = NodeRegistry()
+        for nid in snapshot.qualified_nodes:
+            registry.register(AuditorNode(
+                AuditorID(nid), (snapshot.family,), 1.0, snapshot.min_stake))
+        bids = {AuditorID(nid): float(b) for nid, b in snapshot.bids.items()}
 
         from valor.seller.audit_service import SellerAuditService
         seller_svc = SellerAuditService(dataset=self._seller, disclosure=disclosure)
         seller_svc.add_claim(claim)
 
-        # P0-K/P0-L：真实 corruption 由 ExperimentWorld 通过显式机制输入构造
-        # （sc.audit.tamper_openings），不是读 scenario.seller_breach 标签。
-        tamper_openings = bool(sc.audit.get("tamper_openings", False))
+        # P0-K/P0-L：真实 corruption 由 ExperimentWorld 构造。TEST_FIXTURE 仍可
+        # 显式注入 tamper_openings；FORMAL/PRODUCTION 禁止读取故障 flag。
+        tamper_openings = False
+        if self.execution_mode == ExecutionMode.TEST_FIXTURE:
+            tamper_openings = bool(sc.audit.get("tamper_openings", False))
 
         def _seller_open(challenge):
             opens = seller_svc.process_challenge(challenge)
@@ -258,19 +308,25 @@ class PrivacyAuditVOIExecutor:
                     salt=bytes.fromhex(o.salt), proof=o.proof)
             return opens
 
-        # P0-F：节点签名密钥对 + 公钥注册（scheduler 验签后才计入 quorum）。
-        from valor.security.signing import SigningKeyPair
-
-        keyring = {str(n.node_id): SigningKeyPair.generate(str(n.node_id))
-                   for n in registry.all()}
-        public_keys = {nid: kp.public_key_hex for nid, kp in keyring.items()}
-
-        # P0-F：包装 node_client_factory，使返回的 evidence 由节点私钥签名。
-        from valor.security.signing import sign_evidence
-
+        # P0-F：scheduler 需要 auditor 公钥注册表。私钥只在 auditor 子进程内。
+        if self.auditor_identity_registry is not None:
+            public_keys = self.auditor_identity_registry.public_keys()
+        elif self.public_keys is not None:
+            public_keys = dict(self.public_keys)
+        else:
+            # fail closed: without public keys no signed evidence can be accepted
+            public_keys = {}
         base_factory = self.node_client_factory
-        offline_set = set(str(x) for x in sc.audit.get("offline_nodes", []))
-        invalid_sig_set = set(str(x) for x in sc.audit.get("invalid_signature_nodes", []))
+        offline_set = set()
+        invalid_sig_set = set()
+        if self.execution_mode == ExecutionMode.TEST_FIXTURE:
+            offline_set = set(str(x) for x in sc.audit.get("offline_nodes", []))
+            invalid_sig_set = set(str(x) for x in sc.audit.get("invalid_signature_nodes", []))
+
+        # P0-F: the mechanism never signs on behalf of a node. If the transport
+        # already returned signed evidence we keep it; if it is unsigned the
+        # scheduler will reject it. TEST_FIXTURE may corrupt signatures to
+        # exercise fail-closed paths, but only when explicitly requested.
         def _signed_client_factory(nid):
             if str(nid) in offline_set:
                 raise ConnectionError(f"offline node {nid} (test scenario)")
@@ -278,11 +334,8 @@ class PrivacyAuditVOIExecutor:
             if client is None:
                 return None
             orig_submit = client.submit_task
-            kp = keyring[str(nid)]
             def _submit(task):
                 ev = orig_submit(task)
-                if not ev.get("signature"):
-                    ev["signature"] = sign_evidence(kp, ev)
                 if str(nid) in invalid_sig_set:
                     ev["signature"] = "0" * 128
                 return ev

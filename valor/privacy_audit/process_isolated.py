@@ -105,6 +105,17 @@ class ProcessAuditorClient:
         self.node_id = node_id
         self.base = f"http://127.0.0.1:{port}"
 
+    def health(self) -> dict:
+        r = httpx.get(f"{self.base}/health", timeout=5.0)
+        r.raise_for_status()
+        return r.json()
+
+    def public_key(self) -> str:
+        return self.health().get("public_key", "")
+
+    def key_fingerprint(self) -> str:
+        return self.health().get("key_fingerprint", "")
+
     def submit_task(self, task):
         r = httpx.post(f"{self.base}/privacy/tasks", json=task.to_plain(),
                        timeout=10.0)
@@ -112,7 +123,79 @@ class ProcessAuditorClient:
         return r.json()
 
 
+class AuditorIdentityRegistry:
+    """Scheduler-side registry of auditor public identities.
+
+    Stores node_id -> public_key / key_fingerprint. The private key is created
+    and held inside the auditor subprocess and never exposed to the scheduler.
+    """
+
+    def __init__(self) -> None:
+        self._public_keys: dict[str, str] = {}
+        self._fingerprints: dict[str, str] = {}
+
+    def register(self, node_id: str, *, public_key: str, key_fingerprint: str) -> None:
+        self._public_keys[node_id] = public_key
+        self._fingerprints[node_id] = key_fingerprint
+
+    def register_client(self, node_id: str, client: ProcessAuditorClient) -> None:
+        self.register(node_id, public_key=client.public_key(),
+                      key_fingerprint=client.key_fingerprint())
+
+    def public_key(self, node_id: str) -> str:
+        if node_id not in self._public_keys:
+            raise KeyError(f"AUDITOR_IDENTITY_MISSING: {node_id}")
+        return self._public_keys[node_id]
+
+    def key_fingerprint(self, node_id: str) -> str:
+        if node_id not in self._fingerprints:
+            raise KeyError(f"AUDITOR_IDENTITY_MISSING: {node_id}")
+        return self._fingerprints[node_id]
+
+    def public_keys(self) -> dict[str, str]:
+        return dict(self._public_keys)
+
+    def to_plain(self) -> dict:
+        return {
+            "public_keys": dict(self._public_keys),
+            "key_fingerprints": dict(self._fingerprints),
+        }
+
+
+class ProcessHttpAuditorCluster:
+    """Formal process-isolated auditor cluster used by FORMAL_EXPERIMENT/PRODUCTION.
+
+    Each auditor is a real subprocess (independent PID) exposing FastAPI/HTTP.
+    The scheduler only sends PrivacyAuditTask (commitment + claim + challenge +
+    openings + action metadata); never seller_store or full X/y. Each auditor
+    creates its Ed25519 key locally and returns signed evidence.
+    """
+
+    def __init__(self, n: int, *, node_prefix: str = "node-") -> None:
+        self._pool = ProcessAuditorPool(n=n, node_prefix=node_prefix)
+        self._registry = AuditorIdentityRegistry()
+        for nid, client in self._pool._clients.items():
+            self._registry.register_client(nid, client)
+
+    @property
+    def registry(self) -> AuditorIdentityRegistry:
+        return self._registry
+
+    def client_factory(self) -> Callable[[str], ProcessAuditorClient]:
+        return self._pool.client_factory()
+
+    def close(self) -> None:
+        self._pool.close()
+
+    def __enter__(self) -> "ProcessHttpAuditorCluster":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+
 __all__ = [
     "free_port", "wait_health", "spawn_auditor_process",
     "ProcessAuditorPool", "ProcessAuditorClient",
+    "AuditorIdentityRegistry", "ProcessHttpAuditorCluster",
 ]

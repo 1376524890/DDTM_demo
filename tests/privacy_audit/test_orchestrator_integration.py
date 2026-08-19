@@ -12,13 +12,18 @@ from valor.privacy_audit import (
     create_privacy_app,
 )
 from valor.privacy_audit.executor_adapter import make_privacy_audit_executor
+from valor.security.signing import SigningKeyPair
 from fastapi.testclient import TestClient
 
 
 def _client_factory(n=10):
-    clients = {f"node-{i}": TestClient(
-        create_privacy_app(CommitChallengeVerifier(f"node-{i}")))
-        for i in range(n)}
+    clients = {}
+    public_keys = {}
+    for i in range(n):
+        kp = SigningKeyPair.generate(f"node-{i}")
+        clients[f"node-{i}"] = TestClient(
+            create_privacy_app(CommitChallengeVerifier(f"node-{i}", signing_key=kp)))
+        public_keys[f"node-{i}"] = kp.public_key_hex
 
     class _A:
         def __init__(self, tc): self._tc = tc
@@ -27,7 +32,7 @@ def _client_factory(n=10):
             r.raise_for_status()
             return r.json()
 
-    return lambda nid: _A(clients[str(nid)])
+    return lambda nid: _A(clients[str(nid)]), public_keys
 
 
 def test_capstone_with_privacy_audit(tmp_path):
@@ -44,13 +49,15 @@ def test_capstone_with_privacy_audit(tmp_path):
     sc.rights["audit_reveal_max_fraction"] = 0.3
     sc.rights["audit_reveal_max_bytes"] = 200 * 784
 
+    factory, public_keys = _client_factory()
     pa_executor = make_privacy_audit_executor(
         claim_type=ClaimType.LABEL_DISTRIBUTION,
         challenge_sizes=[32, 64], n_nodes=10, f=2,
         seller_store=__import__("valor.privacy_audit.commitment",
                                 fromlist=["CommittedDatasetStore"])
         .CommittedDatasetStore(str(tmp_path / "seller_private")),
-        node_client_factory=_client_factory(),
+        node_client_factory=factory,
+        public_keys=public_keys,
     )
     orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "runs"),
                                    audit_executor=pa_executor)
@@ -77,13 +84,15 @@ def test_privacy_audit_disclosure_fraction(tmp_path):
     sc.rights["audit_reveal_max_fraction"] = 0.2
     sc.rights["audit_reveal_max_bytes"] = 100 * 784
 
+    factory, public_keys = _client_factory()
     pa_executor = make_privacy_audit_executor(
         claim_type=ClaimType.LABEL_DISTRIBUTION,
         challenge_sizes=[32], n_nodes=10, f=2,
         seller_store=__import__("valor.privacy_audit.commitment",
                                 fromlist=["CommittedDatasetStore"])
         .CommittedDatasetStore(str(tmp_path / "seller_private2")),
-        node_client_factory=_client_factory(),
+        node_client_factory=factory,
+        public_keys=public_keys,
     )
     orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "runs2"),
                                    audit_executor=pa_executor)

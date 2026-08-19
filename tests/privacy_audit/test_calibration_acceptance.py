@@ -123,6 +123,7 @@ def test_g11_vcg_payment_in_audit_voi():
         ClaimType, PrivacyAuditVOIExecutor, create_privacy_app,
     )
     from valor.privacy_audit.verifier import CommitChallengeVerifier
+    from valor.security.signing import SigningKeyPair
     from fastapi.testclient import TestClient
 
     X, y = _block(500, seed=1)
@@ -133,8 +134,13 @@ def test_g11_vcg_payment_in_audit_voi():
     sc.rights["audit_reveal_max_rows"] = 200
     sc.rights["audit_reveal_max_fraction"] = 0.4
     sc.rights["audit_reveal_max_bytes"] = 200 * 784
-    clients = {f"node-{i}": TestClient(create_privacy_app(CommitChallengeVerifier(f"node-{i}")))
-               for i in range(10)}
+    clients = {}
+    public_keys = {}
+    for i in range(10):
+        kp = SigningKeyPair.generate(f"node-{i}")
+        clients[f"node-{i}"] = TestClient(
+            create_privacy_app(CommitChallengeVerifier(f"node-{i}", signing_key=kp)))
+        public_keys[f"node-{i}"] = kp.public_key_hex
 
     class _A:
         def __init__(self, tc): self._tc = tc
@@ -149,6 +155,7 @@ def test_g11_vcg_payment_in_audit_voi():
         challenge_sizes=[64], n_nodes=10, f=2,
         seller_store=CommittedDatasetStore("/tmp/pa-g11"),
         node_client_factory=lambda nid: _A(clients[str(nid)]),
+        public_keys=public_keys,
         allow_independent_commit=True)
     res = ex.run(sc, {"binding": type("B", (), {"tx_id": "tx-g11"})()})
     if res.action_results:

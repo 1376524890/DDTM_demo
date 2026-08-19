@@ -25,11 +25,11 @@ from valor.privacy_audit import (
     ClaimType,
     CommittedDatasetStore,
     PrivacyAuditTask,
-    build_dataset_commitment,
     claim_from_data,
     generate_challenge,
 )
 from valor.privacy_audit.verifier import CommitChallengeVerifier
+from valor.seller import SellerCommittedDataset
 
 
 def _free_port() -> int:
@@ -94,23 +94,17 @@ def _make_task():
     rng = np.random.default_rng(0)
     X = rng.integers(0, 256, size=(500, 784), dtype=np.uint8)
     y = rng.integers(0, 10, size=500)
-    commitment, tree, rows = build_dataset_commitment(
-        dataset_id="cand-v1", version="v1", X=X, y=y,
+    store = CommittedDatasetStore("/tmp/pa-proc-task")
+    seller = SellerCommittedDataset.create(
+        store, dataset_id="cand-v1", version="v1", X=X, y=y,
         schema_hash="s" * 64)
+    commitment = seller.commitment
     claim = claim_from_data(
         claim_type=ClaimType.LABEL_DISTRIBUTION, X=X, y=y,
         dataset_commitment_hash=commitment.commitment_hash)
     ch = generate_challenge(task_hash="t-1", action_id="a-64",
                             n_rows=len(X), k=64)
-    # openings
-    from valor.privacy_audit.opening import make_opening
-    from valor.privacy_audit.merkle import MerkleProof
-
-    opens = []
-    for i in ch.indices:
-        opens.append(make_opening(
-            index=i, row_payload=X[i].tobytes(),
-            salt=b"\x01" * 32, proof=tree.proof(int(i))))
+    opens = seller.open_rows(list(ch.indices))
     task = PrivacyAuditTask(
         task_id="t-1", tx_id="tx-1", commitment=commitment, claim=claim,
         primitive_id="LabelDistributionAudit", challenge=ch, openings=opens)
@@ -130,23 +124,26 @@ def test_tampered_row_breach_evidence(auditor_ports):
     rng = np.random.default_rng(0)
     X = rng.integers(0, 256, size=(300, 784), dtype=np.uint8)
     y = rng.integers(0, 10, size=300)
-    commitment, tree, rows = build_dataset_commitment(
-        dataset_id="cand-v2", version="v1", X=X, y=y, schema_hash="s" * 64)
+    store = CommittedDatasetStore("/tmp/pa-proc-tamper")
+    seller = SellerCommittedDataset.create(
+        store, dataset_id="cand-v2", version="v1", X=X, y=y,
+        schema_hash="s" * 64)
+    commitment = seller.commitment
     claim = claim_from_data(claim_type=ClaimType.LABEL_DISTRIBUTION,
                             X=X, y=y, dataset_commitment_hash=commitment.commitment_hash)
     ch = generate_challenge(task_hash="t-2", action_id="a-64", n_rows=len(X), k=32)
-    from valor.privacy_audit.merkle import MerkleProof
+    opens = seller.open_rows(list(ch.indices))
+    # 用真实 opening，只篡改 payload（保留真实 salt/proof）→ 验证应失败
+    from valor.privacy_audit.canonicalize import canonical_mnist_row, canonical_row_from_payload
     from valor.privacy_audit.opening import make_opening
 
-    opens = []
-    for i in ch.indices:
-        payload = X[i].tobytes()
-        if i == ch.indices[0]:
-            payload = (X[i] + 1).tobytes()  # 篡改第一行
-        # 用真实 Merkle proof（来自 tree），只篡改 payload → 验证应失败
-        proof = tree.proof(int(i))
-        opens.append(make_opening(index=i, row_payload=payload,
-                                  salt=b"\x02" * 32, proof=proof))
+    o = opens[0]
+    idx, img, label = canonical_row_from_payload(o.row_payload, index=o.index)
+    img = img.copy()
+    img[0] = (int(img[0]) + 1) % 256
+    opens[0] = make_opening(
+        index=o.index, row_payload=canonical_mnist_row(o.index, img, label),
+        salt=bytes.fromhex(o.salt), proof=o.proof)
     task = PrivacyAuditTask(
         task_id="t-2", tx_id="tx-2", commitment=commitment, claim=claim,
         primitive_id="LabelDistributionAudit", challenge=ch, openings=opens)

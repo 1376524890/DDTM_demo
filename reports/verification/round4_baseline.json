@@ -1,0 +1,24 @@
+{
+  "round": "VALOR-v1 final closure round4",
+  "evaluated_code_commit": "d06e5f134fc90430a830a09240bdb8370390d31a",
+  "verification_artifact_commit": "011a34ee25a3f62dedd544b846262697debc641f",
+  "final_report_commit": "011a34ee25a3f62dedd544b846262697debc641f",
+  "worktree": "clean",
+  "pytest_result": "285 passed",
+  "pytest_warnings": 37,
+  "mutation_result": "7 passed",
+  "static_shortcut_scan_result": {
+    "check_mechanism_invariants": "PASS",
+    "check_business_defaults": "FAIL",
+    "check_forbidden_patterns": "FAIL",
+    "note": "business-default and forbidden-pattern scanners currently flag privacy_audit/voi.py default-parameter reads"
+  },
+  "FullChainGate_result": "not_rerun_full_suite",
+  "scenario_matrix_result": "weak_assertions_present",
+  "paper_mechanism_closure": "FAIL",
+  "notes": [
+    "HEAD is exactly report_commit 011a34e; evaluated code commit is d06e5f1.",
+    "Baseline pytest observed 283 passed + 2 cleanlab-missing failures before installing optional cleanlab; after install, reproduction gate passes.",
+    "Blocker inventory written to reports/verification/round4_blocker_inventory.json."
+  ]
+}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from valor.engine import CapstoneScenario, TransactionOrchestrator
 from valor.privacy_audit import ClaimType, make_privacy_audit_executor
-from valor.privacy_audit.process_isolated import ProcessAuditorPool
+from valor.privacy_audit.process_isolated import ProcessHttpAuditorCluster
 
 
 def test_process_isolated_privacy_audit_in_mainline(tmp_path):
@@ -19,12 +19,13 @@ def test_process_isolated_privacy_audit_in_mainline(tmp_path):
     sc.rights["audit_reveal_max_fraction"] = 0.2
     sc.rights["audit_reveal_max_bytes"] = 100 * 784
 
-    pool = ProcessAuditorPool(n=10)
+    cluster = ProcessHttpAuditorCluster(n=10)
     try:
         executor = make_privacy_audit_executor(
             claim_type=ClaimType.LABEL_DISTRIBUTION,
             challenge_sizes=[32], n_nodes=10, f=2,
-            node_client_factory=pool.client_factory(),
+            node_client_factory=cluster.client_factory(),
+            auditor_identity_registry=cluster.registry,
         )
         orch = TransactionOrchestrator(
             sc, run_dir=str(tmp_path / "runs"), audit_executor=executor)
@@ -34,4 +35,4 @@ def test_process_isolated_privacy_audit_in_mainline(tmp_path):
         assert 0 <= audit["unique_disclosure"] <= 100
         assert res.terminal_state in ("TRADE", "NO_TRADE")
     finally:
-        pool.close()
+        cluster.close()

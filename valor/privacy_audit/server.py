@@ -24,7 +24,19 @@ def create_privacy_app(verifier: CommitChallengeVerifier) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
-        return {"node_id": verifier.node_id, "status": "ok", "mode": "COMMIT_CHALLENGE"}
+        pk = ""
+        fp = ""
+        if verifier.signing_key is not None:
+            pk = verifier.signing_key.public_key_hex
+            fp = verifier.signing_key.key_fingerprint
+        return {
+            "node_id": verifier.node_id,
+            "status": "ok",
+            "mode": "COMMIT_CHALLENGE",
+            "public_key": pk,
+            "key_fingerprint": fp,
+            "private_key_in_child": verifier.signing_key is not None,
+        }
 
     @app.post("/privacy/tasks")
     def submit_privacy_task(payload: dict) -> dict:

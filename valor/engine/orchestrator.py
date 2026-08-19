@@ -785,11 +785,14 @@ class TransactionOrchestrator:
 
         n_nodes = int(sc.audit.get("n_nodes", 10))
         f = int(sc.audit.get("f", 2))
-        clients = {
-            f"node-{i}": TestClient(
-                create_privacy_app(CommitChallengeVerifier(f"node-{i}")))
-            for i in range(n_nodes)
-        }
+        clients = {}
+        public_keys = {}
+        for i in range(n_nodes):
+            node_id = f"node-{i}"
+            verifier = CommitChallengeVerifier(node_id)
+            clients[node_id] = TestClient(
+                create_privacy_app(verifier))
+            public_keys[node_id] = verifier.signing_key.public_key_hex
 
         class _NodeClient:
             def __init__(self, tc):
@@ -806,6 +809,7 @@ class TransactionOrchestrator:
             claim_type=ClaimType.LABEL_DISTRIBUTION,
             challenge_sizes=[32, 64], n_nodes=n_nodes, f=f,
             node_client_factory=factory,
+            public_keys=public_keys,
             certificate_artifact=cal.certificate if cal else None,
         )
         return executor(sc, ctx)

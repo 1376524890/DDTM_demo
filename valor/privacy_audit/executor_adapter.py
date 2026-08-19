@@ -16,6 +16,7 @@ import numpy as np
 
 from .models import ClaimType
 from .voi import PrivacyAuditVOIExecutor
+from valor.core.enums import ExecutionMode
 
 
 def make_privacy_audit_executor(
@@ -27,6 +28,9 @@ def make_privacy_audit_executor(
     seller_store=None,
     node_client_factory: Callable[[str], Any] | None = None,
     certificate_artifact=None,
+    execution_mode: ExecutionMode = ExecutionMode.TEST_FIXTURE,
+    auditor_identity_registry=None,
+    public_keys: dict[str, str] | None = None,
 ) -> Callable:
     """构造 orchestrator 兼容的 audit_executor（COMMIT_CHALLENGE 模式）。"""
 
@@ -52,6 +56,9 @@ def make_privacy_audit_executor(
             dataset_commitment=upstream_commitment,
             node_client_factory=node_client_factory,
             certificate_artifact=certificate_artifact,
+            execution_mode=execution_mode,
+            auditor_identity_registry=auditor_identity_registry,
+            public_keys=public_keys,
         )
         res = ex.run(sc, ctx)
         # 映射为 orchestrator 兼容 dict

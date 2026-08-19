@@ -22,6 +22,7 @@ from valor.privacy_audit.verifier import CommitChallengeVerifier
 from valor.seller import SellerCommittedDataset
 from valor.seller.audit_service import SellerAuditService
 from valor.privacy_audit.commitment import CommittedDatasetStore
+from valor.security.signing import SigningKeyPair
 from fastapi.testclient import TestClient
 
 
@@ -62,15 +63,19 @@ def test_commit_challenge_end_to_end():
 
     # 每个节点一个 TestClient（独立 verifier）
     clients = {}
+    public_keys = {}
     for i in range(10):
-        verifier = CommitChallengeVerifier(f"node-{i}")
+        kp = SigningKeyPair.generate(f"node-{i}")
+        verifier = CommitChallengeVerifier(f"node-{i}", signing_key=kp)
         clients[f"node-{i}"] = TestClient(create_privacy_app(verifier))
+        public_keys[f"node-{i}"] = kp.public_key_hex
 
     def node_client(node_id):
         return _ClientAdapter(clients[str(node_id)])
 
     sched = PrivacyAuditScheduler(
-        registry=reg, f=2, bids=bids, seller_service=svc, node_clients=node_client)
+        registry=reg, f=2, bids=bids, seller_service=svc,
+        node_clients=node_client, public_keys=public_keys)
     res = sched.run(
         action, tx_id="tx-1", commitment=seller.commitment, claim=claim,
         disclosure=disclosure)
@@ -97,11 +102,17 @@ def test_privacy_budget_infeasible_action():
     disclosure.max_unique_rows = 10
     reg = _registry(f=2)
     bids = {AuditorID(f"node-{i}"): 10.0 + i for i in range(10)}
-    clients = {f"node-{i}": TestClient(create_privacy_app(CommitChallengeVerifier(f"node-{i}")))
-               for i in range(10)}
+    clients = {}
+    public_keys = {}
+    for i in range(10):
+        kp = SigningKeyPair.generate(f"node-{i}")
+        clients[f"node-{i}"] = TestClient(
+            create_privacy_app(CommitChallengeVerifier(f"node-{i}", signing_key=kp)))
+        public_keys[f"node-{i}"] = kp.public_key_hex
     sched = PrivacyAuditScheduler(
         registry=reg, f=2, bids=bids, seller_service=svc,
-        node_clients=lambda nid: _ClientAdapter(clients[str(nid)]))
+        node_clients=lambda nid: _ClientAdapter(clients[str(nid)]),
+        public_keys=public_keys)
     res = sched.run(action, tx_id="tx-1", commitment=seller.commitment,
                     claim=claim, disclosure=disclosure)
     assert res.status == "ACTION_INFEASIBLE_PRIVACY_BUDGET"

@@ -113,7 +113,14 @@ class CommitChallengeVerifier:
 
     def __init__(self, node_id: str, signing_key=None) -> None:
         self.node_id = node_id
-        self.signing_key = signing_key  # SigningKeyPair | None
+        if signing_key is None:
+            # Node-local key: generated inside the verifier, never supplied by
+            # the coordinator. Even for in-process TEST_FIXTURE transports the
+            # "node" owns its private key.
+            from valor.security.signing import SigningKeyPair
+
+            signing_key = SigningKeyPair.generate(node_id)
+        self.signing_key = signing_key  # SigningKeyPair
 
 
 def _with_signature(ev: PrivacyAuditEvidence, signing_key) -> PrivacyAuditEvidence:

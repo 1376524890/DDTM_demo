@@ -87,6 +87,7 @@ class CapstoneScenario:
         # 审计报价成本项（P0-B，显式配置，禁止默认）
         "chain_fee": 0.0, "challenge_cost": 0.0, "dispute_cost": 0.0,
         "max_audit_steps": 10,
+        "execution_version_hash": "cc-audit-v1",
         # AuditDisclosureBudget（P0-H）：显式 rows/fraction/bytes，禁止 DP ε 映射
         "privacy_budget": {
             "max_unique_rows": 200,

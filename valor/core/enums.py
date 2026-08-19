@@ -26,6 +26,19 @@ class ConfigMode(str, Enum):
     PRODUCTION = "PRODUCTION"
 
 
+class ExecutionMode(str, Enum):
+    """Formal execution mode for paper closure (Round 4, §21).
+
+    TEST_FIXTURE may use in-process TestClient transports and fixture parameters.
+    FORMAL_EXPERIMENT / PRODUCTION must use process-isolated HTTP auditor clusters,
+    frozen market snapshots, node-local signing keys, and no scenario fallbacks.
+    """
+
+    TEST_FIXTURE = "TEST_FIXTURE"
+    FORMAL_EXPERIMENT = "FORMAL_EXPERIMENT"
+    PRODUCTION = "PRODUCTION"
+
+
 class ParamSource(str, Enum):
     """ResolvedParameter 的允许来源类型（规范 §5.1）。
 

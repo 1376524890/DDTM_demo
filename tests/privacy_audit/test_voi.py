@@ -12,6 +12,7 @@ from valor.privacy_audit import (
     create_privacy_app,
 )
 from valor.privacy_audit.verifier import CommitChallengeVerifier
+from valor.security.signing import SigningKeyPair
 from fastapi.testclient import TestClient
 
 
@@ -26,9 +27,12 @@ def _scenario():
 
 def _client_factory(n=10):
     clients = {}
+    public_keys = {}
     for i in range(n):
+        kp = SigningKeyPair.generate(f"node-{i}")
         clients[f"node-{i}"] = TestClient(
-            create_privacy_app(CommitChallengeVerifier(f"node-{i}")))
+            create_privacy_app(CommitChallengeVerifier(f"node-{i}", signing_key=kp)))
+        public_keys[f"node-{i}"] = kp.public_key_hex
 
     class _A:
         def __init__(self, tc): self._tc = tc
@@ -37,7 +41,7 @@ def _client_factory(n=10):
             r.raise_for_status()
             return r.json()
 
-    return lambda nid: _A(clients[str(nid)])
+    return lambda nid: _A(clients[str(nid)]), public_keys
 
 
 def test_voi_runs_commit_challenge():
@@ -45,6 +49,7 @@ def test_voi_runs_commit_challenge():
     X = rng.integers(0, 256, size=(800, 784), dtype=np.uint8)
     y = rng.integers(0, 10, size=800)
     sc = _scenario()
+    factory, public_keys = _client_factory()
     ex = PrivacyAuditVOIExecutor(
         scenario=sc, candidate_X=X, candidate_y=y,
         claim_type=ClaimType.LABEL_DISTRIBUTION,
@@ -52,7 +57,8 @@ def test_voi_runs_commit_challenge():
         seller_store=__import__("valor.privacy_audit.commitment",
                                 fromlist=["CommittedDatasetStore"])
         .CommittedDatasetStore("/tmp/pa-voi"),
-        node_client_factory=_client_factory(),
+        node_client_factory=factory,
+        public_keys=public_keys,
         allow_independent_commit=True,
     )
     ctx = {"binding": type("B", (), {"tx_id": "tx-1"})()}
@@ -73,6 +79,7 @@ def test_disclosure_accumulates_and_budget_limits():
     sc = _scenario()
     # 预算很小：只允许一次 k=64
     sc.audit["privacy_budget"]["max_unique_rows"] = 64
+    factory, public_keys = _client_factory()
     ex = PrivacyAuditVOIExecutor(
         scenario=sc, candidate_X=X, candidate_y=y,
         claim_type=ClaimType.LABEL_DISTRIBUTION,
@@ -80,7 +87,8 @@ def test_disclosure_accumulates_and_budget_limits():
         seller_store=__import__("valor.privacy_audit.commitment",
                                 fromlist=["CommittedDatasetStore"])
         .CommittedDatasetStore("/tmp/pa-voi2"),
-        node_client_factory=_client_factory(),
+        node_client_factory=factory,
+        public_keys=public_keys,
         allow_independent_commit=True,
     )
     ctx = {"binding": type("B", (), {"tx_id": "tx-2"})()}

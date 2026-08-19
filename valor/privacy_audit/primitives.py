@@ -62,7 +62,7 @@ def range_audit(rows: list[dict], *, expected_min: int = 0, expected_max: int = 
             violations.append({"index": r["index"], "kind": "label_range"})
     if violations:
         return PrimitiveOutput(
-            result=PrimitiveResult.QUALITY_FAIL,
+            result=PrimitiveResult.CLAIM_NOT_SUPPORTED,
             metrics={"violations": violations[:20], "n_violations": len(violations)})
     return PrimitiveOutput(
         result=PrimitiveResult.PASS,
@@ -155,7 +155,7 @@ def malformed_audit(rows: list[dict], *, n_features: int = 784) -> PrimitiveOutp
             malformed.append({"index": r["index"], "kind": "non_finite"})
     if malformed:
         return PrimitiveOutput(
-            result=PrimitiveResult.QUALITY_FAIL,
+            result=PrimitiveResult.CLAIM_NOT_SUPPORTED,
             metrics={"malformed": malformed[:20], "n": len(malformed)})
     return PrimitiveOutput(result=PrimitiveResult.PASS,
                            metrics={"n_checked": len(rows)})

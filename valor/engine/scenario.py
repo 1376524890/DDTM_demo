@@ -111,9 +111,10 @@ class CapstoneScenario:
         "pi_b": 0.25, "q_l": 0.2,
     })
     likelihood: dict[str, Any] = field(default_factory=lambda: {
-        "PASS": {"G": 0.85, "L": 0.75, "B": 0.10},
-        "QUALITY_FAIL": {"G": 0.12, "L": 0.22, "B": 0.40},
+        "PASS": {"G": 0.82, "L": 0.72, "B": 0.09},
+        "CLAIM_NOT_SUPPORTED": {"G": 0.13, "L": 0.23, "B": 0.35},
         "BREACH_EVIDENCE": {"G": 0.03, "L": 0.03, "B": 0.50},
+        "INCONCLUSIVE": {"G": 0.02, "L": 0.02, "B": 0.06},
     })
     loss_matrix: dict[str, Any] = field(default_factory=lambda: {
         "ACCEPT": {"G": 0.0, "L": 5.0, "B": 50.0},

@@ -45,6 +45,8 @@ def marginal_value_of_audit(
                 "valor.core.enums", fromlist=["TradeState"]
             ).TradeState
         )
+        if py <= 0:
+            continue
         er_y = expected_posterior_risk(belief, likelihood, loss, y)
         expected += py * er_y
         detail[y] = py

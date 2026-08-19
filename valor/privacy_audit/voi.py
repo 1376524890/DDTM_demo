@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from valor.audit.action_catalog import ActionCatalog, CertifiedAction
+from valor.audit.action_catalog import ActionCatalog, ActionProfileCatalog, CertifiedAction
 from valor.audit.action_profile import AuditActionProfile
 from valor.audit.bayes_update import bayes_update
 from valor.audit.likelihood import ActionLikelihood
@@ -84,6 +84,8 @@ class PrivacyAuditVOIExecutor:
         dataset_commitment=None,  # P0-A：上游 canonical DatasetCommitment
         node_client_factory: Callable[[str], Any] | None = None,
         certificate_artifact=None,
+        likelihood_catalog=None,
+        action_profile_catalog: ActionProfileCatalog | None = None,
         execution_mode: ExecutionMode = ExecutionMode.TEST_FIXTURE,
         auditor_identity_registry: AuditorIdentityRegistry | None = None,
         public_keys: dict[str, str] | None = None,
@@ -99,6 +101,8 @@ class PrivacyAuditVOIExecutor:
         self.m, self.q = 3 * f + 1, 2 * f + 1
         self.node_client_factory = node_client_factory
         self.certificate_artifact = certificate_artifact
+        self.likelihood_catalog = likelihood_catalog
+        self.action_profile_catalog = action_profile_catalog
         self.execution_mode = execution_mode
         self.auditor_identity_registry = auditor_identity_registry
         self.public_keys = public_keys
@@ -358,16 +362,30 @@ class PrivacyAuditVOIExecutor:
         belief = StateBelief.from_prior(prior["pi_b"], prior["q_l"])
         loss = LossMatrix(loss=sc.loss_matrix)
 
-        # action catalog：k 作为不同 action（似然用校准 artifact 或默认）
-        # expected_cash_cost 由市场报价产生，禁止 0.0 占位（P0-B/P0-C）。
+        # action catalog：k 作为不同 action（likelihood 来自 frozen catalog 或
+        # TEST_FIXTURE fixture；FORMAL/PRODUCTION 禁止 scenario.likelihood fallback）
+        profile_catalog = self.action_profile_catalog or ActionProfileCatalog()
+        lik_catalog = self.likelihood_catalog
         catalog = ActionCatalog()
         for k in self.challenge_sizes:
-            lik_rows = self._likelihood_rows()
-            lik = ActionLikelihood(action_id=f"a-{k}", rows=lik_rows)
+            action = self._action(k)
+            profile_catalog.register(action)
+            aid = action.action_id
+            if lik_catalog is not None:
+                artifact = lik_catalog.resolve(action.action_profile_hash)
+                lik_rows = artifact.likelihood_rows
+            elif self.execution_mode == ExecutionMode.TEST_FIXTURE:
+                lik_rows = self._likelihood_rows()
+            else:
+                raise ValueError(
+                    f"ACTION_NOT_CERTIFIED: no likelihood artifact for profile "
+                    f"{action.action_profile_hash}"
+                )
+            lik = ActionLikelihood(action_id=aid, rows=lik_rows)
             catalog.register(CertifiedAction(
-                f"a-{k}", lik,
+                aid, lik,
                 expected_cash_cost=self._quote_cost(k, registry, bids, snapshot),
-                payer="SELLER"))
+                payer="SELLER", action_profile_hash=action.action_profile_hash))
 
         steps = []
         posterior = belief.to_plain()
@@ -384,10 +402,10 @@ class PrivacyAuditVOIExecutor:
                 if executed_any:
                     break
                 # BASE_LISTING 基础审计至少执行一次（定价前验证承诺，Alg2）
-                aid = f"a-{self.challenge_sizes[0]}"
+                aid = self._action(self.challenge_sizes[0]).action_id
                 best_voi = 0.0
             executed_any = True
-            k = int(aid.split("-")[-1])  # aid="a-64" → 64
+            k = int(aid.split("_CC_")[-1])  # aid="LABEL_DISTRIBUTION_CC_64" → 64
             action = self._action(k)
             res = scheduler.run(
                 action, tx_id=tx_id, commitment=commitment, claim=claim,
@@ -397,10 +415,10 @@ class PrivacyAuditVOIExecutor:
             if res.status != "CERTIFIED":
                 break
             outcome = res.cert_result
-            if outcome == "INCONCLUSIVE":
-                outcome = "QUALITY_FAIL"
-            if outcome not in ("PASS", "QUALITY_FAIL", "BREACH_EVIDENCE", "INCONCLUSIVE"):
-                outcome = "QUALITY_FAIL"
+            if outcome not in (
+                "PASS", "CLAIM_NOT_SUPPORTED", "BREACH_EVIDENCE", "INCONCLUSIVE",
+            ):
+                raise ValueError(f"UNKNOWN_AUDIT_OUTCOME: {outcome}")
             belief = bayes_update(belief, catalog.get(aid).likelihood.row(outcome))
             posterior = belief.to_plain()
             steps.append({
@@ -440,7 +458,7 @@ class PrivacyAuditVOIExecutor:
             n_steps=len(steps), action_results=steps,
             disclosure=disclosure.to_plain(),
             action_catalog_hash=catalog.catalog_hash,
-            audit_policy_hash=content_hash({"policy_id": "cc-audit"}),
+            audit_policy_hash=profile_catalog.catalog_hash(),
         )
 
     def _quote_cost(self, k: int, registry, bids, snapshot) -> float:

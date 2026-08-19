@@ -15,7 +15,9 @@ def estimate_action_likelihood(
     *,
     observations: list[tuple[str, str]],  # [(true_state, observed_outcome)]
     states: tuple[str, ...] = ("G", "L", "B"),
-    outcomes: tuple[str, ...] = ("PASS", "QUALITY_FAIL", "BREACH_EVIDENCE"),
+    outcomes: tuple[str, ...] = (
+        "PASS", "CLAIM_NOT_SUPPORTED", "BREACH_EVIDENCE", "INCONCLUSIVE",
+    ),
 ) -> ActionLikelihood:
     """从 (true_state, observed_outcome) 校准数据估计 Λ_j(y,x)。
 

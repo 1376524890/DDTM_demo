@@ -123,5 +123,6 @@ class AuditOutcome(str, Enum):
     """分布式动作结果 Y（规范 §21.2）。"""
 
     PASS = "PASS"
-    QUALITY_FAIL = "QUALITY_FAIL"
+    CLAIM_NOT_SUPPORTED = "CLAIM_NOT_SUPPORTED"
     BREACH_EVIDENCE = "BREACH_EVIDENCE"
+    INCONCLUSIVE = "INCONCLUSIVE"

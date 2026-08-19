@@ -42,6 +42,12 @@ class AuditMarketSnapshot:
     timestamp: str = ""
     source_kind: str = "MARKET_DISCOVERED"
     source_ref: str = ""
+    version: str = "1"
+    capability: dict[str, list[str]] = field(default_factory=dict)
+    stake: dict[str, float] = field(default_factory=dict)
+    availability: dict[str, float] = field(default_factory=dict)
+    reliability: dict[str, float] = field(default_factory=dict)
+    public_key_fingerprint: dict[str, str] = field(default_factory=dict)
 
     @property
     def snapshot_hash(self) -> str:
@@ -51,6 +57,12 @@ class AuditMarketSnapshot:
             "bids": {k: float(v) for k, v in sorted(self.bids.items())},
             "min_stake": self.min_stake, "source_kind": self.source_kind,
             "source_ref": self.source_ref,
+            "version": self.version,
+            "capability": {k: sorted(v) for k, v in sorted(self.capability.items())},
+            "stake": {k: float(v) for k, v in sorted(self.stake.items())},
+            "availability": {k: float(v) for k, v in sorted(self.availability.items())},
+            "reliability": {k: float(v) for k, v in sorted(self.reliability.items())},
+            "public_key_fingerprint": {k: v for k, v in sorted(self.public_key_fingerprint.items())},
         })
 
     def to_plain(self) -> dict:
@@ -59,7 +71,11 @@ class AuditMarketSnapshot:
             "qualified_nodes": self.qualified_nodes,
             "bids": self.bids, "min_stake": self.min_stake,
             "timestamp": self.timestamp, "source_kind": self.source_kind,
-            "source_ref": self.source_ref, "snapshot_hash": self.snapshot_hash,
+            "source_ref": self.source_ref, "version": self.version,
+            "capability": self.capability, "stake": self.stake,
+            "availability": self.availability, "reliability": self.reliability,
+            "public_key_fingerprint": self.public_key_fingerprint,
+            "snapshot_hash": self.snapshot_hash,
         }
 
 
@@ -83,9 +99,15 @@ class AuditMarketQuote:
     expected_challenge_cost: float
     expected_dispute_cost: float
     expected_cash_cost: float  # = 上述四项之和
+    expected_vcg_payments_by_node: dict[str, float] = field(default_factory=dict)
+    expected_vcg_payment_total: float = 0.0
     payer: str = "SELLER"
     trigger: str = "BASE_LISTING"
     quote_time: str = ""
+    quote_seq: int = 0
+    source_kind: str = "MARKET_DISCOVERED"
+    source_ref: str = ""
+    version: str = "1"
 
     @property
     def quote_hash(self) -> str:
@@ -94,6 +116,8 @@ class AuditMarketQuote:
             "action_profile_hash": self.action_profile_hash,
             "market_snapshot_hash": self.market_snapshot_hash,
             "committee": sorted(self.committee),
+            "expected_vcg_payments_by_node": {k: float(v) for k, v in sorted(self.expected_vcg_payments_by_node.items())},
+            "expected_vcg_payment_total": self.expected_vcg_payment_total,
             "vcg_payments": {k: float(v) for k, v in sorted(self.vcg_payments.items())},
             "expected_vcg_payment": self.expected_vcg_payment,
             "expected_chain_fee": self.expected_chain_fee,
@@ -102,6 +126,10 @@ class AuditMarketQuote:
             "expected_cash_cost": self.expected_cash_cost,
             "payer": self.payer, "trigger": self.trigger,
             "quote_time": self.quote_time,
+            "quote_seq": self.quote_seq,
+            "source_kind": self.source_kind,
+            "source_ref": self.source_ref,
+            "version": self.version,
         })
 
     def to_plain(self) -> dict:
@@ -113,12 +141,18 @@ class AuditMarketQuote:
             "committee": self.committee, "bids": self.bids,
             "vcg_payments": self.vcg_payments,
             "expected_vcg_payment": self.expected_vcg_payment,
+            "expected_vcg_payments_by_node": self.expected_vcg_payments_by_node,
+            "expected_vcg_payment_total": self.expected_vcg_payment_total,
             "expected_chain_fee": self.expected_chain_fee,
             "expected_challenge_cost": self.expected_challenge_cost,
             "expected_dispute_cost": self.expected_dispute_cost,
             "expected_cash_cost": self.expected_cash_cost,
             "payer": self.payer, "trigger": self.trigger,
             "quote_time": self.quote_time, "quote_hash": self.quote_hash,
+            "quote_seq": self.quote_seq,
+            "source_kind": self.source_kind,
+            "source_ref": self.source_ref,
+            "version": self.version,
         }
 
 
@@ -165,6 +199,10 @@ def build_quote(
     expected_challenge_cost: float = 0.0,
     expected_dispute_cost: float = 0.0,
     quote_time: str = "",
+    quote_seq: int = 0,
+    source_kind: str = "MARKET_DISCOVERED",
+    source_ref: str = "",
+    version: str = "1",
 ) -> AuditMarketQuote:
     """从冻结 market snapshot 生成一次 Reverse VCG 报价（§25）。
 
@@ -203,11 +241,15 @@ def build_quote(
         bids=dict(snapshot.bids),
         vcg_payments={str(k): v for k, v in payments.items()},
         expected_vcg_payment=expected_vcg,
+        expected_vcg_payments_by_node={str(k): v for k, v in payments.items()},
+        expected_vcg_payment_total=expected_vcg,
         expected_chain_fee=expected_chain_fee,
         expected_challenge_cost=expected_challenge_cost,
         expected_dispute_cost=expected_dispute_cost,
         expected_cash_cost=expected_cash_cost,
         payer=payer, trigger=trigger, quote_time=quote_time,
+        quote_seq=quote_seq,
+        source_kind=source_kind, source_ref=source_ref, version=version,
     )
 
 

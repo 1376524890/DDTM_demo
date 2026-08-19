@@ -200,6 +200,12 @@ class PrivacyAuditVOIExecutor:
             min_stake=float(mkt.get("min_stake", 0.0)),
             source_kind=mkt.get("source_kind", "THREAT_SCENARIO"),
             source_ref=mkt.get("source_ref", "scenario.audit.market"),
+            version=mkt.get("version", "1"),
+            capability=mkt.get("capability", {}),
+            stake={str(k): float(v) for k, v in mkt.get("stake", {}).items()},
+            availability={str(k): float(v) for k, v in mkt.get("availability", {}).items()},
+            reliability={str(k): float(v) for k, v in mkt.get("reliability", {}).items()},
+            public_key_fingerprint=mkt.get("public_key_fingerprint", {}),
         )
 
     def _action(self, k: int) -> PrivacyAuditAction:
@@ -359,7 +365,8 @@ class PrivacyAuditVOIExecutor:
             lik_rows = self._likelihood_rows()
             lik = ActionLikelihood(action_id=f"a-{k}", rows=lik_rows)
             catalog.register(CertifiedAction(
-                f"a-{k}", lik, expected_cash_cost=self._quote_cost(k, registry, bids),
+                f"a-{k}", lik,
+                expected_cash_cost=self._quote_cost(k, registry, bids, snapshot),
                 payer="SELLER"))
 
         steps = []
@@ -436,22 +443,30 @@ class PrivacyAuditVOIExecutor:
             audit_policy_hash=content_hash({"policy_id": "cc-audit"}),
         )
 
-    def _quote_cost(self, k: int, registry, bids) -> float:
+    def _quote_cost(self, k: int, registry, bids, snapshot) -> float:
         """对 action k 生成市场报价（Reverse VCG expected cash cost）。
 
         用真实 registry+bids（由上游注入），禁止 0.0 / config cost 占位（P0-B）。
         """
-        from valor.core.errors import CounterfactualInfeasibleError
-
         m = self.m
         try:
-            from valor.market.reverse_vcg import reverse_vcg_payments
-
-            payments, _ = reverse_vcg_payments(
-                registry, family="quality", m=m, bids=bids,
-                min_stake=0.0)
-            return float(sum(payments.values()))
-        except CounterfactualInfeasibleError:
+            from valor.audit.market_quote import build_quote
+            a = self.scenario.audit
+            quote = build_quote(
+                action_id=f"a-{k}",
+                action_profile_hash=content_hash({"action": f"a-{k}", "family": "quality"}),
+                snapshot=snapshot, m=m, min_stake=snapshot.min_stake,
+                expected_chain_fee=float(a["chain_fee"]),
+                expected_challenge_cost=float(a["challenge_cost"]),
+                expected_dispute_cost=float(a["dispute_cost"]),
+                quote_time="2026-01-01T00:00:00+00:00",
+                quote_seq=0,
+                source_kind=snapshot.source_kind,
+                source_ref=snapshot.source_ref,
+                version=snapshot.version,
+            )
+            return quote.expected_cash_cost
+        except Exception:
             return float("inf")
 
     def _likelihood_rows(self) -> dict:

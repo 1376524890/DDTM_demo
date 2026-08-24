@@ -26,7 +26,7 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
-from valor.core.enums import TerminalState
+from valor.core.enums import ExecutionMode, TerminalState
 from valor.core.hashing import content_hash
 from valor.core.ids import new_id
 from valor.engine.artifacts import RunArtifacts
@@ -75,12 +75,43 @@ class TransactionOrchestrator:
         run_dir: str | Path = "runs",
         audit_executor: AuditExecutor | None = None,
         calibration=None,  # CalibrationBundle（P6 冻结 artifact）
+        execution_mode: ExecutionMode = ExecutionMode.TEST_FIXTURE,
+        role_registry=None,
+        audit_runtime_provider=None,
+        market_provider=None,
+        likelihood_catalog=None,
+        audit_policy=None,
+        policy_certificate=None,
+        valuation_calibration=None,
     ) -> None:
         self.scenario = scenario
         self.run_id = run_id or new_id("run", entropy=12)
         self.artifacts = RunArtifacts(Path(run_dir) / self.run_id, run_id=self.run_id)
         self.audit_executor = audit_executor or self._default_audit_executor
         self.calibration = calibration
+        self.execution_mode = execution_mode
+        self.role_registry = role_registry
+        self.audit_runtime_provider = audit_runtime_provider
+        self.market_provider = market_provider
+        self.likelihood_catalog = likelihood_catalog
+        self.audit_policy = audit_policy
+        self.policy_certificate = policy_certificate
+        self.valuation_calibration = valuation_calibration
+        if execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
+            missing = [
+                name for name, value in (
+                    ("role_registry", role_registry),
+                    ("market_provider", market_provider),
+                    ("likelihood_catalog", likelihood_catalog),
+                    ("audit_policy", audit_policy),
+                    ("policy_certificate", policy_certificate),
+                    ("valuation_calibration", valuation_calibration),
+                ) if value is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"FORMAL_EXPERIMENT requires all components; missing {missing}"
+                )
         self._stages: dict[str, StageResult] = {}
         self._formula_traces: list[FormulaTrace] = []
 
@@ -853,43 +884,57 @@ class TransactionOrchestrator:
         使用 PrivacyAuditScheduler（选择性披露 + signed evidence + quorum-by-result），
         不再使用 generic DistributedAuditScheduler + in-process evidence_provider。
         """
-        from fastapi.testclient import TestClient
-
-        from valor.privacy_audit import (
-            ClaimType,
-            CommitChallengeVerifier,
-            create_privacy_app,
-        )
+        from valor.privacy_audit import ClaimType
         from valor.privacy_audit.executor_adapter import make_privacy_audit_executor
 
+        cal = self.calibration
         n_nodes = int(sc.audit.get("n_nodes", 10))
         f = int(sc.audit.get("f", 2))
-        clients = {}
-        public_keys = {}
-        for i in range(n_nodes):
-            node_id = f"node-{i}"
-            verifier = CommitChallengeVerifier(node_id)
-            clients[node_id] = TestClient(
-                create_privacy_app(verifier))
-            public_keys[node_id] = verifier.signing_key.public_key_hex
+        if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
+            from valor.privacy_audit.process_isolated import (
+                AuditRuntimeDescriptor,
+                ProcessHttpAuditorCluster,
+            )
 
-        class _NodeClient:
-            def __init__(self, tc):
-                self._tc = tc
+            cluster = ProcessHttpAuditorCluster(n=n_nodes)
+            self._audit_cluster = cluster
+            audit_runtime = AuditRuntimeDescriptor.from_cluster(cluster)
+            factory = cluster.client_factory()
+            public_keys = cluster.registry.public_keys()
+            ex_mode = ExecutionMode.FORMAL_EXPERIMENT
+        else:
+            from fastapi.testclient import TestClient
+            from valor.privacy_audit import CommitChallengeVerifier, create_privacy_app
 
-            def submit_task(self, task):
-                r = self._tc.post("/privacy/tasks", json=task.to_plain())
-                r.raise_for_status()
-                return r.json()
+            clients = {}
+            public_keys = {}
+            for i in range(n_nodes):
+                node_id = f"node-{i}"
+                verifier = CommitChallengeVerifier(node_id)
+                clients[node_id] = TestClient(
+                    create_privacy_app(verifier))
+                public_keys[node_id] = verifier.signing_key.public_key_hex
 
-        factory = lambda nid: _NodeClient(clients[str(nid)])  # noqa: E731
-        cal = self.calibration
+            class _NodeClient:
+                def __init__(self, tc):
+                    self._tc = tc
+
+                def submit_task(self, task):
+                    r = self._tc.post("/privacy/tasks", json=task.to_plain())
+                    r.raise_for_status()
+                    return r.json()
+
+            factory = lambda nid: _NodeClient(clients[str(nid)])  # noqa: E731
+            audit_runtime = None
+            ex_mode = ExecutionMode.TEST_FIXTURE
         executor = make_privacy_audit_executor(
             claim_type=ClaimType.LABEL_DISTRIBUTION,
             challenge_sizes=[32, 64], n_nodes=n_nodes, f=f,
             node_client_factory=factory,
             public_keys=public_keys,
             certificate_artifact=cal.certificate if cal else None,
+            execution_mode=ex_mode,
+            audit_runtime=audit_runtime,
         )
         return executor(sc, ctx)
 

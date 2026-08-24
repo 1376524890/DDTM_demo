@@ -17,7 +17,7 @@ from typing import Any, Callable
 import numpy as np
 
 from valor.audit.action_catalog import ActionCatalog, ActionProfileCatalog, CertifiedAction
-from valor.audit.action_profile import AuditActionProfile
+from valor.audit.action_profile import AuditActionProfile, build_action_profile, action_from_profile
 from valor.audit.bayes_update import bayes_update
 from valor.audit.likelihood import ActionLikelihood
 from valor.audit.loss import LossMatrix
@@ -31,10 +31,9 @@ from valor.distributed.node_state import AuditorNode, NodeRegistry
 from .claims import AggregateClaim, claim_from_data
 from .commitment import CommittedDatasetStore, DatasetCommitment
 from .disclosure import DisclosureState
-from .models import AuditExecutionMode, ClaimType, PrivacyAuditAction
+from .models import ClaimType, PrivacyAuditAction
 from .scheduler import PrivacyAuditActionResult, PrivacyAuditScheduler
-from .primitives import CLAIM_TO_PRIMITIVE
-from .process_isolated import AuditorIdentityRegistry
+from .process_isolated import AuditorIdentityRegistry, AuditRuntimeDescriptor
 
 
 # k 候选（可配置；每个是一个 action）
@@ -52,6 +51,8 @@ class PrivacyAuditVOIResult:
     disclosure: dict = field(default_factory=dict)
     action_catalog_hash: str = ""
     audit_policy_hash: str = ""
+    audit_policy_status: str = "CERTIFIED"
+    audit_attempt_trace: list[dict] = field(default_factory=list)
 
     def to_plain(self) -> dict:
         return {
@@ -64,6 +65,8 @@ class PrivacyAuditVOIResult:
             "disclosure": self.disclosure,
             "action_catalog_hash": self.action_catalog_hash,
             "audit_policy_hash": self.audit_policy_hash,
+            "audit_policy_status": self.audit_policy_status,
+            "audit_attempt_trace": self.audit_attempt_trace,
         }
 
 
@@ -90,6 +93,7 @@ class PrivacyAuditVOIExecutor:
         auditor_identity_registry: AuditorIdentityRegistry | None = None,
         public_keys: dict[str, str] | None = None,
         allow_independent_commit: bool = False,  # TEST_ONLY: 独立运行无上游时允许本地 commit
+        audit_runtime: AuditRuntimeDescriptor | None = None,
     ) -> None:
         self.scenario = scenario
         self.candidate_X = candidate_X
@@ -107,6 +111,11 @@ class PrivacyAuditVOIExecutor:
         self.auditor_identity_registry = auditor_identity_registry
         self.public_keys = public_keys
         self.allow_independent_commit = allow_independent_commit
+        self.audit_runtime = audit_runtime
+        if execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
+            if audit_runtime is None or audit_runtime.transport_mode != "PROCESS_HTTP" or not audit_runtime.process_isolated:
+                raise ValueError(
+                    "FORMAL_AUDIT_RUNTIME_REQUIRED: FORMAL_EXPERIMENT requires ProcessHttpAuditorCluster")
         self._store = seller_store or CommittedDatasetStore("seller_private")
         self._seller = seller_committed
         self._upstream_commitment = dataset_commitment
@@ -212,47 +221,14 @@ class PrivacyAuditVOIExecutor:
             public_key_fingerprint=mkt.get("public_key_fingerprint", {}),
         )
 
-    def _action(self, k: int) -> PrivacyAuditAction:
-        primitive_id = CLAIM_TO_PRIMITIVE[self.claim_type]
-        a = self.scenario.audit
-        profile = AuditActionProfile(
-            action_id=f"{self.claim_type.value}_CC_{k}",
-            primitive_id=primitive_id,
-            execution_mode=AuditExecutionMode.COMMIT_CHALLENGE.value,
-            breach_family="quality",
+    def _action(self, k: int) -> tuple[AuditActionProfile, PrivacyAuditAction]:
+        profile = build_action_profile(
+            scenario_audit=self.scenario.audit,
             claim_type=self.claim_type.value,
-            challenge_k=k,
-            sampling_method="uniform_random",
-            committee_m=self.m,
-            quorum_q=self.q,
-            byzantine_f=self.f,
-            rho=float(a["rho"]),
-            eta_b=float(a["eta_b"]),
-            eta_o=float(a["eta_o"]),
-            min_stake=float(a["min_stake"]),
-            aggregation_rule="quorum-by-result",
-            signature_requirement="REQUIRED",
-            challenge_policy="rho-sampled",
-            disclosure_policy="rows-fraction-bytes",
-            timeout_replacement_policy="offline-replacement",
-            payer="SELLER",
-            trigger="BASE_LISTING",
-            security_profile="COMMIT_CHALLENGE",
-            decision_thresholds={
-                "alpha_shift": float(a["alpha_shift"]),
-                "label_error_threshold": float(a["label_error_threshold"]),
-            },
-            execution_version_hash=a["execution_version_hash"],
+            k=k, f=self.f,
+            execution_version_hash=str(self.scenario.audit.get("execution_version_hash", "cc-audit-v1")),
         )
-        return PrivacyAuditAction(
-            action_id=f"{self.claim_type.value}_CC_{k}",
-            primitive_id=primitive_id,
-            execution_mode=AuditExecutionMode.COMMIT_CHALLENGE,
-            claim_type=self.claim_type, challenge_size=k,
-            sampling_method="uniform_random",
-            decision_rule_id="MULTINOMIAL_GOF",
-            action_profile_hash=profile.action_profile_hash,
-        )
+        return profile, action_from_profile(profile)
 
     def run(self, sc, ctx) -> PrivacyAuditVOIResult:
         tx_id = str(ctx["binding"].tx_id)
@@ -368,24 +344,25 @@ class PrivacyAuditVOIExecutor:
         lik_catalog = self.likelihood_catalog
         catalog = ActionCatalog()
         for k in self.challenge_sizes:
-            action = self._action(k)
-            profile_catalog.register(action)
-            aid = action.action_id
+            profile, action = self._action(k)
+            profile_catalog.register(profile)
+            aid = profile.action_id
             if lik_catalog is not None:
-                artifact = lik_catalog.resolve(action.action_profile_hash)
+                artifact = lik_catalog.resolve(profile.action_profile_hash)
                 lik_rows = artifact.likelihood_rows
             elif self.execution_mode == ExecutionMode.TEST_FIXTURE:
                 lik_rows = self._likelihood_rows()
             else:
                 raise ValueError(
                     f"ACTION_NOT_CERTIFIED: no likelihood artifact for profile "
-                    f"{action.action_profile_hash}"
+                    f"{profile.action_profile_hash}"
                 )
             lik = ActionLikelihood(action_id=aid, rows=lik_rows)
+            quote = self._quote(profile, registry, bids, snapshot)
             catalog.register(CertifiedAction(
                 aid, lik,
-                expected_cash_cost=self._quote_cost(k, registry, bids, snapshot),
-                payer="SELLER", action_profile_hash=action.action_profile_hash))
+                expected_cash_cost=quote.expected_cash_cost,
+                payer=profile.payer, action_profile_hash=profile.action_profile_hash))
 
         steps = []
         posterior = belief.to_plain()
@@ -402,39 +379,45 @@ class PrivacyAuditVOIExecutor:
                 if executed_any:
                     break
                 # BASE_LISTING 基础审计至少执行一次（定价前验证承诺，Alg2）
-                aid = self._action(self.challenge_sizes[0]).action_id
+                aid = self._action(self.challenge_sizes[0])[1].action_id
                 best_voi = 0.0
             executed_any = True
             k = int(aid.split("_CC_")[-1])  # aid="LABEL_DISTRIBUTION_CC_64" → 64
-            action = self._action(k)
+            profile, action = self._action(k)
             res = scheduler.run(
                 action, tx_id=tx_id, commitment=commitment, claim=claim,
                 disclosure=disclosure, seller_open_fn=_seller_open)
-            if res.status == "ACTION_INFEASIBLE_PRIVACY_BUDGET":
-                break
-            if res.status != "CERTIFIED":
-                break
             outcome = res.cert_result
-            if outcome not in (
-                "PASS", "CLAIM_NOT_SUPPORTED", "BREACH_EVIDENCE", "INCONCLUSIVE",
-            ):
-                raise ValueError(f"UNKNOWN_AUDIT_OUTCOME: {outcome}")
-            belief = bayes_update(belief, catalog.get(aid).likelihood.row(outcome))
-            posterior = belief.to_plain()
             steps.append({
                 "audit_step": len(steps) + 1, "action_id": aid, "k": k,
                 "quote_seq": quote_seq, "voi_decision_seq": voi_decision_seq,
                 "execution_seq": execution_seq,
                 "mc_a_pay": res.mc_a_pay, "voi": best_voi,
                 "outcome": outcome, "posterior_after": posterior,
+                "status": res.status,
                 "challenge_hash": res.challenge.challenge_hash,
                 "rows_revealed": len(res.challenge.indices),
                 "unique_disclosure_after": disclosure.unique_disclosure,
                 "cost": res.cost.to_plain(),
                 "action_profile_hash": action.action_profile_hash,
                 "result_counts": res.result_counts,
+                "vcg_payments": (
+                    {str(k): float(v) for k, v in res.payments.items()}
+                    if res.status == "CERTIFIED" else {}),
+                "committee": [str(n) for n in res.committee],
+                "evidence_artifact_refs": res.evidence_artifact_refs,
+                "valid_signature_count": res.valid_signature_count,
                 "payer": "SELLER",
             })
+            if res.status != "CERTIFIED":
+                break
+            if outcome not in (
+                "PASS", "CLAIM_NOT_SUPPORTED", "BREACH_EVIDENCE", "INCONCLUSIVE",
+            ):
+                raise ValueError(f"UNKNOWN_AUDIT_OUTCOME: {outcome}")
+            belief = bayes_update(belief, catalog.get(aid).likelihood.row(outcome))
+            posterior = belief.to_plain()
+            steps[-1]["posterior_after"] = posterior
 
         # 认证 p̲_B^sys（冻结证书或默认）
         if self.certificate_artifact is not None:
@@ -452,6 +435,20 @@ class PrivacyAuditVOIExecutor:
         audit_pay_s = sum(s["mc_a_pay"] for s in steps if s.get("payer", "SELLER") == "SELLER")
         audit_pay_b = sum(s["mc_a_pay"] for s in steps if s.get("payer", "SELLER") == "BUYER")
 
+        statuses = [s.get("status") for s in steps]
+        if not statuses:
+            policy_status = "POLICY_ERROR"
+        elif all(s == "CERTIFIED" for s in statuses):
+            policy_status = "CERTIFIED"
+        elif any(s == "INVALID_EVIDENCE" for s in statuses):
+            policy_status = "INVALID_EVIDENCE"
+        elif any(s == "NO_QUORUM" for s in statuses):
+            policy_status = "NO_QUORUM"
+        elif any(s == "ACTION_INFEASIBLE_PRIVACY_BUDGET" for s in statuses):
+            policy_status = "ACTION_INFEASIBLE_DISCLOSURE"
+        else:
+            policy_status = "POLICY_STOP"
+
         return PrivacyAuditVOIResult(
             posterior=posterior, p_breach_lower_sys=p_b_lower,
             audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
@@ -459,33 +456,33 @@ class PrivacyAuditVOIExecutor:
             disclosure=disclosure.to_plain(),
             action_catalog_hash=catalog.catalog_hash,
             audit_policy_hash=profile_catalog.catalog_hash(),
+            audit_policy_status=policy_status,
         )
 
-    def _quote_cost(self, k: int, registry, bids, snapshot) -> float:
-        """对 action k 生成市场报价（Reverse VCG expected cash cost）。
+    def _quote(self, profile: AuditActionProfile, registry, bids, snapshot) -> "AuditMarketQuote":
+        """对 canonical profile 生成冻结市场报价（Reverse VCG expected cash cost）。"""
+        from valor.audit.market_quote import build_quote
+        from valor.core.errors import CounterfactualInfeasibleError
 
-        用真实 registry+bids（由上游注入），禁止 0.0 / config cost 占位（P0-B）。
-        """
         m = self.m
         try:
-            from valor.audit.market_quote import build_quote
             a = self.scenario.audit
             quote = build_quote(
-                action_id=f"a-{k}",
-                action_profile_hash=content_hash({"action": f"a-{k}", "family": "quality"}),
+                action_id=profile.action_id,
+                action_profile_hash=profile.action_profile_hash,
                 snapshot=snapshot, m=m, min_stake=snapshot.min_stake,
                 expected_chain_fee=float(a["chain_fee"]),
                 expected_challenge_cost=float(a["challenge_cost"]),
                 expected_dispute_cost=float(a["dispute_cost"]),
-                quote_time="2026-01-01T00:00:00+00:00",
+                quote_time="",
                 quote_seq=0,
                 source_kind=snapshot.source_kind,
                 source_ref=snapshot.source_ref,
                 version=snapshot.version,
             )
-            return quote.expected_cash_cost
-        except Exception:
-            return float("inf")
+            return quote
+        except CounterfactualInfeasibleError as e:
+            raise RuntimeError(f"MARKET_INFEASIBLE: {e}") from e
 
     def _likelihood_rows(self) -> dict:
         """似然行（P6 校准后应来自 artifact；此处默认结构）。"""

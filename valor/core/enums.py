@@ -39,6 +39,19 @@ class ExecutionMode(str, Enum):
     PRODUCTION = "PRODUCTION"
 
 
+class AuditPolicyExecutionStatus(str, Enum):
+    """Fail-closed audit policy result status (Round 4 NEW-P0-5)."""
+
+    CERTIFIED = "CERTIFIED"
+    NO_QUORUM = "NO_QUORUM"
+    ACTION_INFEASIBLE_DISCLOSURE = "ACTION_INFEASIBLE_DISCLOSURE"
+    ACTION_NOT_CERTIFIED = "ACTION_NOT_CERTIFIED"
+    MARKET_INFEASIBLE = "MARKET_INFEASIBLE"
+    INVALID_EVIDENCE = "INVALID_EVIDENCE"
+    POLICY_STOP = "POLICY_STOP"
+    POLICY_ERROR = "POLICY_ERROR"
+
+
 class ParamSource(str, Enum):
     """ResolvedParameter 的允许来源类型（规范 §5.1）。
 

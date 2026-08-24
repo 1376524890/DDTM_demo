@@ -1,0 +1,108 @@
+{
+  "round": "VALOR-v1 Round 5",
+  "generated_by": "scripts/generate_mechanism_coverage.py",
+  "coverage": [
+    {
+      "id": "DataRoleManifest",
+      "mainline_reachable": true,
+      "positive_test": true,
+      "negative_test": true,
+      "mutation_test": false,
+      "provenance_path": true,
+      "no_shortcut": true,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "G_L_B_worlds",
+      "mainline_reachable": true,
+      "positive_test": true,
+      "negative_test": true,
+      "mutation_test": false,
+      "provenance_path": true,
+      "no_shortcut": true,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "FullPolicyRcert",
+      "mainline_reachable": true,
+      "positive_test": true,
+      "negative_test": true,
+      "mutation_test": false,
+      "provenance_path": true,
+      "no_shortcut": true,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "AuditRuntimeDescriptor",
+      "mainline_reachable": true,
+      "positive_test": true,
+      "negative_test": true,
+      "mutation_test": false,
+      "provenance_path": true,
+      "no_shortcut": true,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "CanonicalProfileQuoteLikelihood",
+      "mainline_reachable": true,
+      "positive_test": true,
+      "negative_test": true,
+      "mutation_test": false,
+      "provenance_path": true,
+      "no_shortcut": true,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "PerNodeVCG",
+      "mainline_reachable": true,
+      "positive_test": true,
+      "negative_test": true,
+      "mutation_test": false,
+      "provenance_path": true,
+      "no_shortcut": true,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "BondTimeline",
+      "mainline_reachable": true,
+      "positive_test": true,
+      "negative_test": false,
+      "mutation_test": false,
+      "provenance_path": true,
+      "no_shortcut": true,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "PricingProvenance",
+      "mainline_reachable": true,
+      "positive_test": true,
+      "negative_test": true,
+      "mutation_test": false,
+      "provenance_path": true,
+      "no_shortcut": true,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "CapabilityBinding",
+      "mainline_reachable": true,
+      "positive_test": true,
+      "negative_test": true,
+      "mutation_test": false,
+      "provenance_path": true,
+      "no_shortcut": true,
+      "status": "PARTIAL"
+    },
+    {
+      "id": "FinalEvalLedger",
+      "mainline_reachable": true,
+      "positive_test": true,
+      "negative_test": false,
+      "mutation_test": false,
+      "provenance_path": true,
+      "no_shortcut": true,
+      "status": "PARTIAL"
+    }
+  ],
+  "mandatory_coverage_PARTIAL": 10,
+  "mandatory_coverage_FAILED": 0
+}

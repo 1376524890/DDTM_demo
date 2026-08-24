@@ -1,0 +1,21 @@
+{
+  "round": "VALOR-v1 Round 5",
+  "commit": "078b8073054a9c0710fa615842a54c19aaa0857b",
+  "created_at": "2026-08-24",
+  "hard_stop_regression": "9 passed",
+  "commands": [
+    "python -m pytest -q tests/privacy_audit/test_distributed_policy_certifier.py",
+    "python -m pytest -q tests/privacy_audit/test_distributed_calibration_runner.py",
+    "python -m pytest -q tests/audit/test_likelihood_catalog.py",
+    "python -m pytest -q tests/audit/test_market_quote_round4.py",
+    "python -m pytest -q tests/system/test_process_isolated_mainline.py"
+  ],
+  "evidence": {
+    "passed": 9,
+    "failed": 0,
+    "errors": 0,
+    "warnings": 1,
+    "interface_fix": "DistributedAuditCalibrationRunner accepts role_manifest; DistributedPolicyCertifier passes role_manifest; role is bound to DataRoleManifest"
+  },
+  "notes": "This is not a paper closure claim; it only records the initial HEAD regression gate."
+}

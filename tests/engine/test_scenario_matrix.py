@@ -21,7 +21,8 @@ from valor.engine.acceptance import (
 
 def test_c0_normal_trade(tmp_path):
     res = run_capstone(scenario_c0_normal(), run_dir=str(tmp_path / "c0"))
-    assert res.terminal_state in ("TRADE", "NO_TRADE")
+    assert res.terminal_state == "TRADE"
+    assert res.decision == "TRADE"
 
 
 def test_c1_no_trade(tmp_path):
@@ -55,8 +56,10 @@ def test_c5_disclosure_budget_infeasible(tmp_path):
     orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c5"))
     res = orch.run()
     audit = orch._stages["audit"].output
-    # 预算不足 → 不超预算地拒绝（无 action 或 budget infeasible）
+    # 预算不足 → 不超预算地拒绝，精确 ACTION_INFEASIBLE_DISCLOSURE → NO_TRADE
     assert audit.get("unique_disclosure", 0) <= 8
+    assert audit.get("audit_policy_status") == "ACTION_INFEASIBLE_DISCLOSURE"
+    assert res.terminal_state == "NO_TRADE"
 
 
 def test_c4_no_quorum(tmp_path):
@@ -74,9 +77,11 @@ def test_c4_no_quorum(tmp_path):
     orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c4"))
     res = orch.run()
     audit = orch._stages["audit"].output
-    # 无 quorum → 不产生 CERTIFIED action trace
-    assert len(audit.get("audit_trace_events", [])) == 0
-    assert res.terminal_state in ("NO_TRADE", "TRADE")
+    # 无 quorum → 不产生 CERTIFIED action trace，精确 NO_QUORUM → NO_TRADE
+    assert len(audit.get("audit_trace_events", [])) >= 1
+    assert all(e.get("status") == "NO_QUORUM" for e in audit.get("audit_trace_events", []))
+    assert audit.get("audit_policy_status") == "NO_QUORUM"
+    assert res.terminal_state == "NO_TRADE"
 
 
 def test_c6_delivery_fail(tmp_path):
@@ -166,8 +171,10 @@ def test_c9_invalid_signature(tmp_path):
     orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c9"))
     res = orch.run()
     audit = orch._stages["audit"].output
-    assert len(audit.get("audit_trace_events", [])) == 0
-    assert res.terminal_state in ("NO_TRADE", "TRADE")
+    assert len(audit.get("audit_trace_events", [])) >= 1
+    assert all(e.get("status") == "INVALID_EVIDENCE" for e in audit.get("audit_trace_events", []))
+    assert audit.get("audit_policy_status") == "INVALID_EVIDENCE"
+    assert res.terminal_state == "NO_TRADE"
 
 
 def test_c7_illegal_training_denied(tmp_path):
@@ -176,18 +183,19 @@ def test_c7_illegal_training_denied(tmp_path):
     sc.usage["training_requests"] = [
         {"actor": "buyer_org_B", "purpose": "digit-classification",
          "requested_output": "MODEL_ARTIFACT", "environment": "approved_compute",
-         "expect": "DENY"},
+         },
     ]
     from valor.engine.orchestrator import TransactionOrchestrator
 
     orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c7"))
     res = orch.run()
+    assert res.terminal_state == "TRADE"
     tr = orch._stages["training"].output
-    if tr.get("enabled"):
-        out = tr["results"][0]["outcome"]
-        assert out["decision"] == "DENY"
-        assert out["key_released"] is False
-        assert out["training_started"] is False
+    assert tr.get("enabled") is True
+    out = tr["results"][0]["outcome"]
+    assert out["decision"] == "DENY"
+    assert out["key_released"] is False
+    assert out["training_started"] is False
 
 
 def test_c8_legal_training_runs(tmp_path):
@@ -196,16 +204,19 @@ def test_c8_legal_training_runs(tmp_path):
     sc.usage["training_requests"] = [
         {"actor": "buyer_org_A", "purpose": "digit-classification",
          "requested_output": "MODEL_ARTIFACT", "environment": "approved_compute",
-         "expect": "ALLOW"},
+         },
     ]
     from valor.engine.orchestrator import TransactionOrchestrator
 
     orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c8"))
     res = orch.run()
+    assert res.terminal_state == "TRADE"
     tr = orch._stages["training"].output
-    if tr.get("enabled"):
-        out = tr["results"][0]["outcome"]
-        assert out["decision"] == "ALLOW"
-        assert out["training_started"] is True
-        assert out["model_created"] is True
-        assert "accuracy" in out["metrics"]
+    assert tr.get("enabled") is True
+    out = tr["results"][0]["outcome"]
+    assert out["decision"] == "ALLOW"
+    assert out["training_started"] is True
+    assert out["model_created"] is True
+    assert out.get("worker_pid") is not None
+    assert out.get("model_artifact_hash")
+    assert "accuracy" in out["metrics"]

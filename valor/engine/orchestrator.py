@@ -387,22 +387,27 @@ class TransactionOrchestrator:
         from valor.liability.seller_bond import (
             reconcile_seller_bond, seller_bond_required,
         )
-        from valor.liability.capital_cost import capital_cost
+        from valor.contract.bond_timeline import BondTimeline
 
         bond_params = self._bond_params()
         b_s_star = seller_bond_required(
             p_breach_lower_sys=p_b_lower, **bond_params)
         b_s_pre = b_s_pre  # 沿用 Audit 前锁定值
         surplus = max(b_s_pre - b_s_star, 0.0)
-        c_b_cap = capital_cost(
-            kappa_s=sc.bond["kappa_s"], bond_pre=b_s_pre, bond_required=b_s_star,
-            t_pre=sc.bond["t_pre"], t_post=sc.bond["t_post"])
+        bond_timeline = BondTimeline()
+        bond_timeline.add_event("PRELOCK", "B_S", b_s_pre, time=0.0)
+        bond_timeline.add_event("ADJUST", "B_S", b_s_star, time=sc.bond["t_pre"])
+        bond_timeline.add_event("RELEASE", "B_S", 0.0,
+                                time=sc.bond["t_pre"] + sc.bond["t_post"])
+        c_b_cap = bond_timeline.capital_cost(
+            kappa=sc.bond["kappa_s"], account="B_S")
         # P7 激励约束对账
         bond_recon = reconcile_seller_bond(
             bond=b_s_star, p_breach_lower_sys=p_b_lower, **bond_params)
         self._stage("seller_bond", {"b_s_star": b_s_star, "b_s_pre": b_s_pre,
                                     "surplus": surplus,
-                                    "c_b_cap": c_b_cap, "reconciliation": bond_recon})
+                                    "c_b_cap": c_b_cap, "reconciliation": bond_recon,
+                                    "bond_timeline": bond_timeline.to_plain()})
         self._log(ledger, stage="SELLER_BOND", event_type="BOND",
                   formula_id="B_SELLER_STAR",
                   formula_output={"b_s_star": b_s_star, "b_s_pre": b_s_pre,
@@ -434,9 +439,8 @@ class TransactionOrchestrator:
         # P0-M/S：Buyer Usage Bond 真实接入（若合同适用）
         b_b_use, c_b_use_cap = self._buyer_usage_bond(rights, sc)
         # P0-S：seller bond capital cost 用真实时间区间（BondTimeline）
-        c_b_cap = capital_cost(
-            kappa_s=sc.bond["kappa_s"], bond_pre=b_s_pre, bond_required=b_s_star,
-            t_pre=sc.bond["t_pre"], t_post=sc.bond["t_post"])
+        c_b_cap = bond_timeline.capital_cost(
+            kappa=sc.bond["kappa_s"], account="B_S")
 
         p_max = buyer_max_price(
             w_b_rem=sc.buyer["w_b_rem"], v_gross_lower=v_gross_lower,
@@ -450,6 +454,49 @@ class TransactionOrchestrator:
             pi_s0=sc.seller["pi_s0"])
         clearance = clear_trade(p_max=p_max, p_min=p_min,
                                 beta_bar=sc.pricing["beta_bar"])
+
+        # P0-Q/P0-U：pricing provenance DAG — reverse(P*) must reach every leaf.
+        from valor.pricing.provenance import PricingProvenanceGraph, ResolvedParameter
+
+        prov = PricingProvenanceGraph()
+        prov.add_many([
+            ResolvedParameter("w_b_rem", sc.buyer["w_b_rem"], "CONTRACT_INPUT",
+                              "scenario.buyer.w_b_rem"),
+            ResolvedParameter("v_gross_lower", v_gross_lower, "COMPUTED",
+                              "data_voi", "DATA_VOI_MARGINAL"),
+            ResolvedParameter("residual_quantile", residual_q, "CALIBRATION",
+                              "scenario.valuation.residual_quantile"),
+            ResolvedParameter("c_i", sc.buyer["c_i"], "CONTRACT_INPUT",
+                              "scenario.buyer.c_i"),
+            ResolvedParameter("c_a_b_pay", audit_pay_b, "AUDIT",
+                              "audit.audit_pay_b"),
+            ResolvedParameter("c_a_s_pay", audit_pay_s, "AUDIT",
+                              "audit.audit_pay_s"),
+            ResolvedParameter("c_r_pay_b", sc.buyer["c_r_pay"], "CONTRACT_INPUT",
+                              "scenario.buyer.c_r_pay"),
+            ResolvedParameter("c_b_use_cap", c_b_use_cap, "COMPUTED",
+                              "buyer_usage_bond", "USAGE_BOND_LOCK"),
+            ResolvedParameter("r_b_post", sc.buyer["r_b_post"], "CONTRACT_INPUT",
+                              "scenario.buyer.r_b_post"),
+            ResolvedParameter("c_marg", sc.seller["c_marg"], "CONTRACT_INPUT",
+                              "scenario.seller.c_marg"),
+            ResolvedParameter("c_b_cap", c_b_cap, "COMPUTED",
+                              "seller_bond", "BOND_TIMELINE"),
+            ResolvedParameter("c_r_s_pay", sc.seller["c_r_s_pay"], "CONTRACT_INPUT",
+                              "scenario.seller.c_r_s_pay"),
+            ResolvedParameter("r_s_post", sc.seller["r_s_post"], "CONTRACT_INPUT",
+                              "scenario.seller.r_s_post"),
+            ResolvedParameter("oc_s", oc_s, "COMPUTED",
+                              "rights_opportunity_cost", "OPPORTUNITY_COST"),
+            ResolvedParameter("pi_s0", sc.seller["pi_s0"], "CONTRACT_INPUT",
+                              "scenario.seller.pi_s0"),
+            ResolvedParameter("beta_bar", sc.pricing["beta_bar"], "CONTRACT_INPUT",
+                              "scenario.pricing.beta_bar"),
+            ResolvedParameter("p_max", p_max, "COMPUTED", "buyer_max", "PMAX"),
+            ResolvedParameter("p_min", p_min, "COMPUTED", "seller_min", "PMIN"),
+            ResolvedParameter("clearing_price", clearance.clearing_price, "COMPUTED",
+                              "clear_trade", "CLEAR_TRADE"),
+        ])
 
         # MFC-G23：rights menu dominance / no-arbitrage（同一 pricing snapshot）
         dom = DominanceChecker()
@@ -479,6 +526,7 @@ class TransactionOrchestrator:
                 "p_max": p_max, "p_min": p_min,
                 "beta_bar": sc.pricing["beta_bar"],
             },
+            "pricing_provenance": prov.to_plain(),
         })
         self._log(ledger, stage="PRICING", event_type="PRICE_BOUNDS",
                   formula_id="PRICING",
@@ -492,6 +540,7 @@ class TransactionOrchestrator:
         from valor.contract.accounts import Ledger
         from valor.contract.money_event import MoneyLedger
         from valor.contract.settlement import settle_clearing, settle_terminal
+        from valor.contract.settlement import AuditPaymentObligation
         from valor.contract.state_machine import StateMachineInput, TransactionStateMachine
         from valor.contract.escrow import EscrowAccounts
 
@@ -500,13 +549,15 @@ class TransactionOrchestrator:
         # evidence 产生 BREACH_EVIDENCE；buyer breach 由 usage misuse 证据派生。
         # 这里从审计 trace 的 BREACH_EVIDENCE 判定 seller breach（机制观察证据）。
         breach_during_audit = _evidence_seller_breach(audit)
+        audit_ok = audit.get("audit_policy_status", "CERTIFIED") == "CERTIFIED"
         sm = TransactionStateMachine()
         # P0-K：buyer breach 不在此处用 scenario flag 判定；由 usage evidence
         # 事后派生（MFC-G30）。此处只处理 entitled/audit/price。
         terminal = sm.resolve(StateMachineInput(
             entitled=ent_pass, compliant=True,
             breach_during_audit=breach_during_audit,
-            price_decision=clearance.decision, buyer_breach=False))
+            price_decision=clearance.decision, buyer_breach=False,
+            audit_ok=audit_ok))
         self._stage("state", {"terminal": terminal.value})
         ledger_bal = Ledger()
         for acc, amt in {"E_B^P": sc.buyer["w_b_rem"], "E_S^A": audit_pay_s,
@@ -529,15 +580,18 @@ class TransactionOrchestrator:
         }
         # P0-O：Settlement Phase I（Clearing 后、Delivery 前）只调整预锁并支付已发生审计。
         phase1_called = terminal == TerminalState.TRADE
+        audit_obligations = self._collect_audit_obligations(audit)
         if terminal == TerminalState.TRADE:
             phase1 = settle_clearing(
                 decision="TRADE", ledger=ledger_bal, accounts=accounts,
                 audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
-                money=money_ledger, tx_id=tx_id)
+                money=money_ledger, tx_id=tx_id,
+                audit_obligations=audit_obligations)
             self._stage("settlement_phase1", {
                 "phase": phase1.get("phase"),
                 "transfers": phase1.get("transfers", []),
                 "conservation": ledger_bal.conservation_check(),
+                "audit_obligations": [o.to_plain() for o in audit_obligations],
             })
         money_semantics_ok = money_ledger.validate_semantics()
 
@@ -569,7 +623,8 @@ class TransactionOrchestrator:
             price=clearance.clearing_price or 0.0,
             audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
             money=money_ledger, tx_id=tx_id,
-            audits_already_paid=phase1_called)
+            audits_already_paid=phase1_called,
+            audit_obligations=audit_obligations or None)
         self._stage("settlement", {
             "terminal": terminal.value,
             "bond_slashed": settle_res.bond_slashed,
@@ -626,6 +681,25 @@ class TransactionOrchestrator:
     # ------------------------------------------------------------------
     # 子阶段
     # ------------------------------------------------------------------
+    def _collect_audit_obligations(self, audit: dict):
+        """Build per-node AuditPaymentObligation from executed audit steps."""
+        from valor.contract.settlement import AuditPaymentObligation
+
+        obligations: list[AuditPaymentObligation] = []
+        for e in (audit or {}).get("audit_trace_events", []):
+            if e.get("status") != "CERTIFIED":
+                continue
+            payer = e.get("payer", "SELLER")
+            for nid, amt in (e.get("vcg_payments") or {}).items():
+                obligations.append(AuditPaymentObligation(
+                    node_id=str(nid),
+                    action_profile_hash=e.get("action_profile_hash", ""),
+                    quote_hash=e.get("quote_hash", ""),
+                    realized_payment=float(amt),
+                    payer=payer,
+                ))
+        return obligations
+
     def _build_asset_commitment(self, cand_X, cand_y, tx_id):
         """用卖方承诺数据集构建 canonical DatasetCommitment（asset 层唯一 H(D)）。
 
@@ -758,7 +832,12 @@ class TransactionOrchestrator:
             b_b_use = buyer_usage_bond_required(
                 p_misuse_lower_sys=p_u, g_misuse=g_misuse, eps_b=eps_b,
                 p_e_ubond=p_e_ubond, p_e_uf=p_e_uf, lambda_b=lambda_b, f_b=f_b)
-        c_b_use_cap = kappa_b * b_b_use * t_b
+        from valor.contract.bond_timeline import BondTimeline
+
+        timeline = BondTimeline()
+        timeline.add_event("USAGE_BOND_LOCK", "B_B_use", b_b_use, time=0.0)
+        timeline.add_event("RELEASE", "B_B_use", 0.0, time=t_b)
+        c_b_use_cap = timeline.capital_cost(kappa=kappa_b, account="B_B_use")
         return b_b_use, c_b_use_cap
 
     def _bond_params(self):
@@ -1059,11 +1138,9 @@ class TransactionOrchestrator:
             # 默认：一个合法训练 + 一个非法 actor 训练
             train_requests = [
                 {"actor": "buyer_org_A", "purpose": "digit-classification",
-                 "requested_output": "MODEL_ARTIFACT", "environment": "approved_compute",
-                 "expect": "ALLOW"},
+                 "requested_output": "MODEL_ARTIFACT", "environment": "approved_compute"},
                 {"actor": "buyer_org_B", "purpose": "digit-classification",
-                 "requested_output": "MODEL_ARTIFACT", "environment": "approved_compute",
-                 "expect": "DENY"},
+                 "requested_output": "MODEL_ARTIFACT", "environment": "approved_compute"},
             ]
         alg = catalog.get("MNIST_MLP_TRAIN")
         for i, req in enumerate(train_requests):
@@ -1075,10 +1152,11 @@ class TransactionOrchestrator:
                 algorithm_id="MNIST_MLP_TRAIN", algorithm_hash=alg.code_hash,
                 container_image_digest=alg.container_digest,
                 hyperparameters={"epochs": 1, "batch_size": 128, "lr": 1e-3},
-                hyperparameters_hash="hp" * 32,
+                hyperparameters_hash=content_hash({"epochs": 1, "batch_size": 128, "lr": 1e-3}),
                 input_refs=[binding.listing.data_commitment],
                 requested_output=req.get("requested_output", "MODEL_ARTIFACT"),
-                execution_profile_id="ep-1", network_policy_hash="np" * 32,
+                execution_profile_id="ep-1",
+                network_policy_hash=content_hash({"policy": "local-subprocess-no-network"}),
                 seed=sc.split_seed + i,
             )
             out = runner.run(
@@ -1125,6 +1203,7 @@ class TransactionOrchestrator:
         from valor.feedback.eligibility import GroundTruthEligibilityGate
         from valor.feedback.seller_risk import update_seller_beta
         from valor.valuation.economic_mapping import utility_from_artifact
+        from valor.feedback.final_eval_access_ledger import FinalEvaluationAccessLedger
 
         sc = self.scenario
         fb = sc.feedback
@@ -1132,8 +1211,12 @@ class TransactionOrchestrator:
         n_b = sc.buyer_task["deployment_scale"]
 
         realised = None
+        final_eval_ledger = FinalEvaluationAccessLedger()
         if terminal == TerminalState.TRADE and len(final_eval_indices) > 0:
             # P0-R：终态冻结后才 resolve FinalEvaluation（AccessGuard 语义）。
+            final_eval_ledger.record(
+                caller="TransactionOrchestrator", stage="FEEDBACK",
+                role="R_eval", reason="terminal_frozen_feedback_resolution")
             idx = np.sort(np.asarray(final_eval_indices, dtype=int))
             final_X = X_all_raw.iloc[idx].reset_index(drop=True)
             final_y = y_all_raw.iloc[idx].reset_index(drop=True)
@@ -1188,6 +1271,7 @@ class TransactionOrchestrator:
             "theta_after": theta_after,
             "theta_updated": theta_updated,
             "realised_data_voi": realised,
+            "final_eval_access_ledger": final_eval_ledger.to_plain(),
             "feedback_tp": tp, "feedback_fn": fn,
         })
         self._log(ledger, stage="FEEDBACK", event_type="THETA_UPDATE",
@@ -1197,7 +1281,8 @@ class TransactionOrchestrator:
                                   "realised_data_voi": realised,
                                   "tp": tp, "fn": fn})
         return {"theta_after": theta_after, "realised_data_voi": realised,
-                "theta_updated": theta_updated}
+                "theta_updated": theta_updated,
+                "final_eval_access_ledger": final_eval_ledger.to_plain()}
 
     def _write_artifacts(self, manifest, ledger, terminal, clearance):
         """写入 runs/<run_id>/ artifacts。"""

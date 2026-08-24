@@ -63,7 +63,7 @@ def _wait_health(port: int, timeout: float = 30.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=1.0)
+            r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=1.0, trust_env=False)
             if r.status_code == 200:
                 return
         except Exception:
@@ -115,7 +115,7 @@ def test_auditor_has_no_full_data(auditor_ports):
     """进程级 auditor 不持有全量数据（PP-AUDIT-G01 / MFC-G44）。"""
     for port in auditor_ports:
         r = httpx.get(f"http://127.0.0.1:{port}/privacy/auditor_has_no_full_data",
-                      timeout=5.0)
+                      timeout=5.0, trust_env=False)
         assert r.json()["has_full_data"] is False
 
 
@@ -148,7 +148,7 @@ def test_tampered_row_breach_evidence(auditor_ports):
         task_id="t-2", tx_id="tx-2", commitment=commitment, claim=claim,
         primitive_id="LabelDistributionAudit", challenge=ch, openings=opens)
     r = httpx.post(f"http://127.0.0.1:{auditor_ports[0]}/privacy/tasks",
-                   json=task.to_plain(), timeout=10.0)
+                   json=task.to_plain(), timeout=10.0, trust_env=False)
     assert r.status_code == 200
     assert r.json()["merkle_verification_passed"] is False
     assert r.json()["result"] == "BREACH_EVIDENCE"

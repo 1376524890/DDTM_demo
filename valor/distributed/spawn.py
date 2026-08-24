@@ -65,7 +65,7 @@ def _wait_healthy(ports: list[int], timeout: float = 30.0) -> None:
         ready = 0
         for port in ports:
             try:
-                r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=1.0)
+                r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=1.0, trust_env=False)
                 if r.status_code == 200:
                     ready += 1
             except Exception:

@@ -140,6 +140,10 @@ class FullChainGate:
         audit_events = s("audit").get("audit_trace_events", [])
 
         def _g02():
+            # mandatory audit must have executed at least one step
+            if (self._is_trade() and self.scenario.audit.get("mandatory_base_audit_policy")
+                    and not audit_events):
+                return False
             # logical sequence: quote_seq < voi_decision_seq < execution_seq
             for e in audit_events:
                 if e.get("quote_seq") is not None:
@@ -155,24 +159,31 @@ class FullChainGate:
                 vcg = e.get("vcg_payments", {})
                 if vcg and abs(sum(vcg.values()) - e.get("mc_a_pay", 0)) > 1e-6:
                     return False
+                if e.get("status") == "CERTIFIED" and not vcg:
+                    return False
             return True
         self._check(results, "MFC-G03_QUOTE_MATCHES_REVERSE_VCG", _g03)
 
         def _g04():
-            # execution 绑定冻结 quote：每个 event 有 quote_hash + snapshot hash
+            # execution 绑定冻结 quote：每个 event 有 quote_hash + snapshot hash + profile hash
             for e in audit_events:
-                if not e.get("quote_hash") or not e.get("market_snapshot_hash"):
+                if not e.get("quote_hash") or not e.get("market_snapshot_hash") or not e.get("action_profile_hash"):
                     return False
             return True
         self._check(results, "MFC-G04_EXECUTION_BINDS_QUOTE", _g04)
 
         # ================= MFC-G05/G06：签名 evidence + 有效 quorum ==========
         def _g05():
-            # 审计证据必须签名（P0-F）。若 audit 有 evidence_hashes 且未记录
-            # evidence_signed=False，视为签名通过（签名验证发生在 scheduler）。
+            # 审计证据必须签名（P0-F），且 CERTIFIED 必须有足够有效签名。
             for e in audit_events:
                 if e.get("evidence_signed") is False:
                     return False
+                if e.get("status") == "CERTIFIED":
+                    q = 2 * self.scenario.audit.get("f", 2) + 1
+                    if e.get("valid_signature_count", 0) < q:
+                        return False
+                    if not e.get("evidence_artifact_refs"):
+                        return False
             return True
         self._check(results, "MFC-G05_SIGNED_EVIDENCE_ONLY", _g05)
 
@@ -183,7 +194,7 @@ class FullChainGate:
                 if rc:
                     top = max(rc.values()) if rc else 0
                     q = 2 * self.scenario.audit.get("f", 2) + 1
-                    if e.get("bft_result") == "CERTIFIED" and top < q:
+                    if e.get("status") == "CERTIFIED" and top < q:
                         return False
             return True
         self._check(results, "MFC-G06_QUORUM_COUNTS_VALID_EVIDENCE_ONLY", _g06)
@@ -197,6 +208,15 @@ class FullChainGate:
             # payer 来自 action policy（SELLER/BUYER），非 total*0.5
             audit_s = s("audit").get("audit_pay_s", 0)
             audit_b = s("audit").get("audit_pay_b", 0)
+            for e in audit_events:
+                if e.get("payer") not in ("SELLER", "BUYER"):
+                    return False
+            computed_s = sum(e.get("mc_a_pay", 0) for e in audit_events
+                             if e.get("payer", "SELLER") == "SELLER")
+            computed_b = sum(e.get("mc_a_pay", 0) for e in audit_events
+                             if e.get("payer", "SELLER") == "BUYER")
+            if abs(computed_s - audit_s) > 1e-6 or abs(computed_b - audit_b) > 1e-6:
+                return False
             total = audit_s + audit_b
             if total > 1e-6 and abs(audit_s - audit_b) > 1e-6:
                 return True  # 已按 payer 拆分（非 50/50）
@@ -205,8 +225,19 @@ class FullChainGate:
         self._check(results, "MFC-G08_AUDIT_PAYER_SEMANTICS", _g08)
 
         def _g09():
-            # 逐节点 VCG payment 记录在 audit_trace（MFC-G09）
-            return any(e.get("vcg_payments") for e in audit_events)
+            # 逐节点 VCG payment + settlement 实际支付到 node（MFC-G09）
+            if not any(e.get("vcg_payments") for e in audit_events):
+                return False
+            phase1 = s("settlement_phase1")
+            obligations = phase1.get("audit_obligations", [])
+            if not obligations:
+                return False
+            recipients = {o["node_id"] for o in obligations}
+            for e in audit_events:
+                for nid in (e.get("vcg_payments") or {}).keys():
+                    if str(nid) not in recipients:
+                        return False
+            return True
         self._check(results, "MFC-G09_PER_NODE_VCG_SETTLEMENT", _g09)
 
         # ================= MFC-G10/G11：action-specific likelihood ===========
@@ -260,7 +291,7 @@ class FullChainGate:
 
         # ================= MFC-G24..G26：settlement Phase I + delivery =======
         self._check(results, "MFC-G24_SETTLEMENT_PHASE1",
-                    lambda: bool(s("settlement")))
+                    lambda: (not self._is_trade()) or bool(s("settlement_phase1")))
         self._check(results, "MFC-G25_DELIVERY_EXISTS",
                     lambda: bool(s("delivery")))
         self._check(results, "MFC-G26_DELIVERY_HASH_MATCHES_TRANSACTION",
@@ -279,8 +310,7 @@ class FullChainGate:
 
         # ================= MFC-G30/G31：breach derived from evidence =========
         self._check(results, "MFC-G30_BUYER_BREACH_FROM_EVIDENCE",
-                    lambda: self._buyer_breach_from_evidence()
-                            or not self._is_trade())
+                    lambda: self._buyer_breach_from_evidence())
         self._check(results, "MFC-G31_SELLER_BREACH_FROM_EVIDENCE",
                     lambda: self._seller_breach_from_evidence())
 
@@ -302,8 +332,16 @@ class FullChainGate:
                     lambda: self._openlineage_consistent())
 
         # ================= MFC-G37：final eval unreadable ===================
-        self._check(results, "MFC-G37_FINALEVAL_UNREADABLE_PRE_TERMINAL",
-                    lambda: not self.final_eval_accessed_before_decision)
+        def _g37():
+            if self.final_eval_accessed_before_decision:
+                return False
+            fb = s("feedback")
+            ledger = fb.get("final_eval_access_ledger") or {}
+            for rec in ledger.get("records", []):
+                if rec.get("stage") not in ("FEEDBACK",):
+                    return False
+            return True
+        self._check(results, "MFC-G37_FINALEVAL_UNREADABLE_PRE_TERMINAL", _g37)
 
         # ================= MFC-G38/G39：split isolation + trainer scope =====
         self._check(results, "MFC-G38_RCAL_RCERT_REVAL_ISOLATED",
@@ -435,7 +473,7 @@ class FullChainGate:
         if terminal == "BUYER_BREACH":
             # 必须存在 usage violation evidence 且 resolver 判定 breach
             usage = self._stage("usage")
-            return bool(usage.get("buyer_breach")) or bool(
+            return bool(usage.get("buyer_breach")) and bool(
                 usage.get("usage_violation_evidence"))
         return True
 
@@ -552,6 +590,13 @@ class FullChainGate:
         tr = self._stage("training")
         if not tr.get("enabled"):
             return self._stage("state").get("terminal") != "TRADE"
+        for r in tr.get("results", []):
+            out = r.get("outcome", {})
+            if out.get("decision") == "ALLOW":
+                if not out.get("worker_pid") or not out.get("model_artifact_hash"):
+                    return False
+                if not out.get("training_started"):
+                    return False
         return tr.get("legal_trained", False)
 
     def _illegal_training_blocked(self) -> bool:

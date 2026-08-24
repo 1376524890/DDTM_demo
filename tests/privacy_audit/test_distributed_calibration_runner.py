@@ -7,6 +7,7 @@ import numpy as np
 from valor.core.enums import ExecutionMode
 from valor.engine.distributed_calibration_runner import DistributedAuditCalibrationRunner
 from valor.engine.scenario import CapstoneScenario
+from valor.experiments.registry import DataRoleManifest
 from valor.privacy_audit import ClaimType, CommittedDatasetStore, create_privacy_app
 from valor.privacy_audit.verifier import CommitChallengeVerifier
 from valor.security.signing import SigningKeyPair
@@ -42,9 +43,30 @@ def test_distributed_rcal_produces_likelihood_artifacts(tmp_path):
     sc.audit["privacy_budget"] = {
         "max_unique_rows": 64, "max_fraction": 0.5, "max_bytes": 64 * 784,
     }
+    sc.audit["low_suitability_world"] = {
+        "method": "buyer_task_utility",
+        "threshold": 0.5,
+        "row_utilities": [0.1] * 40 + [0.9] * 80,
+        "ground_truth_ref": "rcal-L-buyer-task-utility",
+    }
+    sc.audit["breach_world"] = {
+        "family": "POST_COMMIT_DATA_TAMPER",
+        "tamper_fraction": 0.2,
+        "ground_truth_ref": "rcal-B-post-commit-data-tamper",
+    }
+    from valor.core.hashing import content_hash
+    role_manifest = DataRoleManifest(
+        role_id="R_cal", dataset_id="mnist", dataset_version="v1",
+        sample_ids=tuple(range(120)), split_seed=7,
+        split_algorithm_hash=content_hash({"split": "four-way-v1"}),
+        source_dataset_hash=content_hash({"dataset": "mnist"}),
+        trainer_scope_hash=content_hash({"trainer": "mnist-mlp"}),
+        task_family_hash=content_hash({"task": "digit-classification"}),
+    )
     factory, public_keys = _client_factory()
     runner = DistributedAuditCalibrationRunner(
-        scenario=sc, X=X, y=y, claim_type=ClaimType.LABEL_DISTRIBUTION,
+        scenario=sc, X=X, y=y, role_manifest=role_manifest,
+        claim_type=ClaimType.LABEL_DISTRIBUTION,
         challenge_sizes=[32], n_runs=1, f=2,
         seller_store=CommittedDatasetStore(str(tmp_path / "store")),
         node_client_factory=factory, public_keys=public_keys,

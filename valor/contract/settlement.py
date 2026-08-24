@@ -33,6 +33,26 @@ from .escrow import EscrowAccounts
 from .money_event import MoneyLedger
 
 
+@dataclass(frozen=True)
+class AuditPaymentObligation:
+    """Per-node audit payment obligation (Round 5 §19)."""
+
+    node_id: str
+    action_profile_hash: str
+    quote_hash: str
+    realized_payment: float
+    payer: str  # SELLER | BUYER
+
+    def to_plain(self) -> dict:
+        return {
+            "node_id": self.node_id,
+            "action_profile_hash": self.action_profile_hash,
+            "quote_hash": self.quote_hash,
+            "realized_payment": self.realized_payment,
+            "payer": self.payer,
+        }
+
+
 @dataclass
 class SettlementResult:
     """结算结果（含资金流）。"""
@@ -53,8 +73,21 @@ class SettlementResult:
         return d
 
 
-def _pay_audit(money, accounts, audit_pay_s, audit_pay_b) -> None:
+def _pay_audit(money, accounts, audit_pay_s, audit_pay_b, obligations=None) -> None:
     """支付已发生且有效的审计（seller 基础 / buyer 增量）。"""
+    if obligations is not None:
+        total = sum(float(o.realized_payment) for o in obligations)
+        if abs(total - (audit_pay_s + audit_pay_b)) > 1e-6:
+            raise ValueError(
+                "AUDIT_PAYMENT_MISMATCH: sum(obligations) != audit_pay_s+audit_pay_b"
+            )
+        for o in obligations:
+            if o.realized_payment <= 0:
+                continue
+            src = "E_S^A" if o.payer == "SELLER" else "E_B^A"
+            money.transfer(Transfer(src, o.node_id, o.realized_payment,
+                                    f"VCG audit payment to {o.node_id} ({o.payer})"))
+        return
     if accounts.e_s_a > 0 and audit_pay_s > 0:
         money.transfer(Transfer("E_S^A", "auditor", audit_pay_s,
                                 "基础审计支付给审计员"))
@@ -81,6 +114,7 @@ def settle_clearing(
     audit_pay_b: float,
     money: "MoneyLedger | None" = None,
     tx_id: str = "",
+    audit_obligations: list[AuditPaymentObligation] | None = None,
 ) -> dict:
     """P0-O Settlement Phase I（Clearing 后、Delivery 前）。
 
@@ -93,7 +127,7 @@ def settle_clearing(
     def _t(frm, to, amt, reason):
         transfers.append(money.transfer(Transfer(frm, to, amt, reason)))
 
-    _pay_audit(money, accounts, audit_pay_s, audit_pay_b)
+    _pay_audit(money, accounts, audit_pay_s, audit_pay_b, obligations=audit_obligations)
     transfers = list(money.ledger._transfers)
     if decision == "TRADE":
         if accounts.b_s_star > 0:
@@ -117,6 +151,7 @@ def settle_terminal(
     money: "MoneyLedger | None" = None,
     tx_id: str = "",
     audits_already_paid: bool = False,
+    audit_obligations: list[AuditPaymentObligation] | None = None,
 ) -> SettlementResult:
     """P0-O Settlement Phase II（Delivery verified / 终态资金流）。"""
     money = money or MoneyLedger(ledger, tx_id=tx_id)
@@ -139,7 +174,7 @@ def settle_terminal(
                "usage bond 到期返还")
     elif terminal == TerminalState.NO_TRADE:
         _t("E_B^P", "buyer", accounts.e_b_p, "NO_TRADE 返还 escrow")
-        _pay_audit(money, accounts, audit_pay_s, audit_pay_b)
+        _pay_audit(money, accounts, audit_pay_s, audit_pay_b, obligations=audit_obligations)
         _refund_audit_escrow_remainder(money)
         if accounts.b_s_pre > 0:
             _t("B_S^pre", "seller", accounts.b_s_pre, "返还预锁")
@@ -150,7 +185,7 @@ def settle_terminal(
         if accounts.b_s_pre - bond_slashed > 1e-9:
             _t("B_S^pre", "seller", accounts.b_s_pre - bond_slashed, "预锁剩余返还")
         if not audits_already_paid:
-            _pay_audit(money, accounts, audit_pay_s, audit_pay_b)
+            _pay_audit(money, accounts, audit_pay_s, audit_pay_b, obligations=audit_obligations)
         _refund_audit_escrow_remainder(money)
         if money.ledger.balance("B_S^*") > 1e-9:
             _t("B_S^*", "buyer", money.ledger.balance("B_S^*"), "责任保证金罚没")
@@ -160,7 +195,7 @@ def settle_terminal(
             _t("E_B^P", "buyer", accounts.e_b_p - price, "purchase escrow 余量返还")
         _t("B_B^use", "seller", accounts.b_b_use, "买方 usage bond 罚没")
         if not audits_already_paid:
-            _pay_audit(money, accounts, audit_pay_s, audit_pay_b)
+            _pay_audit(money, accounts, audit_pay_s, audit_pay_b, obligations=audit_obligations)
         _refund_audit_escrow_remainder(money)
         pre_bal = money.ledger.balance("B_S^pre")
         if pre_bal > 1e-9:
@@ -185,6 +220,7 @@ def settle(
     bond_slash_fraction: float = 1.0,
     money: "MoneyLedger | None" = None,
     tx_id: str = "",
+    audit_obligations: list[AuditPaymentObligation] | None = None,
 ) -> SettlementResult:
     """执行终态结算（§43 资金流）。
 
@@ -196,13 +232,15 @@ def settle(
         settle_clearing(
             decision="TRADE", ledger=ledger, accounts=accounts,
             audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
-            money=money, tx_id=tx_id)
+            money=money, tx_id=tx_id, audit_obligations=audit_obligations)
     return settle_terminal(
         terminal=terminal, ledger=ledger, accounts=accounts, price=price,
         audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
-        bond_slash_fraction=bond_slash_fraction, money=money, tx_id=tx_id)
+        bond_slash_fraction=bond_slash_fraction, money=money, tx_id=tx_id,
+        audit_obligations=audit_obligations)
 
 
 __all__ = [
     "SettlementResult", "settle", "settle_clearing", "settle_terminal",
+    "AuditPaymentObligation",
 ]

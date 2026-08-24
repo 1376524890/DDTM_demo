@@ -109,16 +109,23 @@ class ControlledTrainingRunner:
         # ---- key release（PEP）----
         cap = self.provider.provision_capability(
             job_spec_hash=job.job_spec_hash, data_ref=job.dataset_commitment_hash,
-            key_release_decision={"allow": True})
-        if not cap["key_released"]:
+            key_release_decision={"allow": True},
+            tx_id=job.tx_id, rights_hash=job.rights_hash,
+            actor=job.actor_id, purpose=job.declared_purpose,
+            algorithm_hash=job.algorithm_hash, output_policy=job.requested_output,
+            execution_profile=job.execution_profile_id, expiry=valid_until,
+            nonce=content_hash({"job": job.job_spec_hash, "tx": job.tx_id})[:32],
+        )
+        if not cap.get("key_released"):
             return TrainingOutcome(
                 decision="DENY", key_released=False, raw_data_access=False,
                 training_started=False, model_created=False,
                 job_spec_hash=job.job_spec_hash, reason="key 未释放",
             )
+        capability = cap.get("capability")
         # ---- 真实训练（进程隔离 worker，buyer 不接触 raw data）----
         try:
-            worker_out = self.provider.execute(job, dataset_X, dataset_y)
+            worker_out = self.provider.execute(capability, job, dataset_X, dataset_y)
             metrics = worker_out.get("metrics", {})
             model_hash = worker_out.get("model_artifact_hash", "")
             worker_pid = worker_out.get("worker_pid")

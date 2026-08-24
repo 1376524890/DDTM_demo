@@ -159,22 +159,22 @@ class CapstoneScenario:
     usage_requests: list[dict[str, Any]] = field(default_factory=lambda: [
         {"actor": "buyer_org_A", "purpose": "digit-classification",
          "environment": "approved_compute", "timestamp": "2026-03-01T00:00:00Z",
-         "action": "compute", "expect": "ALLOW"},
+         "action": "compute"},
         {"actor": "buyer_org_A", "purpose": "digit-classification",
          "environment": "approved_compute", "timestamp": "2026-03-02T00:00:00Z",
-         "action": "compute", "expect": "ALLOW"},
+         "action": "compute"},
         {"actor": "buyer_org_A", "purpose": "digit-classification",
          "environment": "approved_compute", "timestamp": "2026-03-03T00:00:00Z",
-         "action": "compute", "expect": "ALLOW"},
+         "action": "compute"},
         {"actor": "buyer_org_A", "purpose": "digit-classification",
          "environment": "approved_compute", "timestamp": "2026-03-04T00:00:00Z",
-         "action": "compute", "expect": "DENY"},
+         "action": "compute"},
         {"actor": "buyer_org_B", "purpose": "digit-classification",
          "environment": "approved_compute", "timestamp": "2026-03-01T00:00:00Z",
-         "action": "compute", "expect": "DENY"},
+         "action": "compute"},
         {"actor": "buyer_org_A", "purpose": "marketing",
          "environment": "approved_compute", "timestamp": "2026-03-01T00:00:00Z",
-         "action": "compute", "expect": "DENY"},
+         "action": "compute"},
     ])
     # 反馈（P10）
     feedback: dict[str, Any] = field(default_factory=lambda: {

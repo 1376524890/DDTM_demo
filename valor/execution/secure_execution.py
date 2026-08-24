@@ -22,6 +22,51 @@ from typing import Any, Protocol
 from valor.core.hashing import content_hash
 
 
+@dataclass(frozen=True)
+class CapabilityToken:
+    """Frozen capability token (Round 5 §22).
+
+    A valid capability must be bound to the tx/job/dataset/rights/actor/purpose/
+    algorithm/output policy/expiry/nonce. No capability, no worker start.
+    """
+
+    tx_id: str
+    job_spec_hash: str
+    dataset_commitment: str
+    rights_hash: str
+    actor: str
+    purpose: str
+    algorithm_hash: str
+    output_policy: str
+    execution_profile: str
+    expiry: str
+    nonce: str
+
+    @property
+    def capability_hash(self) -> str:
+        return content_hash({
+            "tx_id": self.tx_id, "job_spec_hash": self.job_spec_hash,
+            "dataset_commitment": self.dataset_commitment,
+            "rights_hash": self.rights_hash, "actor": self.actor,
+            "purpose": self.purpose, "algorithm_hash": self.algorithm_hash,
+            "output_policy": self.output_policy,
+            "execution_profile": self.execution_profile,
+            "expiry": self.expiry, "nonce": self.nonce,
+        })
+
+    def to_plain(self) -> dict:
+        return {
+            "tx_id": self.tx_id, "job_spec_hash": self.job_spec_hash,
+            "dataset_commitment": self.dataset_commitment,
+            "rights_hash": self.rights_hash, "actor": self.actor,
+            "purpose": self.purpose, "algorithm_hash": self.algorithm_hash,
+            "output_policy": self.output_policy,
+            "execution_profile": self.execution_profile,
+            "expiry": self.expiry, "nonce": self.nonce,
+            "capability_hash": self.capability_hash,
+        }
+
+
 class SecureExecutionProvider(Protocol):
     """受控执行提供方接口（P0-M）。"""
 
@@ -146,7 +191,8 @@ def default_mnist_catalog() -> CertifiedTrainingAlgorithmCatalog:
     cat.register(CertifiedTrainingAlgorithm(
         algorithm_id="MNIST_MLP_TRAIN",
         code_hash=content_hash({"alg": "mnist-mlp-train-v1"}),
-        container_digest="sha256:mnist-mlp-train-container",
+        container_digest="LOCAL_SUBPROCESS_ARTIFACT_HASH:" + content_hash(
+            {"module": "valor.execution.secure_worker", "version": "v1"}),
         input_schema_hash=content_hash({"schema": "MNIST-784"}),
         output_schema_hash=content_hash({"schema": "metrics+model"}),
         allowed_hyperparameter_ranges={
@@ -198,12 +244,24 @@ class LocalIsolatedProvider:
         self.catalog = catalog or default_mnist_catalog()
 
     def provision_capability(self, *, job_spec_hash: str, data_ref: str,
-                             key_release_decision: dict) -> dict:
+                             key_release_decision: dict,
+                             tx_id: str = "", rights_hash: str = "",
+                             actor: str = "", purpose: str = "",
+                             algorithm_hash: str = "", output_policy: str = "",
+                             execution_profile: str = "", expiry: str = "",
+                             nonce: str = "") -> dict:
         if not key_release_decision.get("allow", False):
             return {"key_released": False, "capability_ref": ""}
-        return {"key_released": True, "capability_ref": f"cap-{data_ref}-{job_spec_hash}"}
+        cap = CapabilityToken(
+            tx_id=tx_id, job_spec_hash=job_spec_hash,
+            dataset_commitment=data_ref, rights_hash=rights_hash,
+            actor=actor, purpose=purpose, algorithm_hash=algorithm_hash,
+            output_policy=output_policy, execution_profile=execution_profile,
+            expiry=expiry, nonce=nonce,
+        )
+        return {"key_released": True, "capability": cap, "capability_hash": cap.capability_hash}
 
-    def execute(self, job: "TrainingJobSpec", dataset_X, dataset_y) -> dict:
+    def execute(self, capability, job: "TrainingJobSpec", dataset_X, dataset_y) -> dict:
         """Run certified training in a real subprocess worker.
 
         The orchestrator process passes a protected dataset file path and a
@@ -217,6 +275,13 @@ class LocalIsolatedProvider:
         from pathlib import Path
 
         import numpy as np
+
+        if capability is None or not getattr(capability, "capability_hash", ""):
+            raise ValueError("CAPABILITY_REQUIRED: worker refused to start without a valid capability")
+        if capability.job_spec_hash != job.job_spec_hash:
+            raise ValueError("CAPABILITY_JOB_MISMATCH")
+        if capability.dataset_commitment != job.dataset_commitment_hash:
+            raise ValueError("CAPABILITY_DATASET_MISMATCH")
 
         repo_root = Path(__file__).resolve().parent.parent.parent
         env = dict(os.environ)
@@ -241,7 +306,7 @@ class LocalIsolatedProvider:
 
 
 __all__ = [
-    "SecureExecutionProvider", "TrainingJobSpec", "TrainingOutcome",
+    "SecureExecutionProvider", "CapabilityToken", "TrainingJobSpec", "TrainingOutcome",
     "CertifiedTrainingAlgorithm", "CertifiedTrainingAlgorithmCatalog",
     "default_mnist_catalog", "LocalIsolatedProvider",
 ]

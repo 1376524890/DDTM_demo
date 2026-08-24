@@ -21,6 +21,7 @@ class StateMachineInput:
     breach_during_audit: bool
     price_decision: str  # TRADE | NO_TRADE
     buyer_breach: bool
+    audit_ok: bool = True
 
 
 class TransactionStateMachine:
@@ -30,6 +31,8 @@ class TransactionStateMachine:
         """确定交易终态（§43 判定优先级）。"""
         if not inp.entitled or not inp.compliant:
             return TerminalState.NO_TRADE  # 硬门槛失败 → 不进入交易
+        if not inp.audit_ok:
+            return TerminalState.NO_TRADE  # 强制审计未成功 → fail closed
         if inp.buyer_breach:
             return TerminalState.BUYER_BREACH
         if inp.breach_during_audit:

@@ -188,6 +188,22 @@ class CommittedDatasetStore:
     def open_rows(self, dataset_id: str, indices: list[int]) -> list[dict]:
         return [self.open_row(dataset_id, i) for i in indices]
 
+    def tamper_row(self, dataset_id: str, index: int, *, new_y: int | None = None,
+                   new_X: np.ndarray | None = None) -> None:
+        """POST_COMMIT_DATA_TAMPER: 修改已承诺行数据，使 opening 与 Merkle 不一致。
+
+        仅用于 ExperimentWorld B-world 构造真实可观察 breach：commitment/merkle
+        保持原值，但卖方 open_rows() 返回的 row_payload 与承诺不一致，auditor
+        在 Merkle 验证时得到 BREACH_EVIDENCE。
+        """
+        rec = self._datasets[dataset_id]
+        if new_y is not None:
+            rec["y"][index] = int(new_y)
+        if new_X is not None:
+            rec["X"][index] = np.asarray(new_X, dtype=rec["X"].dtype)
+        if new_y is None and new_X is None:
+            raise ValueError("tamper_row requires new_y or new_X")
+
 
 __all__ = [
     "DatasetCommitment", "CommittedRow", "build_dataset_commitment",

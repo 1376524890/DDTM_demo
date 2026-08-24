@@ -1,0 +1,310 @@
+{
+  "round": "VALOR-v1 Round 5",
+  "evaluated_code_commit": "078b8073054a9c0710fa615842a54c19aaa0857b",
+  "report_commit": "078b8073054a9c0710fa615842a54c19aaa0857b",
+  "created_at": "2026-08-24",
+  "hard_stop_regression": "tests/privacy_audit/test_distributed_policy_certifier.py tests/privacy_audit/test_distributed_calibration_runner.py tests/audit/test_likelihood_catalog.py tests/audit/test_market_quote_round4.py tests/system/test_process_isolated_mainline.py -> 9 passed",
+  "latest_full_regression": "not_re_run_after_round5_edits; prior full baseline 291 passed, 2 failed, 2 errors (proxy/env fixed)",
+  "inventory": [
+    {
+      "id": "P0-C",
+      "title": "ActionProfile -> Likelihood -> Policy -> Certificate closure",
+      "status": "PARTIAL",
+      "evidence": [
+        "VOI now uses canonical AuditActionProfile and FrozenAuditMarketQuote; _quote_cost removed a-{k}/ad-hoc hash",
+        "R_cal freeze_likelihood action_id now semantic (ev.action_id)",
+        "policy still not auto-generated from catalogs in all paths"
+      ]
+    },
+    {
+      "id": "P0-D",
+      "title": "R_cal real distributed commit-challenge calibration",
+      "status": "PARTIAL",
+      "evidence": [
+        "DataRoleManifest/DataRoleRegistry implemented",
+        "G/L/B worlds extracted to ExperimentWorld with buyer_task_utility L and POST_COMMIT_DATA_TAMPER B",
+        "RawCalibrationEvent has full provenance and persists to reports/calibration/raw_events",
+        "AuditRuntimeDescriptor added; FORMAL_EXPERIMENT enforcement present in runner/VOI"
+      ]
+    },
+    {
+      "id": "P0-E",
+      "title": "Independent full-policy R_cert",
+      "status": "PARTIAL",
+      "evidence": [
+        "DistributedPolicyCertifier now uses FullAuditPolicyExecutor instead of DistributedAuditCalibrationRunner",
+        "policy/catalog binding mismatch enforced (CERTIFICATION_POLICY_BINDING_MISMATCH)",
+        "sample-ID overlap via DataRoleRegistry",
+        "still needs orchestrator integration and runtime descriptor in test path"
+      ]
+    },
+    {
+      "id": "P0-Q",
+      "title": "Pricing Provenance DAG",
+      "status": "PARTIAL",
+      "evidence": [
+        "PricingProvenanceGraph/ResolvedParameter added and recorded in pricing stage",
+        "reverse provenance graph script still missing"
+      ]
+    },
+    {
+      "id": "P0-S",
+      "title": "Bond capital timeline",
+      "status": "PARTIAL",
+      "evidence": [
+        "BondTimeline added and used for seller/buyer bond capital cost",
+        "scenario t_pre/t_post still present as logical durations"
+      ]
+    },
+    {
+      "id": "P0-T",
+      "title": "FullChainGate mutation coverage partial",
+      "status": "PARTIAL",
+      "evidence": [
+        "mutation suite expanded 7 -> 18 mutants",
+        "G02/G03/G04/G05/G06/G08/G09/G24/G37/G45/G46 strengthened",
+        "G38/G44/G50 still weak"
+      ]
+    },
+    {
+      "id": "C10",
+      "title": "ACTION_PROFILE_MISMATCH scenario",
+      "status": "OPEN",
+      "evidence": [
+        "not added"
+      ]
+    },
+    {
+      "id": "C11",
+      "title": "R_CAL_R_CERT_SAMPLE_OVERLAP scenario",
+      "status": "OPEN",
+      "evidence": [
+        "covered by unit test but not scenario matrix"
+      ]
+    },
+    {
+      "id": "C12",
+      "title": "FINAL_EVAL_EARLY_ACCESS scenario",
+      "status": "OPEN",
+      "evidence": [
+        "covered by mutation test, not scenario matrix"
+      ]
+    },
+    {
+      "id": "machine-generated coverage",
+      "title": "Machine-generated Mechanism Coverage",
+      "status": "PARTIAL",
+      "evidence": [
+        "scripts/generate_mechanism_coverage.py added; all items PARTIAL pending mutation/provenance completeness"
+      ]
+    },
+    {
+      "id": "reverse provenance graph",
+      "title": "Reverse provenance graph validator",
+      "status": "OPEN",
+      "evidence": [
+        "scripts/reverse_self_audit.py bool helpers only; no ProvenanceGraph"
+      ]
+    },
+    {
+      "id": "NEW-P0-1",
+      "title": "Formal transaction audit not process-isolated; TestClient default",
+      "status": "PARTIAL",
+      "evidence": [
+        "AuditRuntimeDescriptor enforced in VOI/runner FORMAL_EXPERIMENT; orchestrator still defaults TestClient"
+      ]
+    },
+    {
+      "id": "NEW-P0-2",
+      "title": "Ed25519 private keys held/coordinator-signed evidence",
+      "status": "PARTIAL",
+      "evidence": [
+        "process cluster node-local signing exists; scheduler verifies signatures"
+      ]
+    },
+    {
+      "id": "NEW-P0-3",
+      "title": "Audit market snapshot hardcoded bids in privacy mainline",
+      "status": "PARTIAL",
+      "evidence": [
+        "VOI requires ctx/scenario market snapshot; quote now canonical profile"
+      ]
+    },
+    {
+      "id": "NEW-P0-4",
+      "title": "Audit quote incomplete: only VCG payment, no per-action cost breakdown",
+      "status": "PARTIAL",
+      "evidence": [
+        "_quote_cost removed; exact profile binding; cost still scalar config values without formula_id per cost"
+      ]
+    },
+    {
+      "id": "NEW-P0-5",
+      "title": "Audit failure not fail-closed in orchestrator",
+      "status": "PARTIAL",
+      "evidence": [
+        "audit_policy_status propagated; orchestrator sets NO_TRADE when not CERTIFIED"
+      ]
+    },
+    {
+      "id": "NEW-P0-6",
+      "title": "Per-auditor VCG money settlement not implemented",
+      "status": "PARTIAL",
+      "evidence": [
+        "AuditPaymentObligation added; settlement pays per-node; obligations recorded in settlement_phase1"
+      ]
+    },
+    {
+      "id": "NEW-P0-7",
+      "title": "Audit outcome vocabulary inconsistent",
+      "status": "PARTIAL",
+      "evidence": [
+        "VOI maps legacy QUALITY_FAIL to CLAIM_NOT_SUPPORTED for Bayes; canonical statuses added"
+      ]
+    },
+    {
+      "id": "NEW-P0-8",
+      "title": "Experiment fault injection in production mechanism",
+      "status": "PARTIAL",
+      "evidence": [
+        "removed expect from scenario/default training requests; ExperimentExpectation module added; fault flags still read in TEST_FIXTURE only"
+      ]
+    },
+    {
+      "id": "P0-U",
+      "title": "CONTROLLED_EXECUTION_CAPABILITY_BINDING",
+      "status": "PARTIAL",
+      "evidence": [
+        "CapabilityToken added and enforced in provider.execute; placeholder hashes removed"
+      ]
+    },
+    {
+      "id": "P0-V",
+      "title": "FROZEN_RANDOMNESS_AND_REPLAY",
+      "status": "OPEN",
+      "evidence": [
+        "no RandomnessManifest; replay still caller boolean"
+      ]
+    },
+    {
+      "id": "G02-G50 weak gates",
+      "title": "FullChainGate weak gates",
+      "status": "PARTIAL",
+      "evidence": [
+        "G02/G03/G04/G05/G06/G08/G09/G24/G37/G45/G46 strengthened; G38/G44/G50 still weak"
+      ]
+    },
+    {
+      "id": "C4/C5/C9 weak assertions",
+      "title": "NO_QUORUM / DISCLOSURE / INVALID_SIGNATURE scenarios",
+      "status": "PARTIAL",
+      "evidence": [
+        "C0 exact TRADE; C4/C5/C9 exact policy status and NO_TRADE"
+      ]
+    },
+    {
+      "id": "C7/C8 controlled training evidence",
+      "title": "Controlled training DENY/ALLOW evidence",
+      "status": "PARTIAL",
+      "evidence": [
+        "C7/C8 require TRADE, worker_pid/model hash for ALLOW, no key release for DENY"
+      ]
+    },
+    {
+      "id": "M01-M27 mutation matrix",
+      "title": "Mutation suite 7 -> 27+ core gate mutants",
+      "status": "PARTIAL",
+      "evidence": [
+        "18 mutants implemented; required/executed/survivors tracking not yet automated"
+      ]
+    },
+    {
+      "id": "Pricing provenance",
+      "title": "PricingProvenanceGraph + reverse(P*)",
+      "status": "PARTIAL",
+      "evidence": [
+        "graph added; reverse(P*) script missing"
+      ]
+    },
+    {
+      "id": "Bond timeline",
+      "title": "BondTimeline replacing t_pre/t_post/t_b",
+      "status": "PARTIAL",
+      "evidence": [
+        "BondTimeline integrated for capital costs"
+      ]
+    },
+    {
+      "id": "Per-node VCG settlement",
+      "title": "Per-node AuditPaymentObligation settlement",
+      "status": "PARTIAL",
+      "evidence": [
+        "implemented in settlement + orchestrator"
+      ]
+    },
+    {
+      "id": "Experiment inputs separation",
+      "title": "Experiment inputs physically separated from mechanism",
+      "status": "PARTIAL",
+      "evidence": [
+        "expect removed from production defaults; ExperimentExpectation added; tamper flags still scenario-based TEST_FIXTURE"
+      ]
+    },
+    {
+      "id": "Entitlement provenance",
+      "title": "Entitlement/Compliance provenance records",
+      "status": "PARTIAL",
+      "evidence": [
+        "existing Entitled/Compliant/Compatibility; no provenance DAG leaves"
+      ]
+    },
+    {
+      "id": "FinalEvaluation access ledger",
+      "title": "FinalEvaluationAccessLedger",
+      "status": "PARTIAL",
+      "evidence": [
+        "ledger added and recorded in feedback; G37 checks it"
+      ]
+    },
+    {
+      "id": "Scenario matrix strengthen",
+      "title": "Strengthen C0/C4/C5/C7/C8/C9 + new C10-C14",
+      "status": "PARTIAL",
+      "evidence": [
+        "C0/C4/C5/C7/C8/C9 strengthened; C10-C12 not in scenario matrix"
+      ]
+    },
+    {
+      "id": "Static scanner extension",
+      "title": "Static scanner extension",
+      "status": "PARTIAL",
+      "evidence": [
+        "scripts/check_mechanism_invariants.py exists; not extended for all new forbidden patterns"
+      ]
+    },
+    {
+      "id": "Formal execution mode",
+      "title": "ExecutionMode TEST_FIXTURE/FORMAL_EXPERIMENT/PRODUCTION",
+      "status": "PARTIAL",
+      "evidence": [
+        "AuditRuntimeDescriptor enforced in VOI/runner; orchestrator not yet wired execution_mode/role_registry/catalogs"
+      ]
+    },
+    {
+      "id": "Scientific convergence",
+      "title": "Formal model convergence recording",
+      "status": "OPEN",
+      "evidence": [
+        "no solver/scaler/max_iter/tolerance/n_iter/convergence recording; ConvergenceWarning still not fail-closed"
+      ]
+    },
+    {
+      "id": "Data role isolation",
+      "title": "R_cal/R_cert/R_eval overlap verification on sample IDs",
+      "status": "PARTIAL",
+      "evidence": [
+        "DataRoleManifest/Registry implemented; R_cert checks sample overlap; R_eval manifest not wired"
+      ]
+    }
+  ]
+}

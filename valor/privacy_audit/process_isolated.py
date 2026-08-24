@@ -14,6 +14,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Callable
+from dataclasses import dataclass, field
 
 import httpx
 
@@ -26,11 +27,59 @@ def free_port() -> int:
     return p
 
 
+@dataclass(frozen=True)
+class AuditRuntimeDescriptor:
+    """Frozen descriptor for the audit execution runtime (Round 5 §4).
+
+    FORMAL_EXPERIMENT must be PROCESS_HTTP + process-isolated + node-local Ed25519.
+    """
+
+    transport_mode: str  # TEST_FIXTURE | PROCESS_HTTP | PRODUCTION
+    process_isolated: bool
+    node_pids: dict[str, int] = field(default_factory=dict)
+    node_public_keys: dict[str, str] = field(default_factory=dict)
+    node_key_fingerprints: dict[str, str] = field(default_factory=dict)
+    task_schema_hash: str = ""
+    server_code_hash: str = ""
+    environment_hash: str = ""
+
+    def to_plain(self) -> dict:
+        return {
+            "transport_mode": self.transport_mode,
+            "process_isolated": self.process_isolated,
+            "node_pids": dict(self.node_pids),
+            "node_public_keys": dict(self.node_public_keys),
+            "node_key_fingerprints": dict(self.node_key_fingerprints),
+            "task_schema_hash": self.task_schema_hash,
+            "server_code_hash": self.server_code_hash,
+            "environment_hash": self.environment_hash,
+        }
+
+    @classmethod
+    def from_cluster(cls, cluster: "ProcessHttpAuditorCluster") -> "AuditRuntimeDescriptor":
+        pool = cluster._pool
+        from valor.core.hashing import content_hash
+
+        return cls(
+            transport_mode="PROCESS_HTTP",
+            process_isolated=True,
+            node_pids={nid: p.pid for nid, p in pool.procs.items()},
+            node_public_keys=dict(cluster._registry._public_keys),
+            node_key_fingerprints=dict(cluster._registry._fingerprints),
+            task_schema_hash=content_hash({"schema": "PrivacyAuditTask-v1"}),
+            server_code_hash=content_hash({"module": "valor.privacy_audit.server", "version": "v1"}),
+            environment_hash=content_hash({
+                "python": sys.version.split()[0],
+                "cwd": str(Path(__file__).resolve().parent.parent.parent),
+            }),
+        )
+
+
 def wait_health(port: int, timeout: float = 30.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=1.0)
+            r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=1.0, trust_env=False)
             if r.status_code == 200:
                 return
         except Exception:
@@ -106,7 +155,7 @@ class ProcessAuditorClient:
         self.base = f"http://127.0.0.1:{port}"
 
     def health(self) -> dict:
-        r = httpx.get(f"{self.base}/health", timeout=5.0)
+        r = httpx.get(f"{self.base}/health", timeout=5.0, trust_env=False)
         r.raise_for_status()
         return r.json()
 
@@ -118,7 +167,7 @@ class ProcessAuditorClient:
 
     def submit_task(self, task):
         r = httpx.post(f"{self.base}/privacy/tasks", json=task.to_plain(),
-                       timeout=10.0)
+                       timeout=10.0, trust_env=False)
         r.raise_for_status()
         return r.json()
 

@@ -7,9 +7,11 @@ import pytest
 
 from valor.audit.policy import AuditPolicy
 from valor.core.enums import ExecutionMode
+from valor.core.hashing import content_hash
 from valor.engine.distributed_calibration_runner import DistributedAuditCalibrationRunner
 from valor.engine.distributed_policy_certifier import DistributedPolicyCertifier
 from valor.engine.scenario import CapstoneScenario
+from valor.experiments.registry import DataRoleManifest
 from valor.privacy_audit import ClaimType, CommittedDatasetStore, create_privacy_app
 from valor.privacy_audit.verifier import CommitChallengeVerifier
 from valor.security.signing import SigningKeyPair
@@ -42,14 +44,36 @@ def _scenario():
     sc.audit["privacy_budget"] = {
         "max_unique_rows": 64, "max_fraction": 0.5, "max_bytes": 64 * 784,
     }
+    sc.audit["low_suitability_world"] = {
+        "method": "buyer_task_utility",
+        "threshold": 0.5,
+        "row_utilities": [0.1] * 40 + [0.9] * 60,
+        "ground_truth_ref": "rcal-L-buyer-task-utility",
+    }
+    sc.audit["breach_world"] = {
+        "family": "POST_COMMIT_DATA_TAMPER",
+        "tamper_fraction": 0.2,
+        "ground_truth_ref": "rcal-B-post-commit-data-tamper",
+    }
     return sc
 
 
-def _policy(sc) -> AuditPolicy:
+def _role(role_id, n, seed, start=0):
+    return DataRoleManifest(
+        role_id=role_id, dataset_id="mnist", dataset_version="v1",
+        sample_ids=tuple(range(start, start + n)), split_seed=seed,
+        split_algorithm_hash=content_hash({"split": "four-way-v1"}),
+        source_dataset_hash=content_hash({"dataset": "mnist"}),
+        trainer_scope_hash=content_hash({"trainer": "mnist-mlp"}),
+        task_family_hash=content_hash({"task": "digit-classification"}),
+    )
+
+
+def _policy(sc, action_profile_hashes=(), likelihood_artifact_hashes=()) -> AuditPolicy:
     return AuditPolicy(
         policy_version="v1",
-        action_profile_hashes=(),
-        likelihood_artifact_hashes=(),
+        action_profile_hashes=tuple(action_profile_hashes),
+        likelihood_artifact_hashes=tuple(likelihood_artifact_hashes),
         selection_algorithm_version="voi-v1",
         prior_family_version="dirichlet-v1",
         loss_matrix_hash="loss-v1",
@@ -67,12 +91,13 @@ def _policy(sc) -> AuditPolicy:
 
 def test_rcert_independent_artifact(tmp_path):
     rng = np.random.default_rng(11)
-    X = rng.integers(0, 256, size=(100, 784), dtype=np.uint8)
-    y = rng.integers(0, 10, size=100)
+    X = rng.integers(0, 256, size=(200, 784), dtype=np.uint8)
+    y = rng.integers(0, 10, size=200)
     sc = _scenario()
     factory, public_keys = _client_factory()
     rcal = DistributedAuditCalibrationRunner(
-        scenario=sc, X=X, y=y, claim_type=ClaimType.LABEL_DISTRIBUTION,
+        scenario=sc, X=X, y=y, role_manifest=_role("R_cal", 100, 11),
+        claim_type=ClaimType.LABEL_DISTRIBUTION,
         challenge_sizes=[32], n_runs=1, f=2,
         seller_store=CommittedDatasetStore(str(tmp_path / "rcal")),
         node_client_factory=factory, public_keys=public_keys,
@@ -80,15 +105,19 @@ def test_rcert_independent_artifact(tmp_path):
     )
     rcal_events = rcal.run()
     lik_arts = rcal.freeze_likelihood()
+    profile_hashes = sorted(lik_arts.keys())
+    lik_hashes = [art.artifact_hash for art in lik_arts.values()]
     certifier = DistributedPolicyCertifier(
-        policy=_policy(sc), scenario=sc, X=X, y=y,
+        policy=_policy(sc, profile_hashes, lik_hashes), scenario=sc, X=X, y=y,
+        role_manifest=_role("R_cert", 100, 21, start=100),
         likelihood_artifacts=lik_arts,
         claim_type=ClaimType.LABEL_DISTRIBUTION, challenge_sizes=[32],
         n_runs=1, f=2, seller_store=CommittedDatasetStore(str(tmp_path / "rcert")),
         node_client_factory=factory, public_keys=public_keys,
         execution_mode=ExecutionMode.TEST_FIXTURE,
     )
-    art = certifier.run(r_cal_event_ids=[e.event_id for e in rcal_events])
+    art = certifier.run(r_cal_sample_ids=[int(x) for x in range(100)],
+                        r_cal_event_ids=[e.event_id for e in rcal_events])
     assert art.policy_hash == art.policy.policy_hash
     assert art.r_cert_hash
     assert art.raw_certification_event_refs
@@ -96,19 +125,20 @@ def test_rcert_independent_artifact(tmp_path):
 
 def test_rcert_rejects_overlap(tmp_path):
     rng = np.random.default_rng(12)
-    X = rng.integers(0, 256, size=(100, 784), dtype=np.uint8)
-    y = rng.integers(0, 10, size=100)
+    X = rng.integers(0, 256, size=(200, 784), dtype=np.uint8)
+    y = rng.integers(0, 10, size=200)
     sc = _scenario()
     factory, public_keys = _client_factory()
     certifier = DistributedPolicyCertifier(
-        policy=_policy(sc), scenario=sc, X=X, y=y, likelihood_artifacts={},
+        policy=_policy(sc), scenario=sc, X=X, y=y,
+        role_manifest=_role("R_cert", 100, 31),
+        likelihood_artifacts={},
         claim_type=ClaimType.LABEL_DISTRIBUTION, challenge_sizes=[32],
         n_runs=1, f=2, seller_store=CommittedDatasetStore(str(tmp_path / "x")),
         node_client_factory=factory, public_keys=public_keys,
         execution_mode=ExecutionMode.TEST_FIXTURE,
     )
-    # Pretend R_cal claimed the same event ids as R_cert will produce.
+    # Pretend R_cal claimed overlapping sample IDs.
     with pytest.raises(ValueError, match="DATA_ROLE_OVERLAP"):
-        certifier.run(r_cal_event_ids=["evt-rcert-G-32-0",
-                                        "evt-rcert-L-32-0",
-                                        "evt-rcert-B-32-0"])
+        certifier.run(r_cal_sample_ids=[0, 1, 2],
+                      r_cal_event_ids=["evt-rcert-G-32-0"])

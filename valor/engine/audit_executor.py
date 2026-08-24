@@ -253,7 +253,10 @@ class DistributedAuditExecutor:
             vcg_payment = sum(vcg_payments_realized.values())
             realized_cost = vcg_payment  # 实际发生的现金成本
             # Bayes 后验更新（证据派生）
-            belief = bayes_update(belief, action.likelihood.row(outcome))
+            lik_row = action.likelihood.row(
+                outcome if outcome in action.likelihood.rows
+                else "CLAIM_NOT_SUPPORTED")
+            belief = bayes_update(belief, lik_row)
             mv, _ = marginal_value_of_audit(belief, action.likelihood, loss)
             posterior = belief.to_plain()
             exec_record = AuditActionExecutionRecord(

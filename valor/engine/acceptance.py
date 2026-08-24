@@ -84,13 +84,13 @@ def scenario_c3_buyer_misuse() -> CapstoneScenario:
     sc.usage_requests = [
         {"actor": "buyer_org_A", "purpose": "marketing",
          "environment": "approved_compute", "timestamp": "2026-03-01T00:00:00Z",
-         "action": "compute", "expect": "DENY"},
+         "action": "compute"},
         {"actor": "buyer_org_A", "purpose": "marketing",
          "environment": "approved_compute", "timestamp": "2026-03-02T00:00:00Z",
-         "action": "compute", "expect": "DENY"},
+         "action": "compute"},
         {"actor": "buyer_org_A", "purpose": "marketing",
          "environment": "approved_compute", "timestamp": "2026-03-03T00:00:00Z",
-         "action": "compute", "expect": "DENY"},
+         "action": "compute"},
     ]
     return sc
 

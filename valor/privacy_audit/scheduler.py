@@ -50,6 +50,8 @@ class PrivacyAuditActionResult:
     result_counts: dict
     disclosure: dict
     cost: AuditCostBreakdown
+    valid_signature_count: int = 0
+    evidence_artifact_refs: list[str] = field(default_factory=list)
 
     def to_plain(self) -> dict:
         return {
@@ -65,6 +67,8 @@ class PrivacyAuditActionResult:
             "result_counts": self.result_counts,
             "disclosure": self.disclosure,
             "cost": self.cost.to_plain(),
+            "valid_signature_count": self.valid_signature_count,
+            "evidence_artifact_refs": self.evidence_artifact_refs,
         }
 
 
@@ -213,6 +217,8 @@ class PrivacyAuditScheduler:
         for r in results:
             counts[r] = counts.get(r, 0) + 1
         status, cert_result = "NO_QUORUM", None
+        if evidence_plain and not valid_evidence and self.require_signature:
+            status = "INVALID_EVIDENCE"
         if counts:
             cert_result = max(counts, key=counts.get)
             if counts[cert_result] >= self.q:
@@ -232,9 +238,11 @@ class PrivacyAuditScheduler:
             action_id=action.action_id, task_hash=task_hash,
             challenge=challenge, status=status, cert_result=cert_result,
             committee=committee, payments=payments, mc_a_pay=mc_a_pay,
-            evidence_hashes=[e["evidence_id"] for e in valid_evidence.values()],
-            result_counts=counts, disclosure=disclosure.to_plain(), cost=cost,
-        )
+                evidence_hashes=[e["evidence_id"] for e in valid_evidence.values()],
+                result_counts=counts, disclosure=disclosure.to_plain(), cost=cost,
+                valid_signature_count=len(valid_evidence),
+                evidence_artifact_refs=[e["evidence_id"] for e in valid_evidence.values()],
+            )
 
 
 __all__ = ["PrivacyAuditScheduler", "PrivacyAuditActionResult"]

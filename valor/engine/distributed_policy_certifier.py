@@ -16,9 +16,15 @@ from valor.audit.likelihood_catalog import FrozenLikelihoodArtifact
 from valor.audit.policy import AuditPolicy
 from valor.core.enums import ExecutionMode
 from valor.core.hashing import content_hash
-from valor.engine.distributed_calibration_runner import DistributedAuditCalibrationRunner
+from valor.audit.action_catalog import ActionProfileCatalog
+from valor.audit.action_profile import build_action_profile
+from valor.audit.likelihood_catalog import LikelihoodCatalog
+from valor.engine.full_policy_executor import FullAuditPolicyExecutor
 from valor.engine.scenario import CapstoneScenario
+from valor.experiments.registry import DataRoleManifest, DataRoleRegistry, DataSplitIsolationError
 from valor.privacy_audit import ClaimType, CommittedDatasetStore
+from valor.privacy_audit.process_isolated import AuditRuntimeDescriptor
+from valor.security.certification import CertifiedCell, CertificationCatalog
 
 
 @dataclass
@@ -39,6 +45,11 @@ class PolicyCertificationArtifact:
     p_breach_lower_sys: float
     omega_allowed_envelope: list[dict]
     raw_certification_event_refs: list[str]
+    role_manifest_hash: str = ""
+    trainer_hash: str = ""
+    execution_runtime_hash: str = ""
+    raw_event_hashes: list[str] = field(default_factory=list)
+    policy_binding_mismatch: list[str] = field(default_factory=list)
 
     def to_plain(self) -> dict:
         return {
@@ -55,6 +66,11 @@ class PolicyCertificationArtifact:
             "p_breach_lower_sys": self.p_breach_lower_sys,
             "omega_allowed_envelope": self.omega_allowed_envelope,
             "raw_certification_event_refs": self.raw_certification_event_refs,
+            "role_manifest_hash": self.role_manifest_hash,
+            "trainer_hash": self.trainer_hash,
+            "execution_runtime_hash": self.execution_runtime_hash,
+            "raw_event_hashes": self.raw_event_hashes,
+            "policy_binding_mismatch": self.policy_binding_mismatch,
         }
 
 
@@ -66,6 +82,7 @@ class DistributedPolicyCertifier:
         scenario: CapstoneScenario,
         X: np.ndarray,
         y: np.ndarray,
+        role_manifest: DataRoleManifest | None = None,
         likelihood_artifacts: dict[str, FrozenLikelihoodArtifact],
         claim_type: ClaimType = ClaimType.LABEL_DISTRIBUTION,
         challenge_sizes: list[int] | None = None,
@@ -75,11 +92,13 @@ class DistributedPolicyCertifier:
         node_client_factory: Callable[[str], Any] | None = None,
         public_keys: dict[str, str] | None = None,
         execution_mode: ExecutionMode = ExecutionMode.TEST_FIXTURE,
+        audit_runtime: AuditRuntimeDescriptor | None = None,
     ) -> None:
         self.policy = policy
         self.scenario = scenario
         self.X = X
         self.y = y
+        self.role_manifest = role_manifest
         self.likelihood_artifacts = likelihood_artifacts
         self.claim_type = claim_type
         self.challenge_sizes = challenge_sizes or [32, 64]
@@ -89,29 +108,93 @@ class DistributedPolicyCertifier:
         self.node_client_factory = node_client_factory
         self.public_keys = public_keys
         self.execution_mode = execution_mode
+        self.audit_runtime = audit_runtime
 
-    def run(self, *, r_cal_event_ids: list[str]) -> PolicyCertificationArtifact:
-        runner = DistributedAuditCalibrationRunner(
-            scenario=self.scenario, X=self.X, y=self.y,
-            claim_type=self.claim_type, challenge_sizes=self.challenge_sizes,
-            n_runs=self.n_runs, f=self.f, seller_store=self.seller_store,
-            node_client_factory=self.node_client_factory,
-            public_keys=self.public_keys, execution_mode=self.execution_mode,
-            role="rcert",
-        )
-        events = runner.run()
-        r_cert_hashes = {e.event_id for e in events}
+    def run(self, *, r_cal_sample_ids: list[int] | None = None,
+            r_cal_event_ids: list[str] | None = None) -> PolicyCertificationArtifact:
+        r_cal_event_ids = r_cal_event_ids or []
+        r_cal_sample_ids = [int(x) for x in (r_cal_sample_ids or [])]
+        r_cert_hashes = set()
         overlap = r_cert_hashes & set(r_cal_event_ids)
         if overlap:
             raise ValueError(f"DATA_ROLE_OVERLAP: R_cal/R_cert share {overlap}")
-        # Certification metrics from events (B state breach detection).
-        tp = sum(1 for e in events if e.state == "B" and e.outcome == "BREACH_EVIDENCE")
-        fn = sum(1 for e in events if e.state == "B" and e.outcome != "BREACH_EVIDENCE")
-        fp = sum(1 for e in events if e.state == "G" and e.outcome == "BREACH_EVIDENCE")
-        tn = sum(1 for e in events if e.state == "G" and e.outcome != "BREACH_EVIDENCE")
+        # Round 5: hard sample-ID overlap check via DataRoleRegistry.
+        if self.role_manifest is not None:
+            reg = DataRoleRegistry()
+            if r_cal_sample_ids:
+                from valor.experiments.registry import DataRoleManifest as _M
+                cal_manifest = _M(
+                    role_id="R_cal", dataset_id=self.role_manifest.dataset_id,
+                    dataset_version=self.role_manifest.dataset_version,
+                    sample_ids=tuple(r_cal_sample_ids),
+                    split_seed=self.role_manifest.split_seed - 1,
+                    split_algorithm_hash=self.role_manifest.split_algorithm_hash,
+                    source_dataset_hash=self.role_manifest.source_dataset_hash,
+                    trainer_scope_hash=self.role_manifest.trainer_scope_hash,
+                    task_family_hash=self.role_manifest.task_family_hash,
+                )
+                reg.register_role_manifest(cal_manifest)
+            reg.register_role_manifest(self.role_manifest)
+            try:
+                reg.freeze()
+            except DataSplitIsolationError as e:
+                raise ValueError(f"DATA_ROLE_OVERLAP: {e}") from e
+        # Build canonical catalogs from likelihood artifacts and scenario profiles.
+        lik_catalog = LikelihoodCatalog()
+        for art in self.likelihood_artifacts.values():
+            lik_catalog.register(art)
+        profile_catalog = ActionProfileCatalog()
+        for k in self.challenge_sizes:
+            profile = build_action_profile(
+                scenario_audit=self.scenario.audit,
+                claim_type=self.claim_type.value,
+                k=k, f=self.f,
+                execution_version_hash=str(self.scenario.audit.get("execution_version_hash", "cc-audit-v1")),
+            )
+            if profile.action_profile_hash in self.likelihood_artifacts:
+                profile_catalog.register(profile)
+
+        # Phase 14: policy must be generated from the exact catalogs.
+        mismatch: list[str] = []
+        if sorted(self.policy.action_profile_hashes) != sorted(profile_catalog._profiles.keys()):
+            mismatch.append("action_profile_hashes")
+        if sorted(self.policy.likelihood_artifact_hashes) != sorted(
+                art.artifact_hash for art in lik_catalog._artifacts.values()):
+            mismatch.append("likelihood_artifact_hashes")
+        if mismatch:
+            raise ValueError(
+                f"CERTIFICATION_POLICY_BINDING_MISMATCH: {mismatch}"
+            )
+
+        executor = FullAuditPolicyExecutor(
+            policy=self.policy, scenario=self.scenario, X=self.X, y=self.y,
+            role_manifest=self.role_manifest,
+            likelihood_catalog=lik_catalog,
+            action_profile_catalog=profile_catalog,
+            claim_type=self.claim_type, challenge_sizes=self.challenge_sizes,
+            f=self.f, seller_store=self.seller_store,
+            node_client_factory=self.node_client_factory,
+            public_keys=self.public_keys,
+            execution_mode=self.execution_mode,
+            audit_runtime=self.audit_runtime,
+        )
+        world_results = executor.run()
+        # Certification metrics from real policy executions (B state breach detection).
+        tp = sum(1 for w in world_results if w.state == "B"
+                 and any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
+        fn = sum(1 for w in world_results if w.state == "B"
+                 and not any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
+        fp = sum(1 for w in world_results if w.state == "G"
+                 and any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
+        tn = sum(1 for w in world_results if w.state == "G"
+                 and not any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
         a, b = 1.0, 1.0
         a_post, b_post = a + tp, b + fn
-        p_lower = a_post / (a_post + b_post)
+        cat = CertificationCatalog()
+        cat.register(CertifiedCell(
+            "c1", a_post, b_post, float(self.scenario.audit.get("alpha_D", 0.05)),
+            {"quality": (tp, fn)}))
+        p_lower = cat.p_breach_lower("c1", "quality")
         artifact_hash = content_hash({
             "policy_hash": self.policy.policy_hash,
             "action_catalog_hash": content_hash({
@@ -121,6 +204,8 @@ class DistributedPolicyCertifier:
                 ph: art.artifact_hash for ph, art in self.likelihood_artifacts.items()
             }),
             "r_cert_hashes": sorted(r_cert_hashes),
+            "world_result_hashes": sorted(
+                content_hash(w.to_plain()) for w in world_results),
             "tp": tp, "fn": fn, "fp": fp, "tn": tn,
         })
         return PolicyCertificationArtifact(
@@ -141,7 +226,18 @@ class DistributedPolicyCertifier:
             omega_allowed_envelope=[
                 {"cell_id": "c1", "p_breach_lower_sys": float(p_lower)}
             ],
-            raw_certification_event_refs=[e.source_ref for e in events],
+            raw_certification_event_refs=[
+                f"rcert://{w.world_id}" for w in world_results],
+            role_manifest_hash=(
+                self.role_manifest.role_manifest_hash
+                if self.role_manifest is not None else ""),
+            trainer_hash=self.scenario.trainer.get("type", ""),
+            execution_runtime_hash=(
+                content_hash(self.audit_runtime.to_plain())
+                if self.audit_runtime is not None else ""),
+            raw_event_hashes=[
+                h for w in world_results for h in w.raw_event_hashes],
+            policy_binding_mismatch=mismatch,
         )
 
 

@@ -108,3 +108,108 @@ def test_mutation_replay_fails_g50(base):
     sc, stages, manifest, ledger, _ = base
     gate = _eval(sc, copy.deepcopy(stages), manifest, ledger, replay=False)
     assert gate["checks"]["MFC-G50_DETERMINISTIC_REPLAY"] is False
+
+
+def test_mutation_vcg_value_fails_g03(base):
+    sc, stages, manifest, ledger, events = base
+    stages = copy.deepcopy(stages)
+    if events:
+        stages["audit"].output["audit_trace_events"][0]["mc_a_pay"] += 1.0
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G03_QUOTE_MATCHES_REVERSE_VCG"] is False
+
+
+def test_mutation_quote_binding_fails_g04(base):
+    sc, stages, manifest, ledger, events = base
+    stages = copy.deepcopy(stages)
+    if events:
+        stages["audit"].output["audit_trace_events"][0]["action_profile_hash"] = ""
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G04_EXECUTION_BINDS_QUOTE"] is False
+
+
+def test_mutation_payer_fails_g08(base):
+    sc, stages, manifest, ledger, events = base
+    stages = copy.deepcopy(stages)
+    if events:
+        stages["audit"].output["audit_trace_events"][0]["payer"] = "AUDITOR"
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G08_AUDIT_PAYER_SEMANTICS"] is False
+
+
+def test_mutation_per_node_settlement_fails_g09(base):
+    sc, stages, manifest, ledger, events = base
+    stages = copy.deepcopy(stages)
+    if stages.get("settlement_phase1"):
+        stages["settlement_phase1"].output["audit_obligations"] = []
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G09_PER_NODE_VCG_SETTLEMENT"] is False
+
+
+def test_mutation_prelock_envelope_fails_g15(base):
+    sc, stages, manifest, ledger, _ = base
+    stages = copy.deepcopy(stages)
+    stages["prelock"].output["n_cells"] = 0
+    stages["prelock"].output["envelope_cells"] = []
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G15_PRELOCK_USES_ENTIRE_ENVELOPE"] is False
+
+
+def test_mutation_prelock_order_fails_g16(base):
+    sc, stages, manifest, ledger, _ = base
+    stages = copy.deepcopy(stages)
+    stages["prelock"].output = {}
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G16_PRELOCK_BEFORE_AUDIT"] is False
+
+
+def test_mutation_phase1_fails_g24(base):
+    sc, stages, manifest, ledger, _ = base
+    stages = copy.deepcopy(stages)
+    stages.pop("settlement_phase1", None)
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G24_SETTLEMENT_PHASE1"] is False
+
+
+def test_mutation_legal_training_fails_g45(base):
+    sc, stages, manifest, ledger, _ = base
+    stages = copy.deepcopy(stages)
+    if stages["training"].output.get("legal_trained"):
+        stages["training"].output["results"][0]["outcome"]["worker_pid"] = None
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G45_LEGAL_CONTROLLED_TRAINING_RUNS"] is False
+
+
+def test_mutation_illegal_training_fails_g46(base):
+    sc, stages, manifest, ledger, _ = base
+    stages = copy.deepcopy(stages)
+    if stages["training"].output.get("results"):
+        for r in stages["training"].output["results"]:
+            out = r["outcome"]
+            if out.get("decision") == "DENY":
+                out["key_released"] = True
+                break
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G46_ILLEGAL_TRAINING_NO_ACCESS"] is False
+
+
+def test_mutation_seller_breach_evidence_fails_g31(base):
+    sc, stages, manifest, ledger, _ = base
+    stages = copy.deepcopy(stages)
+    stages["state"].output["terminal"] = "SELLER_BREACH"
+    stages["settlement"].output["terminal"] = "SELLER_BREACH"
+    for e in stages["audit"].output.get("audit_trace_events", []):
+        e["outcome"] = "PASS"
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G31_SELLER_BREACH_FROM_EVIDENCE"] is False
+
+
+def test_mutation_buyer_breach_evidence_fails_g30(base):
+    sc, stages, manifest, ledger, _ = base
+    stages = copy.deepcopy(stages)
+    stages["state"].output["terminal"] = "BUYER_BREACH"
+    stages["settlement"].output["terminal"] = "BUYER_BREACH"
+    stages["usage"].output["buyer_breach"] = True
+    stages["usage"].output["usage_violation_evidence"] = []
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G30_BUYER_BREACH_FROM_EVIDENCE"] is False

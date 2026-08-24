@@ -15,7 +15,7 @@ class PrivacyAuditClient:
         self._timeout = timeout
 
     def health(self) -> dict:
-        r = httpx.get(f"{self.base_url}/health", timeout=self._timeout)
+        r = httpx.get(f"{self.base_url}/health", timeout=self._timeout, trust_env=False)
         r.raise_for_status()
         return r.json()
 
@@ -23,13 +23,14 @@ class PrivacyAuditClient:
         r = httpx.post(
             f"{self.base_url}/privacy/tasks",
             json=task.to_plain(), timeout=self._timeout,
+            trust_env=False,
         )
         r.raise_for_status()
         return r.json()
 
     def auditor_has_no_full_data(self) -> bool:
         r = httpx.get(f"{self.base_url}/privacy/auditor_has_no_full_data",
-                      timeout=self._timeout)
+                      timeout=self._timeout, trust_env=False)
         r.raise_for_status()
         return not r.json()["has_full_data"]
 

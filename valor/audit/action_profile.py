@@ -33,6 +33,14 @@ class AuditActionProfile:
     security_profile: str
     decision_thresholds: dict
     execution_version_hash: str
+    decision_rule_id: str
+    privacy_budget_cost_model_id: str
+    computation_cost_model_id: str
+    likelihood_model_version: str
+    evidence_schema_version: str
+    timeout_s: float
+    replacement_behavior: str
+    signature_policy: str
 
     @property
     def action_profile_hash(self) -> str:
@@ -64,6 +72,14 @@ class AuditActionProfile:
             "security_profile": self.security_profile,
             "decision_thresholds": self.decision_thresholds,
             "execution_version_hash": self.execution_version_hash,
+            "decision_rule_id": self.decision_rule_id,
+            "privacy_budget_cost_model_id": self.privacy_budget_cost_model_id,
+            "computation_cost_model_id": self.computation_cost_model_id,
+            "likelihood_model_version": self.likelihood_model_version,
+            "evidence_schema_version": self.evidence_schema_version,
+            "timeout_s": self.timeout_s,
+            "replacement_behavior": self.replacement_behavior,
+            "signature_policy": self.signature_policy,
         }
 
 
@@ -115,6 +131,14 @@ def build_action_profile(
         execution_version_hash=(
             execution_version_hash if execution_version_hash is not None
             else str(a["execution_version_hash"])),
+        decision_rule_id=str(a.get("decision_rule_id", "MULTINOMIAL_GOF")),
+        privacy_budget_cost_model_id=str(a.get("privacy_budget_cost_model_id", "unique-rows-fraction-bytes-v1")),
+        computation_cost_model_id=str(a.get("computation_cost_model_id", "vcg-chain-challenge-dispute-v1")),
+        likelihood_model_version=str(a.get("likelihood_model_version", "empirical-dirichlet-v1")),
+        evidence_schema_version=str(a.get("evidence_schema_version", "privacy-audit-evidence-v1")),
+        timeout_s=float(a.get("timeout_s", 10.0)),
+        replacement_behavior=str(a.get("replacement_behavior", "offline-replacement")),
+        signature_policy=str(a.get("signature_policy", "ED25519_REQUIRED")),
     )
 
 
@@ -130,7 +154,7 @@ def action_from_profile(profile: AuditActionProfile):
         claim_type=ct,
         challenge_size=profile.challenge_k,
         sampling_method=profile.sampling_method,
-        decision_rule_id="MULTINOMIAL_GOF",
+        decision_rule_id=profile.decision_rule_id,
         payer=profile.payer,
         trigger=profile.trigger,
         action_profile_hash=profile.action_profile_hash,

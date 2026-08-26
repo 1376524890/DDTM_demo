@@ -95,6 +95,7 @@ class PolicyWorldResult:
     p_breach_lower_sys: float
     audit_pay_s: float
     audit_pay_b: float
+    challenge_k: int = 0
     attempts: list[AuditAttemptRecord] = field(default_factory=list)
     raw_event_hashes: list[str] = field(default_factory=list)
 
@@ -108,6 +109,7 @@ class PolicyWorldResult:
             "p_breach_lower_sys": self.p_breach_lower_sys,
             "audit_pay_s": self.audit_pay_s,
             "audit_pay_b": self.audit_pay_b,
+            "challenge_k": self.challenge_k,
             "attempts": [a.to_plain() for a in self.attempts],
             "raw_event_hashes": self.raw_event_hashes,
         }
@@ -259,6 +261,7 @@ class FullAuditPolicyExecutor:
             p_breach_lower_sys=result.p_breach_lower_sys,
             audit_pay_s=result.audit_pay_s,
             audit_pay_b=result.audit_pay_b,
+            challenge_k=k,
             attempts=attempts,
             raw_event_hashes=raw_hashes,
         )

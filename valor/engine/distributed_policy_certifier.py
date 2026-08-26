@@ -211,11 +211,38 @@ class DistributedPolicyCertifier:
         a, b = 1.0, 1.0
         a_post, b_post = a + tp, b + fn
         alpha_D = float(self.scenario.audit.get("alpha_D", 0.05))
+        # Round 6 Phase 14: build one certified cell per allowed challenge size
+        # so the Ω_allowed envelope is not a single degenerate point.
         cat = CertificationCatalog()
-        cat.register(CertifiedCell(
-            "c1", a, b, alpha_D,
-            {"quality": (tp, fn)}))
-        p_lower = cat.p_breach_lower("c1", "quality")
+        cells = []
+        allowed_bounds = {
+            "challenge_sizes": sorted(int(x) for x in self.challenge_sizes),
+            "f": int(self.f),
+            "breach_families": ["quality"],
+        }
+        p_lower = float("inf")
+        for k in self.challenge_sizes:
+            k_worlds = [w for w in world_results if w.challenge_k == k]
+            if not k_worlds:
+                continue
+            k_tp = sum(1 for w in k_worlds if w.state == "B"
+                       and any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
+            k_fn = sum(1 for w in k_worlds if w.state == "B"
+                       and not any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
+            cell_id = f"c_k{k}"
+            cat.register(CertifiedCell(
+                cell_id, a, b, alpha_D, {"quality": (k_tp, k_fn)}))
+            p_lower_k = cat.p_breach_lower(cell_id, "quality")
+            cells.append({
+                "cell_id": cell_id, "k": int(k), "tp": k_tp, "fn": k_fn,
+                "p_breach_lower_sys": float(p_lower_k),
+            })
+        if not cells:
+            p_lower = 0.0
+            cells = [{"cell_id": "c1", "k": int(self.challenge_sizes[0]),
+                      "tp": tp, "fn": fn, "p_breach_lower_sys": float(p_lower)}]
+        else:
+            p_lower = min(c["p_breach_lower_sys"] for c in cells)
         action_catalog_hash = profile_catalog.catalog_hash()
         likelihood_catalog_hash = lik_catalog.catalog_hash()
         role_manifest_hash = (
@@ -243,9 +270,8 @@ class DistributedPolicyCertifier:
             "tp": tp, "fn": fn, "fp": fp, "tn": tn,
             "beta_prior": {"a": a, "b": b},
             "alpha_D": alpha_D,
-            "omega_allowed_envelope": [
-                {"cell_id": "c1", "p_breach_lower_sys": float(p_lower)}
-            ],
+            "omega_allowed_envelope": cells,
+            "allowed_profile_bounds": allowed_bounds,
         })
         return PolicyCertificationArtifact(
             policy=self.policy, policy_hash=self.policy.policy_hash,
@@ -259,9 +285,7 @@ class DistributedPolicyCertifier:
             beta_posterior={"a": a_post, "b": b_post},
             alpha_D=alpha_D,
             p_breach_lower_sys=float(p_lower),
-            omega_allowed_envelope=[
-                {"cell_id": "c1", "p_breach_lower_sys": float(p_lower)}
-            ],
+            omega_allowed_envelope=cells,
             raw_certification_event_refs=[
                 f"rcert://{w.world_id}" for w in world_results],
             n_runs=self.n_runs,

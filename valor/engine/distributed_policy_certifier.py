@@ -107,8 +107,12 @@ class DistributedPolicyCertifier:
         public_keys: dict[str, str] | None = None,
         execution_mode: ExecutionMode = ExecutionMode.TEST_FIXTURE,
         audit_runtime: AuditRuntimeDescriptor | None = None,
+        role_registry=None,
+        market_provider=None,
     ) -> None:
         self.policy = policy
+        self.role_registry = role_registry
+        self.market_provider = market_provider
         self.scenario = scenario
         self.X = X
         self.y = y
@@ -191,6 +195,8 @@ class DistributedPolicyCertifier:
             public_keys=self.public_keys,
             execution_mode=self.execution_mode,
             audit_runtime=self.audit_runtime,
+            role_registry=self.role_registry,
+            market_provider=self.market_provider,
         )
         world_results = executor.run()
         # Certification metrics from real policy executions (B state breach detection).

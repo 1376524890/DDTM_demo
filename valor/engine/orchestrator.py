@@ -932,6 +932,7 @@ class TransactionOrchestrator:
         cal = self.calibration
         n_nodes = int(sc.audit.get("n_nodes", 10))
         f = int(sc.audit.get("f", 2))
+        challenge_sizes = [int(x) for x in sc.audit.get("challenge_sizes", [32])]
         if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
             from valor.privacy_audit.process_isolated import (
                 AuditRuntimeDescriptor,
@@ -983,7 +984,7 @@ class TransactionOrchestrator:
             role_registry = None
         executor = make_privacy_audit_executor(
             claim_type=ClaimType.LABEL_DISTRIBUTION,
-            challenge_sizes=[32, 64], n_nodes=n_nodes, f=f,
+            challenge_sizes=challenge_sizes, n_nodes=n_nodes, f=f,
             node_client_factory=factory,
             public_keys=public_keys,
             certificate_artifact=certificate_artifact,

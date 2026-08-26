@@ -135,6 +135,8 @@ class FullAuditPolicyExecutor:
         public_keys: dict[str, str] | None = None,
         execution_mode: ExecutionMode = ExecutionMode.TEST_FIXTURE,
         audit_runtime: AuditRuntimeDescriptor | None = None,
+        role_registry=None,
+        market_provider=None,
     ) -> None:
         if n_runs < 1:
             raise ValueError("R_cert n_runs must be >= 1")
@@ -152,6 +154,8 @@ class FullAuditPolicyExecutor:
         self.public_keys = public_keys or {}
         self.execution_mode = execution_mode
         self.audit_runtime = audit_runtime
+        self.role_registry = role_registry
+        self.market_provider = market_provider
 
         full_X = np.asarray(X, dtype=np.uint8)
         full_y = np.asarray(y, dtype=np.int64)
@@ -212,6 +216,9 @@ class FullAuditPolicyExecutor:
             execution_mode=self.execution_mode,
             public_keys=self.public_keys,
             audit_runtime=self.audit_runtime,
+            market_provider=self.market_provider,
+            audit_policy=self.policy,
+            role_registry=self.role_registry,
         )
         result = ex.run(sc, ctx)
         attempts: list[AuditAttemptRecord] = []
@@ -261,6 +268,26 @@ class FullAuditPolicyExecutor:
     def _snapshot(self, world_id: str):
         from valor.audit.market_quote import AuditMarketSnapshot
 
+        if self.market_provider is not None:
+            snap = self.market_provider.snapshot() if hasattr(self.market_provider, "snapshot") else self.market_provider
+            if isinstance(snap, AuditMarketSnapshot):
+                return snap
+            if isinstance(snap, dict):
+                return AuditMarketSnapshot(
+                    snapshot_id=snap.get("snapshot_id", f"mkt-{world_id}"),
+                    family=snap.get("family", "quality"),
+                    qualified_nodes=snap["qualified_nodes"],
+                    bids={str(k): float(v) for k, v in snap["bids"].items()},
+                    min_stake=float(snap.get("min_stake", 0.0)),
+                    source_kind=snap.get("source_kind", "MARKET_DISCOVERED"),
+                    source_ref=snap.get("source_ref", "market_provider"),
+                    version=snap.get("version", "1"),
+                    capability=snap.get("capability", {}),
+                    stake=snap.get("stake", {}),
+                    availability=snap.get("availability", {}),
+                    reliability=snap.get("reliability", {}),
+                    public_key_fingerprint=snap.get("public_key_fingerprint", {}),
+                )
         mkt = self.scenario.audit.get("market")
         return AuditMarketSnapshot(
             snapshot_id=mkt.get("snapshot_id", f"mkt-{world_id}"),

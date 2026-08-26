@@ -95,6 +95,7 @@ def make_privacy_audit_executor(
             "frozen_audit_decision_records": res.frozen_audit_decision_records,
             "audit_execution_records": res.audit_execution_records,
             "selected_quote_hash": res.selected_quote_hash,
+            "market_snapshot": res.market_snapshot,
         }
 
     return executor

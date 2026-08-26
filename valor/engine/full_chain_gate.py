@@ -154,21 +154,83 @@ class FullChainGate:
         self._check(results, "MFC-G02_VCG_QUOTED_BEFORE_VOI", _g02)
 
         def _g03():
-            # quote 独立重算 Reverse VCG：mc_a_pay == Σ vcg_payments
+            # quote 独立重算 Reverse VCG：从 frozen snapshot + profile + m 重算。
+            snap = s("audit").get("market_snapshot")
             for e in audit_events:
-                vcg = e.get("vcg_payments", {})
-                if vcg and abs(sum(vcg.values()) - e.get("mc_a_pay", 0)) > 1e-6:
-                    return False
-                if e.get("status") == "CERTIFIED" and not vcg:
-                    return False
+                if e.get("status") == "CERTIFIED":
+                    if not snap:
+                        return False
+                    from valor.audit.market_quote import AuditMarketSnapshot
+                    from valor.distributed.node_state import AuditorNode, NodeRegistry
+                    from valor.core.ids import AuditorID
+                    from valor.market.reverse_vcg import reverse_vcg_payments
+
+                    mkt = AuditMarketSnapshot(
+                        snapshot_id=snap.get("snapshot_id", "mkt"),
+                        family=snap.get("family", "quality"),
+                        qualified_nodes=snap["qualified_nodes"],
+                        bids={str(k): float(v) for k, v in snap["bids"].items()},
+                        min_stake=float(snap.get("min_stake", 0.0)),
+                        source_kind=snap.get("source_kind", "MARKET_DISCOVERED"),
+                        source_ref=snap.get("source_ref", ""),
+                        version=snap.get("version", "1"),
+                        capability=snap.get("capability", {}),
+                        stake=snap.get("stake", {}),
+                        availability=snap.get("availability", {}),
+                        reliability=snap.get("reliability", {}),
+                        public_key_fingerprint=snap.get("public_key_fingerprint", {}),
+                    )
+                    f = int(self.scenario.audit.get("f", 2))
+                    m = 3 * f + 1
+                    reg = NodeRegistry()
+                    for nid in mkt.qualified_nodes:
+                        reg.register(AuditorNode(
+                            AuditorID(nid), (mkt.family,), 1.0, mkt.min_stake))
+                    bids = {AuditorID(str(nid)): float(b) for nid, b in mkt.bids.items()}
+                    try:
+                        payments, _ = reverse_vcg_payments(
+                            reg, family=mkt.family, m=m, bids=bids,
+                            min_stake=mkt.min_stake)
+                    except Exception:
+                        return False
+                    realized = {str(k): float(v) for k, v in e.get("vcg_payments", {}).items()}
+                    recomputed = {str(k): float(v) for k, v in payments.items()}
+                    if sorted(realized) != sorted(recomputed):
+                        return False
+                    for nid in realized:
+                        if abs(realized[nid] - recomputed[nid]) > 1e-6:
+                            return False
+                    if abs(sum(recomputed.values()) - e.get("mc_a_pay", 0)) > 1e-6:
+                        return False
+                    if sorted(e.get("committee", [])) != sorted(recomputed):
+                        return False
             return True
         self._check(results, "MFC-G03_QUOTE_MATCHES_REVERSE_VCG", _g03)
 
         def _g04():
-            # execution 绑定冻结 quote：每个 event 有 quote_hash + snapshot hash + profile hash
-            for e in audit_events:
-                if not e.get("quote_hash") or not e.get("market_snapshot_hash") or not e.get("action_profile_hash"):
+            # execution 绑定冻结 quote：decision record profile/snapshot/likelihood
+            # must exactly equal the executed action's profile/snapshot/quote hash.
+            decision_records = s("audit").get("frozen_audit_decision_records", [])
+            exec_records = s("audit").get("audit_execution_records", [])
+            if not decision_records or not exec_records:
+                return False
+            by_quote = {r.get("quote_hash"): r for r in decision_records}
+            for er in exec_records:
+                qh = er.get("selected_quote_hash")
+                dr = by_quote.get(qh)
+                if dr is None:
                     return False
+                if dr.get("action_profile_hash") != er.get("selected_action_profile_hash"):
+                    return False
+                if dr.get("market_snapshot_hash") != er.get("selected_market_snapshot_hash"):
+                    return False
+                if not dr.get("likelihood_artifact_hash"):
+                    return False
+            # every CERTIFIED audit event must carry quote/snapshot/profile binding
+            for e in audit_events:
+                if e.get("status") == "CERTIFIED":
+                    if not e.get("quote_hash") or not e.get("market_snapshot_hash") or not e.get("action_profile_hash"):
+                        return False
             return True
         self._check(results, "MFC-G04_EXECUTION_BINDS_QUOTE", _g04)
 

@@ -57,6 +57,7 @@ class PrivacyAuditVOIResult:
     frozen_audit_decision_records: list[dict] = field(default_factory=list)
     audit_execution_records: list[dict] = field(default_factory=list)
     selected_quote_hash: str = ""
+    market_snapshot: dict = field(default_factory=dict)
 
     def to_plain(self) -> dict:
         return {
@@ -74,6 +75,7 @@ class PrivacyAuditVOIResult:
             "frozen_audit_decision_records": self.frozen_audit_decision_records,
             "audit_execution_records": self.audit_execution_records,
             "selected_quote_hash": self.selected_quote_hash,
+            "market_snapshot": self.market_snapshot,
         }
 
 
@@ -490,6 +492,7 @@ class PrivacyAuditVOIExecutor:
                 "action_profile_hash": action.action_profile_hash,
                 "quote_hash": quote.quote_hash,
                 "selected_quote_hash": quote.quote_hash,
+                "market_snapshot_hash": snapshot.snapshot_hash,
                 "result_counts": res.result_counts,
                 "vcg_payments": (
                     {str(k): float(v) for k, v in res.payments.items()}
@@ -558,6 +561,7 @@ class PrivacyAuditVOIExecutor:
             frozen_audit_decision_records=[r.to_plain() for r in frozen_decision_records],
             audit_execution_records=[r.to_plain() for r in execution_records],
             selected_quote_hash=selected_quote_hash,
+            market_snapshot=snapshot.to_plain(),
         )
 
     def _quote(self, profile: AuditActionProfile, registry, bids, snapshot) -> "AuditMarketQuote":

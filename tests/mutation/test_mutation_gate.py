@@ -213,3 +213,25 @@ def test_mutation_buyer_breach_evidence_fails_g30(base):
     stages["usage"].output["usage_violation_evidence"] = []
     gate = _eval(sc, stages, manifest, ledger)
     assert gate["checks"]["MFC-G30_BUYER_BREACH_FROM_EVIDENCE"] is False
+
+
+def test_mutation_market_bid_fails_g03(base):
+    sc, stages, manifest, ledger, events = base
+    stages = copy.deepcopy(stages)
+    snap = stages["audit"].output.get("market_snapshot")
+    if snap and snap.get("bids"):
+        first = next(iter(snap["bids"]))
+        snap["bids"][first] = float(snap["bids"][first]) + 1.0
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G03_QUOTE_MATCHES_REVERSE_VCG"] is False
+
+
+def test_mutation_winner_committee_fails_g03(base):
+    sc, stages, manifest, ledger, events = base
+    stages = copy.deepcopy(stages)
+    if events:
+        e = stages["audit"].output["audit_trace_events"][0]
+        if e.get("committee"):
+            e["committee"][0] = "mutated-node"
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G03_QUOTE_MATCHES_REVERSE_VCG"] is False

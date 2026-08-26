@@ -580,6 +580,20 @@ class TransactionOrchestrator:
                               "clear_trade", "CLEAR_TRADE"),
         ])
 
+        # Round 6 Phase 16: root P* and dependency edges.
+        prov.add(ResolvedParameter("P_star", clearance.clearing_price, "COMPUTED",
+                                   "clear_trade", "CLEAR_TRADE"))
+        prov.root = "P_star"
+        prov.add_edge("clearing_price", "P_star", "root")
+        prov.add_edge("p_max", "clearing_price", "upper_bound")
+        prov.add_edge("p_min", "clearing_price", "lower_bound")
+        for parent in ("w_b_rem", "v_gross_lower", "c_i", "c_a_b_pay",
+                       "c_r_pay_b", "c_b_use_cap", "r_b_post"):
+            prov.add_edge(parent, "p_max", "buyer_max_input")
+        for parent in ("c_marg", "c_a_s_pay", "c_b_cap", "c_r_s_pay",
+                       "r_s_post", "oc_s", "pi_s0"):
+            prov.add_edge(parent, "p_min", "seller_min_input")
+
         # MFC-G23：rights menu dominance / no-arbitrage（同一 pricing snapshot）
         dom = DominanceChecker()
         menu_violations = dom.check_dominance_price(

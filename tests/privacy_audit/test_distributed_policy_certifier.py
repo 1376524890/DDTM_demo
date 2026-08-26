@@ -9,12 +9,17 @@ from valor.audit.policy import AuditPolicy
 from valor.core.enums import ExecutionMode
 from valor.core.hashing import content_hash
 from valor.engine.distributed_calibration_runner import DistributedAuditCalibrationRunner
-from valor.engine.distributed_policy_certifier import DistributedPolicyCertifier
+from valor.engine.distributed_policy_certifier import (
+    DistributedPolicyCertifier,
+    PolicyCertificationArtifact,
+)
 from valor.engine.scenario import CapstoneScenario
 from valor.experiments.registry import DataRoleManifest
 from valor.privacy_audit import ClaimType, CommittedDatasetStore, create_privacy_app
 from valor.privacy_audit.verifier import CommitChallengeVerifier
+from valor.security.certification import CertifiedCell, CertificationCatalog
 from valor.security.signing import SigningKeyPair
+from scipy.stats import beta
 from fastapi.testclient import TestClient
 
 
@@ -142,3 +147,64 @@ def test_rcert_rejects_overlap(tmp_path):
     with pytest.raises(ValueError, match="DATA_ROLE_OVERLAP"):
         certifier.run(r_cal_sample_ids=[0, 1, 2],
                       r_cal_event_ids=["evt-rcert-G-32-0"])
+
+
+def test_rcert_beta_lower_matches_scipy_exactly():
+    """Canonical Beta posterior must equal scipy.stats.beta.ppf exactly."""
+    from scipy.stats import beta
+    from valor.engine.distributed_policy_certifier import reconcile_policy_certification
+    a_D, b_D, alpha_D = 1.0, 2.0, 0.05
+    tp, fn = 7, 1
+    expected = float(beta.ppf(alpha_D, a_D + tp, b_D + fn))
+    cat = CertificationCatalog()
+    cat.register(CertifiedCell(
+        "c1", a_D, b_D, alpha_D, {"quality": (tp, fn)}))
+    assert cat.p_breach_lower("c1", "quality") == expected
+
+    art = PolicyCertificationArtifact(
+        policy=None, policy_hash="h", action_catalog_hash="ac",
+        likelihood_catalog_hash="lc", r_cert_hash="r",
+        trainer_task_family="digit-classification", breach_family="quality",
+        tp=tp, fn=fn, fp=0, tn=0,
+        beta_prior={"a": a_D, "b": b_D},
+        beta_posterior={"a": a_D + tp, "b": b_D + fn},
+        alpha_D=alpha_D,
+        p_breach_lower_sys=expected,
+        omega_allowed_envelope=[],
+        raw_certification_event_refs=[],
+    )
+    assert reconcile_policy_certification(art)
+
+
+def test_rcert_beta_double_count_mutation_fails_reconciliation():
+    """Artificially doubling TP must fail certification reconciliation."""
+    from valor.engine.distributed_policy_certifier import reconcile_policy_certification
+    a_D, b_D, alpha_D = 1.0, 2.0, 0.05
+    tp, fn = 7, 1
+    expected = float(beta.ppf(alpha_D, a_D + tp, b_D + fn))
+    art = PolicyCertificationArtifact(
+        policy=None, policy_hash="h", action_catalog_hash="ac",
+        likelihood_catalog_hash="lc", r_cert_hash="r",
+        trainer_task_family="digit-classification", breach_family="quality",
+        tp=tp, fn=fn, fp=0, tn=0,
+        beta_prior={"a": a_D, "b": b_D},
+        beta_posterior={"a": a_D + tp, "b": b_D + fn},
+        alpha_D=alpha_D,
+        p_breach_lower_sys=expected,
+        omega_allowed_envelope=[],
+        raw_certification_event_refs=[],
+    )
+    assert reconcile_policy_certification(art)
+    mutated = PolicyCertificationArtifact(
+        policy=None, policy_hash="h", action_catalog_hash="ac",
+        likelihood_catalog_hash="lc", r_cert_hash="r",
+        trainer_task_family="digit-classification", breach_family="quality",
+        tp=2 * tp, fn=fn, fp=0, tn=0,  # mutation: double TP
+        beta_prior={"a": a_D, "b": b_D},
+        beta_posterior={"a": a_D + 2 * tp, "b": b_D + fn},
+        alpha_D=alpha_D,
+        p_breach_lower_sys=expected,
+        omega_allowed_envelope=[],
+        raw_certification_event_refs=[],
+    )
+    assert not reconcile_policy_certification(mutated)

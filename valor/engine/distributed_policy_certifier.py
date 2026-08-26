@@ -42,6 +42,7 @@ class PolicyCertificationArtifact:
     tn: int
     beta_prior: dict
     beta_posterior: dict
+    alpha_D: float
     p_breach_lower_sys: float
     omega_allowed_envelope: list[dict]
     raw_certification_event_refs: list[str]
@@ -63,6 +64,7 @@ class PolicyCertificationArtifact:
             "tp": self.tp, "fn": self.fn, "fp": self.fp, "tn": self.tn,
             "beta_prior": self.beta_prior,
             "beta_posterior": self.beta_posterior,
+            "alpha_D": self.alpha_D,
             "p_breach_lower_sys": self.p_breach_lower_sys,
             "omega_allowed_envelope": self.omega_allowed_envelope,
             "raw_certification_event_refs": self.raw_certification_event_refs,
@@ -190,9 +192,10 @@ class DistributedPolicyCertifier:
                  and not any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
         a, b = 1.0, 1.0
         a_post, b_post = a + tp, b + fn
+        alpha_D = float(self.scenario.audit.get("alpha_D", 0.05))
         cat = CertificationCatalog()
         cat.register(CertifiedCell(
-            "c1", a_post, b_post, float(self.scenario.audit.get("alpha_D", 0.05)),
+            "c1", a, b, alpha_D,
             {"quality": (tp, fn)}))
         p_lower = cat.p_breach_lower("c1", "quality")
         artifact_hash = content_hash({
@@ -222,6 +225,7 @@ class DistributedPolicyCertifier:
             tp=tp, fn=fn, fp=fp, tn=tn,
             beta_prior={"a": a, "b": b},
             beta_posterior={"a": a_post, "b": b_post},
+            alpha_D=alpha_D,
             p_breach_lower_sys=float(p_lower),
             omega_allowed_envelope=[
                 {"cell_id": "c1", "p_breach_lower_sys": float(p_lower)}
@@ -242,3 +246,25 @@ class DistributedPolicyCertifier:
 
 
 __all__ = ["DistributedPolicyCertifier", "PolicyCertificationArtifact"]
+
+
+def reconcile_policy_certification(artifact: PolicyCertificationArtifact) -> bool:
+    """Recompute p̲_B^sys from the canonical Beta posterior and compare.
+
+    Canonical formula (spec §22):
+        posterior = Beta(a_D + TP, b_D + FN)
+        p_lower   = Q_{alpha_D}[posterior]
+    The CertifiedCell must be built with prior (a_D, b_D) and families=(TP,FN);
+    the artifact's beta_posterior is metadata only.
+    """
+    a_D = float(artifact.beta_prior["a"])
+    b_D = float(artifact.beta_prior["b"])
+    cat = CertificationCatalog()
+    cat.register(CertifiedCell(
+        "c1", a_D, b_D, artifact.alpha_D,
+        {"quality": (int(artifact.tp), int(artifact.fn))}))
+    expected = cat.p_breach_lower("c1", "quality")
+    return abs(float(expected) - float(artifact.p_breach_lower_sys)) < 1e-12
+
+
+__all__ = ["DistributedPolicyCertifier", "PolicyCertificationArtifact", "reconcile_policy_certification"]

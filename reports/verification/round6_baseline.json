@@ -1,0 +1,15 @@
+{
+  "evaluated_code_commit": "8e5df7478800bb1006aa87f261bd407520ee57e9",
+  "command": "python -m pytest -q tests/privacy_audit/test_distributed_calibration_runner.py tests/privacy_audit/test_distributed_policy_certifier.py tests/audit/test_likelihood_catalog.py tests/audit/test_market_quote_round4.py tests/system/test_process_isolated_mainline.py tests/engine/test_scenario_matrix.py tests/mutation/test_mutation_gate.py",
+  "status": "PASS",
+  "summary": "39 passed, 1 warning in 310.63s (0:05:10)",
+  "focused_regression": {
+    "passed": 39,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "warnings": 1,
+    "runtime_seconds": 310.63
+  },
+  "output_file": "reports/verification/round6_focused_regression.txt"
+}

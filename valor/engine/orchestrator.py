@@ -112,6 +112,11 @@ class TransactionOrchestrator:
                 raise ValueError(
                     f"FORMAL_EXPERIMENT requires all components; missing {missing}"
                 )
+        if execution_mode == ExecutionMode.PRODUCTION and audit_runtime_provider is None:
+            raise ValueError(
+                "PRODUCTION_AUDIT_RUNTIME_REQUIRED: PRODUCTION requires "
+                "audit_runtime_provider"
+            )
         self._stages: dict[str, StageResult] = {}
         self._formula_traces: list[FormulaTrace] = []
 
@@ -945,6 +950,16 @@ class TransactionOrchestrator:
             factory = cluster.client_factory()
             public_keys = cluster.registry.public_keys()
             ex_mode = ExecutionMode.FORMAL_EXPERIMENT
+        elif self.execution_mode == ExecutionMode.PRODUCTION:
+            if self.audit_runtime_provider is None:
+                raise ValueError(
+                    "PRODUCTION_AUDIT_RUNTIME_REQUIRED: PRODUCTION requires "
+                    "audit_runtime_provider")
+            provider = self.audit_runtime_provider
+            factory = provider.client_factory()
+            audit_runtime = provider.descriptor()
+            public_keys = provider.public_keys()
+            ex_mode = ExecutionMode.PRODUCTION
         else:
             from fastapi.testclient import TestClient
             from valor.privacy_audit import CommitChallengeVerifier, create_privacy_app

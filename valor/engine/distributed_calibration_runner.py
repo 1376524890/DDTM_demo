@@ -158,6 +158,9 @@ class DistributedAuditCalibrationRunner:
         if execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
             if audit_runtime is None or audit_runtime.transport_mode != "PROCESS_HTTP" or not audit_runtime.process_isolated:
                 raise ValueError("FORMAL_AUDIT_RUNTIME_REQUIRED: FORMAL_EXPERIMENT requires ProcessHttpAuditorCluster")
+        if execution_mode == ExecutionMode.PRODUCTION:
+            if audit_runtime is None or audit_runtime.transport_mode != "PRODUCTION":
+                raise ValueError("PRODUCTION_AUDIT_RUNTIME_REQUIRED: PRODUCTION requires external PRODUCTION runtime")
         if role_manifest is None:
             self.role = role
         self._breach_family = ""

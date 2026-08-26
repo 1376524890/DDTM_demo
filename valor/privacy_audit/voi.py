@@ -122,6 +122,10 @@ class PrivacyAuditVOIExecutor:
             if audit_runtime is None or audit_runtime.transport_mode != "PROCESS_HTTP" or not audit_runtime.process_isolated:
                 raise ValueError(
                     "FORMAL_AUDIT_RUNTIME_REQUIRED: FORMAL_EXPERIMENT requires ProcessHttpAuditorCluster")
+        if execution_mode == ExecutionMode.PRODUCTION:
+            if audit_runtime is None or audit_runtime.transport_mode != "PRODUCTION":
+                raise ValueError(
+                    "PRODUCTION_AUDIT_RUNTIME_REQUIRED: PRODUCTION requires external PRODUCTION runtime")
         self._store = seller_store or CommittedDatasetStore("seller_private")
         self._seller = seller_committed
         self._upstream_commitment = dataset_commitment

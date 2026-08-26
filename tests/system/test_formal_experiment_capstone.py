@@ -216,3 +216,17 @@ def test_formal_experiment_capstone(tmp_path):
         assert manifest.valuation_calibration_hash == val.artifact_hash
     finally:
         cluster.close()
+
+
+def test_production_without_external_runtime_fails_closed():
+    """PRODUCTION must fail closed when no external audit runtime is provided."""
+    import pytest
+    from valor.core.enums import ExecutionMode
+    from valor.engine import TransactionOrchestrator
+    sc = _scenario()
+    with pytest.raises(ValueError, match="PRODUCTION_AUDIT_RUNTIME_REQUIRED"):
+        TransactionOrchestrator(
+            sc, run_dir="/tmp/prod-fail",
+            execution_mode=ExecutionMode.PRODUCTION,
+            audit_runtime_provider=None,
+        )

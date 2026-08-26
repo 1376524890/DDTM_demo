@@ -175,6 +175,9 @@ class FullAuditPolicyExecutor:
         if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
             if self.audit_runtime is None or self.audit_runtime.transport_mode != "PROCESS_HTTP" or not self.audit_runtime.process_isolated:
                 raise ValueError("FORMAL_AUDIT_RUNTIME_REQUIRED")
+        if self.execution_mode == ExecutionMode.PRODUCTION:
+            if self.audit_runtime is None or self.audit_runtime.transport_mode != "PRODUCTION":
+                raise ValueError("PRODUCTION_AUDIT_RUNTIME_REQUIRED")
         if not self.policy.action_profile_hashes:
             raise ValueError("AUDIT_POLICY_EMPTY: policy.action_profile_hashes must be non-empty")
         if not self.policy.likelihood_artifact_hashes:

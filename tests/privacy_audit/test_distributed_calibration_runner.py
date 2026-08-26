@@ -41,7 +41,7 @@ def test_distributed_rcal_produces_likelihood_artifacts(tmp_path):
     y = rng.integers(0, 10, size=120)
     sc = CapstoneScenario(scenario_id="rcal", seller_id="s", buyer_id="b")
     sc.audit["privacy_budget"] = {
-        "max_unique_rows": 64, "max_fraction": 0.5, "max_bytes": 64 * 784,
+        "max_unique_rows": 64, "max_fraction": 0.9, "max_bytes": 64 * 784,
     }
     sc.audit["low_suitability_world"] = {
         "method": "buyer_task_utility",

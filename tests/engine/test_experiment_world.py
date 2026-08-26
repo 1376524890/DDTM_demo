@@ -1,0 +1,66 @@
+"""Round 6 Phase 3: L-world must be materially different with honest seller."""
+
+from __future__ import annotations
+
+import numpy as np
+
+from valor.engine.experiment_world import build_experiment_world
+from valor.engine.scenario import CapstoneScenario
+from valor.privacy_audit import CommittedDatasetStore
+from valor.core.hashing import content_hash
+
+
+def _scenario():
+    sc = CapstoneScenario(scenario_id="lworld", seller_id="s", buyer_id="b")
+    sc.audit["low_suitability_world"] = {
+        "method": "buyer_task_utility",
+        "threshold": 0.5,
+        "row_utilities": [0.1] * 40 + [0.9] * 60,
+        "ground_truth_ref": "rcal-L-buyer-task-utility",
+    }
+    return sc
+
+
+def _data(n=100, seed=7):
+    rng = np.random.default_rng(seed)
+    X = rng.integers(0, 256, size=(n, 784), dtype=np.uint8)
+    y = rng.integers(0, 10, size=n)
+    return X, y
+
+
+def test_L_world_is_materially_different_from_G(tmp_path):
+    X, y = _data()
+    sc = _scenario()
+    store = CommittedDatasetStore(str(tmp_path / "store"))
+    g = build_experiment_world(
+        scenario=sc, store=store, X=X, y=y, role_id="R_cert", state="G", k=16, run=0)
+    l = build_experiment_world(
+        scenario=sc, store=store, X=X, y=y, role_id="R_cert", state="L", k=16, run=0)
+    assert len(l.y_committed) < len(g.y_committed)
+    assert l.construction_hash
+    assert l.suitability_metric is not None and l.suitability_metric < l.suitability_threshold
+
+
+def test_L_world_seller_remains_honest(tmp_path):
+    X, y = _data()
+    sc = _scenario()
+    store = CommittedDatasetStore(str(tmp_path / "store2"))
+    l = build_experiment_world(
+        scenario=sc, store=store, X=X, y=y, role_id="R_cert", state="L", k=16, run=0)
+    rec = store._datasets[l.seller.dataset_id]
+    # commitment valid: n_rows matches, no post-commit tamper (stored y equals committed y)
+    assert rec["commitment"].n_rows == len(l.y_committed)
+    assert np.array_equal(rec["y"], l.y_committed)
+
+
+def test_L_world_suitability_below_threshold(tmp_path):
+    X, y = _data()
+    sc = _scenario()
+    store = CommittedDatasetStore(str(tmp_path / "store3"))
+    g = build_experiment_world(
+        scenario=sc, store=store, X=X, y=y, role_id="R_cert", state="G", k=16, run=0)
+    l = build_experiment_world(
+        scenario=sc, store=store, X=X, y=y, role_id="R_cert", state="L", k=16, run=0)
+    threshold = float(sc.audit["low_suitability_world"]["threshold"])
+    assert g.suitability_metric >= threshold
+    assert l.suitability_metric < threshold

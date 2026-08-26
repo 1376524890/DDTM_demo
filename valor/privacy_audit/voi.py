@@ -94,8 +94,14 @@ class PrivacyAuditVOIExecutor:
         public_keys: dict[str, str] | None = None,
         allow_independent_commit: bool = False,  # TEST_ONLY: 独立运行无上游时允许本地 commit
         audit_runtime: AuditRuntimeDescriptor | None = None,
+        market_provider=None,
+        audit_policy=None,
+        role_registry=None,
     ) -> None:
         self.scenario = scenario
+        self.market_provider = market_provider
+        self.audit_policy = audit_policy
+        self.role_registry = role_registry
         self.candidate_X = candidate_X
         self.candidate_y = candidate_y
         self.claim_type = claim_type
@@ -182,8 +188,30 @@ class PrivacyAuditVOIExecutor:
         """AuditMarketSnapshot must come from upstream (ExperimentWorld/ctx/scenario.audit.market).
 
         PrivacyAuditVOIExecutor never generates bids/stake/qualified nodes itself.
+        In FORMAL_EXPERIMENT the snapshot must come from market_provider.
         """
         from valor.audit.market_quote import AuditMarketSnapshot
+
+        if self.market_provider is not None:
+            snap = self.market_provider.snapshot() if hasattr(self.market_provider, "snapshot") else self.market_provider
+            if isinstance(snap, AuditMarketSnapshot):
+                return snap
+            if isinstance(snap, dict):
+                return AuditMarketSnapshot(
+                    snapshot_id=snap.get("snapshot_id", "mkt-provider"),
+                    family=snap.get("family", "quality"),
+                    qualified_nodes=snap["qualified_nodes"],
+                    bids={str(k): float(v) for k, v in snap["bids"].items()},
+                    min_stake=float(snap.get("min_stake", 0.0)),
+                    source_kind=snap.get("source_kind", "MARKET_DISCOVERED"),
+                    source_ref=snap.get("source_ref", "market_provider"),
+                    version=snap.get("version", "1"),
+                    capability=snap.get("capability", {}),
+                    stake=snap.get("stake", {}),
+                    availability=snap.get("availability", {}),
+                    reliability=snap.get("reliability", {}),
+                    public_key_fingerprint=snap.get("public_key_fingerprint", {}),
+                )
 
         injected = ctx.get("market_snapshot")
         if injected is not None:
@@ -261,6 +289,13 @@ class PrivacyAuditVOIExecutor:
             _n_rows=n_rows)
 
         snapshot = self._market_snapshot(sc, ctx)
+        if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
+            if self.role_registry is None:
+                raise ValueError("FORMAL_ROLE_REGISTRY_REQUIRED")
+            if self.audit_policy is None:
+                raise ValueError("FORMAL_AUDIT_POLICY_REQUIRED")
+            if not getattr(self.role_registry, "frozen", False):
+                raise ValueError("FORMAL_ROLE_REGISTRY_NOT_FROZEN")
         registry = NodeRegistry()
         for nid in snapshot.qualified_nodes:
             registry.register(AuditorNode(
@@ -421,7 +456,12 @@ class PrivacyAuditVOIExecutor:
 
         # 认证 p̲_B^sys（冻结证书或默认）
         if self.certificate_artifact is not None:
-            p_b_lower = self.certificate_artifact.data["p_breach_lower_sys"]
+            if hasattr(self.certificate_artifact, "data"):
+                p_b_lower = self.certificate_artifact.data["p_breach_lower_sys"]
+            elif hasattr(self.certificate_artifact, "p_breach_lower_sys"):
+                p_b_lower = self.certificate_artifact.p_breach_lower_sys
+            else:
+                raise ValueError("certificate_artifact must expose p_breach_lower_sys")
         else:
             cert = sc.certificate
             from valor.security.certification import CertifiedCell, CertificationCatalog
@@ -455,7 +495,10 @@ class PrivacyAuditVOIExecutor:
             n_steps=len(steps), action_results=steps,
             disclosure=disclosure.to_plain(),
             action_catalog_hash=catalog.catalog_hash,
-            audit_policy_hash=profile_catalog.catalog_hash(),
+            audit_policy_hash=(
+                self.audit_policy.policy_hash
+                if self.audit_policy is not None
+                else profile_catalog.catalog_hash()),
             audit_policy_status=policy_status,
         )
 

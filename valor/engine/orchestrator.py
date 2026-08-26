@@ -288,14 +288,23 @@ class TransactionOrchestrator:
         )
         v_gross = delta_u - l_comp
         # 保守下界：V̲_gross = V̂_gross + Q_{α_V}(e)，e = V^real - V̂（加法，非减法）。
-        # 优先用离线 calibration（P6）residual 分位数；无 calibration 时测试用 0。
-        if self.calibration is not None and self.calibration.valuation is not None:
+        # 优先用离线 calibration（P6）residual 分位数；FORMAL_EXPERIMENT 必须
+        # 消费 self.valuation_calibration artifact，禁止 scenario residual。
+        if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
+            val_art = self.valuation_calibration
+            if val_art is None:
+                raise ValueError("FORMAL_VALUATION_CALIBRATION_REQUIRED")
+            residual_q = float(val_art.data["residual_quantile"])
+            valuation_calibration_hash = val_art.artifact_hash
+        elif self.calibration is not None and self.calibration.valuation is not None:
             residual_q = self.calibration.valuation.data["residual_quantile"]
+            valuation_calibration_hash = self.calibration.valuation.artifact_hash
         else:
             # P0-Q：无 calibration 时只能使用显式 TEST_FIXTURE residual，禁止隐式 0。
             if "residual_quantile" not in sc.valuation:
                 raise ValueError("P0-Q: residual_quantile 缺失（禁止隐式 0）")
             residual_q = float(sc.valuation["residual_quantile"])
+            valuation_calibration_hash = ""
         v_gross_lower = v_gross + residual_q
 
         # confusion matrix（供 G9 独立复算；joint = confusion / N_eval）
@@ -308,6 +317,7 @@ class TransactionOrchestrator:
             "u_base": u_base, "u_plus": u_plus, "delta_u": delta_u,
             "v_gross": v_gross, "l_comp": l_comp, "v_gross_lower": v_gross_lower,
             "deployment_scale": n_b,
+            "valuation_calibration_hash": valuation_calibration_hash,
             "recompute_inputs": {
                 "confusion_matrix": confusion.tolist(),
                 "payoff_matrix": sc.payoff_matrix,
@@ -331,7 +341,9 @@ class TransactionOrchestrator:
         bond_params = self._bond_params()
         # Ω_allowed：从冻结证书包络（envelope）取 certified p̲_B^sys 全集。
         # P0-J：PreLock 必须用整包络 max_ω B_S^*(ω)，禁止退化单点。
-        if self.calibration is not None and self.calibration.certificate is not None:
+        if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
+            cells = _envelope_cells_from_certificate(self.policy_certificate)
+        elif self.calibration is not None and self.calibration.certificate is not None:
             cert_d = self.calibration.certificate.data
             envelope = cert_d.get("envelope")
             if envelope:
@@ -390,7 +402,22 @@ class TransactionOrchestrator:
 
         # ---- Certification（阶段 25-26）----
         # recompute_inputs：从冻结证书或 scenario 默认取 Beta 参数（G16 独立复算）
-        if self.calibration is not None and self.calibration.certificate is not None:
+        if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
+            cert_obj = self.policy_certificate
+            if hasattr(cert_obj, "beta_prior") and hasattr(cert_obj, "alpha_D"):
+                cert_inputs = {
+                    "a_D": float(cert_obj.beta_prior["a"]),
+                    "b_D": float(cert_obj.beta_prior["b"]),
+                    "alpha_D": float(cert_obj.alpha_D),
+                    "tp": int(cert_obj.tp), "fn": int(cert_obj.fn),
+                }
+            else:
+                d = cert_obj.data
+                cert_inputs = {
+                    "a_D": d["a_D"], "b_D": d["b_D"], "alpha_D": d["alpha_D"],
+                    "tp": d["tp"], "fn": d["fn"],
+                }
+        elif self.calibration is not None and self.calibration.certificate is not None:
             cert_d = self.calibration.certificate.data
             cert_inputs = {
                 "a_D": cert_d["a_D"], "b_D": cert_d["b_D"],
@@ -679,15 +706,30 @@ class TransactionOrchestrator:
 
         # ---- 冻结 manifest + 落盘 ----
         cal_hashes = self.calibration.hashes() if self.calibration else {}
-        manifest.set(
-            valuation_calibration_hash=(
+        if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
+            valuation_calibration_hash = self.valuation_calibration.artifact_hash
+            likelihood_catalog_hash = (
+                self.likelihood_catalog.catalog_hash()
+                if hasattr(self.likelihood_catalog, "catalog_hash")
+                else content_hash(self.likelihood_catalog))
+            audit_policy_hash = self.audit_policy.policy_hash
+            cert_hash = getattr(self.policy_certificate, "r_cert_hash", "") or getattr(
+                self.policy_certificate, "artifact_hash", "") or content_hash(
+                    self.policy_certificate.to_plain())
+        else:
+            valuation_calibration_hash = (
                 cal_hashes.get("valuation_calibration_hash")
-                or content_hash({"alpha_v": 0.05})),
-            action_catalog_hash=audit.get("action_catalog_hash")
-            or cal_hashes.get("likelihood_hash"),
-            audit_policy_hash=audit.get("audit_policy_hash"),
-            certificate_hash=cal_hashes.get("certificate_hash")
-            or content_hash(sc.certificate),
+                or content_hash({"alpha_v": 0.05}))
+            likelihood_catalog_hash = (
+                audit.get("action_catalog_hash")
+                or cal_hashes.get("likelihood_hash"))
+            audit_policy_hash = audit.get("audit_policy_hash")
+            cert_hash = cal_hashes.get("certificate_hash") or content_hash(sc.certificate)
+        manifest.set(
+            valuation_calibration_hash=valuation_calibration_hash,
+            action_catalog_hash=likelihood_catalog_hash,
+            audit_policy_hash=audit_policy_hash,
+            certificate_hash=cert_hash,
         ).freeze(
             repo_root=".", run_id=self.run_id, tx_id=tx_id, seed=sc.split_seed)
 
@@ -927,14 +969,30 @@ class TransactionOrchestrator:
             factory = lambda nid: _NodeClient(clients[str(nid)])  # noqa: E731
             audit_runtime = None
             ex_mode = ExecutionMode.TEST_FIXTURE
+        if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
+            certificate_artifact = self.policy_certificate
+            lik_catalog = self.likelihood_catalog
+            market_provider = self.market_provider
+            audit_policy = self.audit_policy
+            role_registry = self.role_registry
+        else:
+            certificate_artifact = cal.certificate if cal else None
+            lik_catalog = None
+            market_provider = None
+            audit_policy = None
+            role_registry = None
         executor = make_privacy_audit_executor(
             claim_type=ClaimType.LABEL_DISTRIBUTION,
             challenge_sizes=[32, 64], n_nodes=n_nodes, f=f,
             node_client_factory=factory,
             public_keys=public_keys,
-            certificate_artifact=cal.certificate if cal else None,
+            certificate_artifact=certificate_artifact,
+            likelihood_catalog=lik_catalog,
             execution_mode=ex_mode,
             audit_runtime=audit_runtime,
+            market_provider=market_provider,
+            audit_policy=audit_policy,
+            role_registry=role_registry,
         )
         return executor(sc, ctx)
 
@@ -1374,7 +1432,15 @@ class TransactionOrchestrator:
                 self.scenario, run_id=f"replay-{self.run_id}",
                 run_dir="runs",
                 audit_executor=self.audit_executor,
-                calibration=self.calibration)
+                calibration=self.calibration,
+                execution_mode=self.execution_mode,
+                role_registry=self.role_registry,
+                audit_runtime_provider=self.audit_runtime_provider,
+                market_provider=self.market_provider,
+                likelihood_catalog=self.likelihood_catalog,
+                audit_policy=self.audit_policy,
+                policy_certificate=self.policy_certificate,
+                valuation_calibration=self.valuation_calibration)
             replay._replay_depth = 1
             r = replay.run()
             # 比较关键输出
@@ -1420,6 +1486,35 @@ def _evidence_seller_breach(audit: dict) -> bool:
         if e.get("outcome") == "BREACH_EVIDENCE":
             return True
     return False
+
+
+
+
+def _envelope_cells_from_certificate(cert) -> list[dict]:
+    """Return Ω_allowed envelope cells from a certificate artifact.
+
+    Accepts PolicyCertificationArtifact (omega_allowed_envelope) or
+    FrozenArtifact (data.envelope / data.p_breach_lower_sys).
+    """
+    if cert is None:
+        raise ValueError("FORMAL_POLICY_CERTIFICATE_REQUIRED")
+    if hasattr(cert, "omega_allowed_envelope"):
+        envelope = cert.omega_allowed_envelope
+        return [
+            {"cell_id": c.get("cell_id", i),
+             "p_breach_lower_sys": c["p_breach_lower_sys"]}
+            for i, c in enumerate(envelope)
+        ]
+    d = cert.data
+    envelope = d.get("envelope")
+    if envelope:
+        return [
+            {"cell_id": c.get("cell_id", i),
+             "p_breach_lower_sys": c["p_breach_lower_sys"]}
+            for i, c in enumerate(envelope)
+        ]
+    return [{"cell_id": d.get("cell_id", "c1"),
+             "p_breach_lower_sys": d["p_breach_lower_sys"]}]
 
 
 def _certified_pb_from(cert: dict) -> float:

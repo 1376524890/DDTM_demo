@@ -35,6 +35,9 @@ def make_privacy_audit_executor(
     auditor_identity_registry=None,
     public_keys: dict[str, str] | None = None,
     audit_runtime: AuditRuntimeDescriptor | None = None,
+    market_provider=None,
+    audit_policy=None,
+    role_registry=None,
 ) -> Callable:
     """构造 orchestrator 兼容的 audit_executor（COMMIT_CHALLENGE 模式）。"""
 
@@ -66,6 +69,9 @@ def make_privacy_audit_executor(
             auditor_identity_registry=auditor_identity_registry,
             public_keys=public_keys,
             audit_runtime=audit_runtime,
+            market_provider=market_provider,
+            audit_policy=audit_policy,
+            role_registry=role_registry,
         )
         res = ex.run(sc, ctx)
         # 映射为 orchestrator 兼容 dict

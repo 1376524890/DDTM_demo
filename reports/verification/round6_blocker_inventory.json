@@ -1,120 +1,120 @@
 {
-  "evaluated_code_commit": "8e5df7478800bb1006aa87f261bd407520ee57e9",
-  "status": "OPEN",
+  "evaluated_code_commit": "f7462115e80ec0bcbf92924df2b9042929e121a0",
+  "status": "PARTIAL",
   "blockers": [
     {
       "id": "P0-01",
       "phase": 1,
       "title": "R_cert Beta posterior double-count",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-02",
       "phase": 2,
       "title": "R_cert n_runs not real",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-03",
       "phase": 3,
       "title": "L-world construction not real",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-04",
       "phase": 4,
       "title": "ExperimentWorld breach families unverified",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-05",
       "phase": 5,
       "title": "FORMAL component wiring incomplete",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-06",
       "phase": 6,
       "title": "FORMAL_EXPERIMENT capstone missing",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-07",
       "phase": 7,
       "title": "PRODUCTION transport wrong",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-08",
       "phase": 8,
       "title": "Audit fail-closed ordering incomplete",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-09",
       "phase": 9,
       "title": "Quote not frozen first-class artifact",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-10",
       "phase": 10,
       "title": "G03 not independent Reverse VCG",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-11",
       "phase": 11,
       "title": "ActionProfile binding incomplete",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-12",
       "phase": 12,
       "title": "FullPolicyExecutor status semantics wrong",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-13",
       "phase": 13,
       "title": "R_cert artifact provenance incomplete",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-14",
       "phase": 14,
       "title": "Omega allowed envelope incomplete",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-15",
       "phase": 15,
       "title": "Actual BondTimeline missing",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-16",
       "phase": 16,
       "title": "PricingProvenanceGraph flat list",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-17",
       "phase": 17,
       "title": "CapabilityToken forgeable",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-18",
       "phase": 18,
       "title": "FinalEvaluationAccessGuard missing",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-19",
       "phase": 19,
       "title": "Physical experiment/mechanism separation missing",
-      "status": "OPEN"
+      "status": "CLOSED"
     },
     {
       "id": "P0-20",
@@ -183,5 +183,6 @@
       "status": "OPEN"
     }
   ],
-  "focused_regression": "PASS"
+  "focused_regression": "PASS",
+  "note": "Phases 1-19 implemented; phases 20-30 remain open. paper closure NOT claimed."
 }

@@ -46,6 +46,12 @@ class PolicyCertificationArtifact:
     p_breach_lower_sys: float
     omega_allowed_envelope: list[dict]
     raw_certification_event_refs: list[str]
+    n_runs: int = 1
+    n_worlds: int = 0
+    n_G: int = 0
+    n_L: int = 0
+    n_B: int = 0
+    sample_size_by_cell: dict = field(default_factory=dict)
     role_manifest_hash: str = ""
     trainer_hash: str = ""
     execution_runtime_hash: str = ""
@@ -68,6 +74,12 @@ class PolicyCertificationArtifact:
             "p_breach_lower_sys": self.p_breach_lower_sys,
             "omega_allowed_envelope": self.omega_allowed_envelope,
             "raw_certification_event_refs": self.raw_certification_event_refs,
+            "n_runs": self.n_runs,
+            "n_worlds": self.n_worlds,
+            "n_G": self.n_G,
+            "n_L": self.n_L,
+            "n_B": self.n_B,
+            "sample_size_by_cell": self.sample_size_by_cell,
             "role_manifest_hash": self.role_manifest_hash,
             "trainer_hash": self.trainer_hash,
             "execution_runtime_hash": self.execution_runtime_hash,
@@ -174,7 +186,7 @@ class DistributedPolicyCertifier:
             likelihood_catalog=lik_catalog,
             action_profile_catalog=profile_catalog,
             claim_type=self.claim_type, challenge_sizes=self.challenge_sizes,
-            f=self.f, seller_store=self.seller_store,
+            f=self.f, n_runs=self.n_runs, seller_store=self.seller_store,
             node_client_factory=self.node_client_factory,
             public_keys=self.public_keys,
             execution_mode=self.execution_mode,
@@ -190,6 +202,9 @@ class DistributedPolicyCertifier:
                  and any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
         tn = sum(1 for w in world_results if w.state == "G"
                  and not any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
+        n_G = sum(1 for w in world_results if w.state == "G")
+        n_L = sum(1 for w in world_results if w.state == "L")
+        n_B = sum(1 for w in world_results if w.state == "B")
         a, b = 1.0, 1.0
         a_post, b_post = a + tp, b + fn
         alpha_D = float(self.scenario.audit.get("alpha_D", 0.05))
@@ -232,6 +247,12 @@ class DistributedPolicyCertifier:
             ],
             raw_certification_event_refs=[
                 f"rcert://{w.world_id}" for w in world_results],
+            n_runs=self.n_runs,
+            n_worlds=len(world_results),
+            n_G=n_G,
+            n_L=n_L,
+            n_B=n_B,
+            sample_size_by_cell={"c1": {"tp": tp, "fn": fn, "fp": fp, "tn": tn}},
             role_manifest_hash=(
                 self.role_manifest.role_manifest_hash
                 if self.role_manifest is not None else ""),

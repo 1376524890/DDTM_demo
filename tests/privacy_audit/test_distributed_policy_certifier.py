@@ -208,3 +208,43 @@ def test_rcert_beta_double_count_mutation_fails_reconciliation():
         raw_certification_event_refs=[],
     )
     assert not reconcile_policy_certification(mutated)
+
+
+def test_rcert_n_runs_creates_independent_worlds(tmp_path):
+    """n_runs=5 must produce 15 PolicyWorldResults, not one per state."""
+    from valor.engine.full_policy_executor import FullAuditPolicyExecutor
+    from valor.engine.distributed_policy_certifier import DistributedPolicyCertifier
+    rng = np.random.default_rng(41)
+    X = rng.integers(0, 256, size=(200, 784), dtype=np.uint8)
+    y = rng.integers(0, 10, size=200)
+    sc = _scenario()
+    factory, public_keys = _client_factory()
+    rcal = DistributedAuditCalibrationRunner(
+        scenario=sc, X=X, y=y, role_manifest=_role("R_cal", 100, 11),
+        claim_type=ClaimType.LABEL_DISTRIBUTION,
+        challenge_sizes=[16], n_runs=1, f=2,
+        seller_store=CommittedDatasetStore(str(tmp_path / "rcal")),
+        node_client_factory=factory, public_keys=public_keys,
+        execution_mode=ExecutionMode.TEST_FIXTURE,
+    )
+    rcal_events = rcal.run()
+    lik_arts = rcal.freeze_likelihood()
+    profile_hashes = sorted(lik_arts.keys())
+    lik_hashes = [art.artifact_hash for art in lik_arts.values()]
+    certifier = DistributedPolicyCertifier(
+        policy=_policy(sc, profile_hashes, lik_hashes), scenario=sc, X=X, y=y,
+        role_manifest=_role("R_cert", 100, 21, start=100),
+        likelihood_artifacts=lik_arts,
+        claim_type=ClaimType.LABEL_DISTRIBUTION, challenge_sizes=[16],
+        n_runs=5, f=2, seller_store=CommittedDatasetStore(str(tmp_path / "rcert")),
+        node_client_factory=factory, public_keys=public_keys,
+        execution_mode=ExecutionMode.TEST_FIXTURE,
+    )
+    art = certifier.run(r_cal_sample_ids=[int(x) for x in range(100)],
+                        r_cal_event_ids=[e.event_id for e in rcal_events])
+    assert art.n_runs == 5
+    assert art.n_worlds == 15
+    assert art.n_G == 5
+    assert art.n_L == 5
+    assert art.n_B == 5
+    assert art.sample_size_by_cell["c1"]["tp"] + art.sample_size_by_cell["c1"]["fn"] == 5

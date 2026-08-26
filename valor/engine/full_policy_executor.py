@@ -129,13 +129,17 @@ class FullAuditPolicyExecutor:
         claim_type: ClaimType = ClaimType.LABEL_DISTRIBUTION,
         challenge_sizes: list[int] | None = None,
         f: int = 2,
+        n_runs: int = 1,
         seller_store: CommittedDatasetStore | None = None,
         node_client_factory: Callable[[str], Any] | None = None,
         public_keys: dict[str, str] | None = None,
         execution_mode: ExecutionMode = ExecutionMode.TEST_FIXTURE,
         audit_runtime: AuditRuntimeDescriptor | None = None,
     ) -> None:
+        if n_runs < 1:
+            raise ValueError("R_cert n_runs must be >= 1")
         self.policy = policy
+        self.n_runs = n_runs
         self.scenario = scenario
         self.role_manifest = role_manifest
         self.likelihood_catalog = likelihood_catalog
@@ -173,16 +177,17 @@ class FullAuditPolicyExecutor:
             raise ValueError("AUDIT_POLICY_EMPTY: policy.likelihood_artifact_hashes must be non-empty")
 
         results: list[PolicyWorldResult] = []
+        k = self.challenge_sizes[0]
         for state in ("G", "L", "B"):
-            k = self.challenge_sizes[0]
-            world = build_experiment_world(
-                scenario=self.scenario, store=self.seller_store,
-                X=self.X, y=self.y, role_id=self.role_id,
-                state=state, k=k, run=0,
-            )
-            world_id = f"{self.role_id}-{state}-{k}-0"
-            res = self._run_world(state, world, world_id, k)
-            results.append(res)
+            for run in range(self.n_runs):
+                world = build_experiment_world(
+                    scenario=self.scenario, store=self.seller_store,
+                    X=self.X, y=self.y, role_id=self.role_id,
+                    state=state, k=k, run=run,
+                )
+                world_id = f"{self.role_id}-{state}-{k}-{run}"
+                res = self._run_world(state, world, world_id, k)
+                results.append(res)
         return results
 
     def _run_world(self, state: str, world, world_id: str, k: int) -> PolicyWorldResult:

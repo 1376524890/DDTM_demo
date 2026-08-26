@@ -41,6 +41,8 @@ class CapabilityToken:
     execution_profile: str
     expiry: str
     nonce: str
+    issuer: str = ""
+    signature: str = ""
 
     @property
     def capability_hash(self) -> str:
@@ -52,6 +54,7 @@ class CapabilityToken:
             "output_policy": self.output_policy,
             "execution_profile": self.execution_profile,
             "expiry": self.expiry, "nonce": self.nonce,
+            "issuer": self.issuer,
         })
 
     def to_plain(self) -> dict:
@@ -63,8 +66,90 @@ class CapabilityToken:
             "output_policy": self.output_policy,
             "execution_profile": self.execution_profile,
             "expiry": self.expiry, "nonce": self.nonce,
+            "issuer": self.issuer, "signature": self.signature,
             "capability_hash": self.capability_hash,
         }
+
+
+
+class CapabilityIssuer:
+    """Issues and verifies unforgeable capability tokens (Round 6 Phase 17).
+
+    The issuer holds an Ed25519 private key; buyers/workers receive only the
+    signed token. `verify` checks signature, issuer, expiry, and single-use
+    nonce replay.
+    """
+
+    def __init__(self, issuer_id: str, keypair=None) -> None:
+        self.issuer_id = issuer_id
+        if keypair is None:
+            from valor.security.signing import SigningKeyPair
+            keypair = SigningKeyPair.generate(f"cap-issuer-{issuer_id}")
+        self._keypair = keypair
+        self._used_nonces: set[str] = set()
+
+    @property
+    def public_key_hex(self) -> str:
+        return self._keypair.public_key_hex
+
+    def issue(self, *, tx_id, job_spec_hash, dataset_commitment, rights_hash,
+              actor, purpose, algorithm_hash, output_policy, execution_profile,
+              expiry, nonce) -> CapabilityToken:
+        cap = CapabilityToken(
+            tx_id=tx_id, job_spec_hash=job_spec_hash,
+            dataset_commitment=dataset_commitment, rights_hash=rights_hash,
+            actor=actor, purpose=purpose, algorithm_hash=algorithm_hash,
+            output_policy=output_policy, execution_profile=execution_profile,
+            expiry=expiry, nonce=nonce, issuer=self.issuer_id,
+        )
+        payload = self._payload(cap)
+        sig = self._keypair.sign(payload).hex()
+        return CapabilityToken(
+            tx_id=cap.tx_id, job_spec_hash=cap.job_spec_hash,
+            dataset_commitment=cap.dataset_commitment, rights_hash=cap.rights_hash,
+            actor=cap.actor, purpose=cap.purpose, algorithm_hash=cap.algorithm_hash,
+            output_policy=cap.output_policy, execution_profile=cap.execution_profile,
+            expiry=cap.expiry, nonce=cap.nonce, issuer=cap.issuer, signature=sig,
+        )
+
+    def verify(self, capability: CapabilityToken, *, allow_replay: bool = False) -> bool:
+        if capability.issuer != self.issuer_id:
+            return False
+        if not capability.signature:
+            return False
+        if capability.expiry:
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            exp_str = capability.expiry.replace("Z", "+00:00")
+            try:
+                exp = datetime.fromisoformat(exp_str)
+                if exp.tzinfo is None:
+                    from datetime import timezone as _tz
+                    exp = exp.replace(tzinfo=_tz.utc)
+                if now > exp:
+                    return False
+            except ValueError:
+                # date-only expiry: compare ISO date strings
+                if exp_str[:10] < now.date().isoformat():
+                    return False
+        if not allow_replay and capability.nonce in self._used_nonces:
+            return False
+        if not allow_replay:
+            self._used_nonces.add(capability.nonce)
+        try:
+            from cryptography.hazmat.primitives.asymmetric import ed25519
+            pub = ed25519.Ed25519PublicKey.from_public_bytes(
+                bytes.fromhex(self.public_key_hex))
+            pub.verify(bytes.fromhex(capability.signature), self._payload(capability))
+        except Exception:
+            return False
+        return True
+
+    @staticmethod
+    def _payload(cap: CapabilityToken) -> bytes:
+        from valor.core.hashing import content_hash
+        return content_hash({k: v for k, v in cap.to_plain().items()
+                             if k not in ("signature",)}).encode()
 
 
 class SecureExecutionProvider(Protocol):
@@ -242,6 +327,7 @@ class LocalIsolatedProvider:
 
     def __init__(self, catalog: CertifiedTrainingAlgorithmCatalog | None = None) -> None:
         self.catalog = catalog or default_mnist_catalog()
+        self.issuer = CapabilityIssuer("local-cap-issuer")
 
     def provision_capability(self, *, job_spec_hash: str, data_ref: str,
                              key_release_decision: dict,
@@ -252,7 +338,7 @@ class LocalIsolatedProvider:
                              nonce: str = "") -> dict:
         if not key_release_decision.get("allow", False):
             return {"key_released": False, "capability_ref": ""}
-        cap = CapabilityToken(
+        cap = self.issuer.issue(
             tx_id=tx_id, job_spec_hash=job_spec_hash,
             dataset_commitment=data_ref, rights_hash=rights_hash,
             actor=actor, purpose=purpose, algorithm_hash=algorithm_hash,
@@ -278,6 +364,8 @@ class LocalIsolatedProvider:
 
         if capability is None or not getattr(capability, "capability_hash", ""):
             raise ValueError("CAPABILITY_REQUIRED: worker refused to start without a valid capability")
+        if not self.issuer.verify(capability):
+            raise ValueError("CAPABILITY_INVALID: worker MUST NOT start")
         if capability.job_spec_hash != job.job_spec_hash:
             raise ValueError("CAPABILITY_JOB_MISMATCH")
         if capability.dataset_commitment != job.dataset_commitment_hash:
@@ -306,7 +394,8 @@ class LocalIsolatedProvider:
 
 
 __all__ = [
-    "SecureExecutionProvider", "CapabilityToken", "TrainingJobSpec", "TrainingOutcome",
+    "SecureExecutionProvider", "CapabilityToken", "CapabilityIssuer",
+    "TrainingJobSpec", "TrainingOutcome",
     "CertifiedTrainingAlgorithm", "CertifiedTrainingAlgorithmCatalog",
     "default_mnist_catalog", "LocalIsolatedProvider",
 ]

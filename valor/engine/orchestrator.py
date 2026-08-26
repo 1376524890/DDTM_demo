@@ -405,6 +405,20 @@ class TransactionOrchestrator:
         audit_pay_b = audit["audit_pay_b"]
         audit_trace_events = audit.get("audit_trace_events", [])
 
+        # ---- P0: 审计失败必须先于 certification/bond/pricing fail-closed ----
+        audit_policy_status = audit.get("audit_policy_status")
+        if audit_policy_status is None:
+            if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
+                raise ValueError(
+                    "AUDIT_POLICY_STATUS_REQUIRED: FORMAL requires explicit "
+                    "audit_policy_status (no fail-open default)")
+            audit_policy_status = "POLICY_ERROR"
+        audit_ok = audit_policy_status == "CERTIFIED"
+        if not audit_ok:
+            return self._early_audit_no_trade(
+                ledger, manifest, audit, audit_policy_status,
+                b_s_pre, audit_pay_s, audit_pay_b, tx_id)
+
         # ---- Certification（阶段 25-26）----
         # recompute_inputs：从冻结证书或 scenario 默认取 Beta 参数（G16 独立复算）
         if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
@@ -612,7 +626,7 @@ class TransactionOrchestrator:
         # evidence 产生 BREACH_EVIDENCE；buyer breach 由 usage misuse 证据派生。
         # 这里从审计 trace 的 BREACH_EVIDENCE 判定 seller breach（机制观察证据）。
         breach_during_audit = _evidence_seller_breach(audit)
-        audit_ok = audit.get("audit_policy_status", "CERTIFIED") == "CERTIFIED"
+        audit_ok = audit.get("audit_policy_status") == "CERTIFIED"
         sm = TransactionStateMachine()
         # P0-K：buyer breach 不在此处用 scenario flag 判定；由 usage evidence
         # 事后派生（MFC-G30）。此处只处理 entitled/audit/price。
@@ -1011,6 +1025,52 @@ class TransactionOrchestrator:
             role_registry=role_registry,
         )
         return executor(sc, ctx)
+
+    def _early_audit_no_trade(self, ledger, manifest, audit, audit_policy_status,
+                              b_s_pre, audit_pay_s, audit_pay_b, tx_id):
+        """Audit did not certify: persist attempts, pay/refund audit costs,
+        release seller prelock, terminal NO_TRADE, and STOP before
+        bond/pricing/clearing/delivery/usage/training."""
+        from valor.contract.accounts import Ledger
+        from valor.contract.escrow import EscrowAccounts
+        from valor.contract.money_event import MoneyLedger
+        from valor.contract.settlement import settle_terminal
+        from valor.contract.settlement import AuditPaymentObligation
+
+        audit_obligations = self._collect_audit_obligations(audit)
+        self._stage("audit_attempt_records", {
+            "audit_policy_status": audit_policy_status,
+            "attempts": audit.get("audit_trace_events", []),
+        })
+        ledger_bal = Ledger()
+        for acc, amt in {"E_B^P": self.scenario.buyer["w_b_rem"],
+                         "E_S^A": audit_pay_s,
+                         "E_B^A": audit_pay_b,
+                         "B_S^pre": b_s_pre}.items():
+            ledger_bal.create_account(acc, amt)
+        accounts = EscrowAccounts(
+            e_s_a=audit_pay_s, e_b_a=audit_pay_b,
+            e_b_p=self.scenario.buyer["w_b_rem"],
+            b_s_pre=b_s_pre, b_s_star=0.0, b_b_use=0.0)
+        money_ledger = MoneyLedger(ledger_bal, tx_id=tx_id)
+        settle_res = settle_terminal(
+            terminal=TerminalState.NO_TRADE, ledger=ledger_bal,
+            accounts=accounts, price=0.0,
+            audit_pay_s=audit_pay_s, audit_pay_b=audit_pay_b,
+            money=money_ledger, tx_id=tx_id,
+            audit_obligations=audit_obligations or None)
+        self._stage("state", {"terminal": TerminalState.NO_TRADE.value,
+                              "audit_policy_status": audit_policy_status})
+        self._stage("settlement", {
+            "terminal": TerminalState.NO_TRADE.value,
+            "bond_slashed": settle_res.bond_slashed,
+            "conservation": ledger_bal.conservation_check(),
+            "money_semantics_ok": money_ledger.validate_semantics(),
+            "transfers": [t.to_plain() for t in settle_res.transfers],
+            "money_events": [e.to_plain() for e in money_ledger.events],
+        })
+        return self._finalize(ledger, manifest, "NO_TRADE",
+                              TerminalState.NO_TRADE, None)
 
     def _run_delivery(self, ledger, binding, commitment, terminal, tx_id, seller_committed):
         """P0-L：正式 Delivery 独立阶段，生成 DeliveryReceipt。

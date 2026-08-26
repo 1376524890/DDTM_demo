@@ -60,6 +60,8 @@ def test_c5_disclosure_budget_infeasible(tmp_path):
     assert audit.get("unique_disclosure", 0) <= 8
     assert audit.get("audit_policy_status") == "ACTION_INFEASIBLE_DISCLOSURE"
     assert res.terminal_state == "NO_TRADE"
+    assert "pricing" not in orch._stages
+    assert "delivery" not in orch._stages
 
 
 def test_c4_no_quorum(tmp_path):
@@ -82,6 +84,8 @@ def test_c4_no_quorum(tmp_path):
     assert all(e.get("status") == "NO_QUORUM" for e in audit.get("audit_trace_events", []))
     assert audit.get("audit_policy_status") == "NO_QUORUM"
     assert res.terminal_state == "NO_TRADE"
+    assert "pricing" not in orch._stages
+    assert "delivery" not in orch._stages
 
 
 def test_c6_delivery_fail(tmp_path):
@@ -175,6 +179,8 @@ def test_c9_invalid_signature(tmp_path):
     assert all(e.get("status") == "INVALID_EVIDENCE" for e in audit.get("audit_trace_events", []))
     assert audit.get("audit_policy_status") == "INVALID_EVIDENCE"
     assert res.terminal_state == "NO_TRADE"
+    assert "pricing" not in orch._stages
+    assert "delivery" not in orch._stages
 
 
 def test_c7_illegal_training_denied(tmp_path):

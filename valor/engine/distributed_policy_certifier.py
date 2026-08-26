@@ -132,11 +132,8 @@ class DistributedPolicyCertifier:
             r_cal_event_ids: list[str] | None = None) -> PolicyCertificationArtifact:
         r_cal_event_ids = r_cal_event_ids or []
         r_cal_sample_ids = [int(x) for x in (r_cal_sample_ids or [])]
-        r_cert_hashes = set()
-        overlap = r_cert_hashes & set(r_cal_event_ids)
-        if overlap:
-            raise ValueError(f"DATA_ROLE_OVERLAP: R_cal/R_cert share {overlap}")
-        # Round 5: hard sample-ID overlap check via DataRoleRegistry.
+        # Round 5/6: hard sample-ID overlap check via DataRoleRegistry.
+        # Event-ID overlap logic is obsolete (r_cert_hashes was always empty).
         if self.role_manifest is not None:
             reg = DataRoleRegistry()
             if r_cal_sample_ids:
@@ -219,27 +216,41 @@ class DistributedPolicyCertifier:
             "c1", a, b, alpha_D,
             {"quality": (tp, fn)}))
         p_lower = cat.p_breach_lower("c1", "quality")
+        action_catalog_hash = profile_catalog.catalog_hash()
+        likelihood_catalog_hash = lik_catalog.catalog_hash()
+        role_manifest_hash = (
+            self.role_manifest.role_manifest_hash
+            if self.role_manifest is not None else "")
+        execution_runtime_hash = (
+            content_hash(self.audit_runtime.to_plain())
+            if self.audit_runtime is not None else "")
+        world_construction_hashes = sorted(
+            content_hash({
+                "world_id": w.world_id,
+                "state": w.state,
+                "ground_truth_ref": w.ground_truth_ref,
+                "construction_hash": getattr(w, "construction_hash", ""),
+            }) for w in world_results)
         artifact_hash = content_hash({
+            "role_manifest_hash": role_manifest_hash,
             "policy_hash": self.policy.policy_hash,
-            "action_catalog_hash": content_hash({
-                ph: art.action_id for ph, art in self.likelihood_artifacts.items()
-            }),
-            "likelihood_catalog_hash": content_hash({
-                ph: art.artifact_hash for ph, art in self.likelihood_artifacts.items()
-            }),
-            "r_cert_hashes": sorted(r_cert_hashes),
+            "action_catalog_hash": action_catalog_hash,
+            "likelihood_catalog_hash": likelihood_catalog_hash,
+            "execution_runtime_hash": execution_runtime_hash,
+            "world_construction_hashes": world_construction_hashes,
             "world_result_hashes": sorted(
                 content_hash(w.to_plain()) for w in world_results),
             "tp": tp, "fn": fn, "fp": fp, "tn": tn,
+            "beta_prior": {"a": a, "b": b},
+            "alpha_D": alpha_D,
+            "omega_allowed_envelope": [
+                {"cell_id": "c1", "p_breach_lower_sys": float(p_lower)}
+            ],
         })
         return PolicyCertificationArtifact(
             policy=self.policy, policy_hash=self.policy.policy_hash,
-            action_catalog_hash=content_hash({
-                ph: art.action_id for ph, art in self.likelihood_artifacts.items()
-            }),
-            likelihood_catalog_hash=content_hash({
-                ph: art.artifact_hash for ph, art in self.likelihood_artifacts.items()
-            }),
+            action_catalog_hash=action_catalog_hash,
+            likelihood_catalog_hash=likelihood_catalog_hash,
             r_cert_hash=artifact_hash,
             trainer_task_family="digit-classification",
             breach_family="quality",
@@ -259,13 +270,9 @@ class DistributedPolicyCertifier:
             n_L=n_L,
             n_B=n_B,
             sample_size_by_cell={"c1": {"tp": tp, "fn": fn, "fp": fp, "tn": tn}},
-            role_manifest_hash=(
-                self.role_manifest.role_manifest_hash
-                if self.role_manifest is not None else ""),
-            trainer_hash=self.scenario.trainer.get("type", ""),
-            execution_runtime_hash=(
-                content_hash(self.audit_runtime.to_plain())
-                if self.audit_runtime is not None else ""),
+            role_manifest_hash=role_manifest_hash,
+            trainer_hash=content_hash(self.scenario.trainer),
+            execution_runtime_hash=execution_runtime_hash,
             raw_event_hashes=[
                 h for w in world_results for h in w.raw_event_hashes],
             policy_binding_mismatch=mismatch,

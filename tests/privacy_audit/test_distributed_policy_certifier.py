@@ -126,6 +126,14 @@ def test_rcert_independent_artifact(tmp_path):
     assert art.policy_hash == art.policy.policy_hash
     assert art.r_cert_hash
     assert art.raw_certification_event_refs
+    # Round 6 Phase 13: provenance binds canonical catalog hashes + trainer hash
+    assert art.action_catalog_hash
+    assert art.likelihood_catalog_hash
+    assert art.trainer_hash != sc.trainer.get("type", "")
+    assert art.trainer_hash == content_hash(sc.trainer)
+    assert art.role_manifest_hash
+    if certifier.audit_runtime is not None:
+        assert art.execution_runtime_hash
 
 
 def test_rcert_rejects_overlap(tmp_path):

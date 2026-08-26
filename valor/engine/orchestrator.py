@@ -471,11 +471,16 @@ class TransactionOrchestrator:
             p_breach_lower_sys=p_b_lower, **bond_params)
         b_s_pre = b_s_pre  # 沿用 Audit 前锁定值
         surplus = max(b_s_pre - b_s_star, 0.0)
+        # Round 6 Phase 15: BondTimeline times come from the frozen TraceLedger
+        # logical event sequence, not scenario.t_pre/t_post scalars.
+        prelock_events = [ev for ev in ledger.events if ev.stage == "PRELOCK"]
+        pre_time = float(prelock_events[-1].seq) if prelock_events else 0.0
+        adjust_time = float(len(ledger.events) + 1)  # next SELLER_BOND log
+        release_time = adjust_time + 1.0             # later settlement event
         bond_timeline = BondTimeline()
-        bond_timeline.add_event("PRELOCK", "B_S", b_s_pre, time=0.0)
-        bond_timeline.add_event("ADJUST", "B_S", b_s_star, time=sc.bond["t_pre"])
-        bond_timeline.add_event("RELEASE", "B_S", 0.0,
-                                time=sc.bond["t_pre"] + sc.bond["t_post"])
+        bond_timeline.add_event("PRELOCK", "B_S", b_s_pre, time=pre_time)
+        bond_timeline.add_event("ADJUST", "B_S", b_s_star, time=adjust_time)
+        bond_timeline.add_event("RELEASE", "B_S", 0.0, time=release_time)
         c_b_cap = bond_timeline.capital_cost(
             kappa=sc.bond["kappa_s"], account="B_S")
         # P7 激励约束对账

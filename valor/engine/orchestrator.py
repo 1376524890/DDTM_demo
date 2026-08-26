@@ -1401,7 +1401,9 @@ class TransactionOrchestrator:
         from valor.feedback.eligibility import GroundTruthEligibilityGate
         from valor.feedback.seller_risk import update_seller_beta
         from valor.valuation.economic_mapping import utility_from_artifact
-        from valor.feedback.final_eval_access_ledger import FinalEvaluationAccessLedger
+        from valor.feedback.final_eval_access_ledger import (
+            FinalEvaluationAccessLedger, FinalEvaluationHandle,
+        )
 
         sc = self.scenario
         fb = sc.feedback
@@ -1411,13 +1413,14 @@ class TransactionOrchestrator:
         realised = None
         final_eval_ledger = FinalEvaluationAccessLedger()
         if terminal == TerminalState.TRADE and len(final_eval_indices) > 0:
-            # P0-R：终态冻结后才 resolve FinalEvaluation（AccessGuard 语义）。
-            final_eval_ledger.record(
-                caller="TransactionOrchestrator", stage="FEEDBACK",
-                role="R_eval", reason="terminal_frozen_feedback_resolution")
-            idx = np.sort(np.asarray(final_eval_indices, dtype=int))
-            final_X = X_all_raw.iloc[idx].reset_index(drop=True)
-            final_y = y_all_raw.iloc[idx].reset_index(drop=True)
+            # P0-R/Phase 18: evaluator only touches FinalEval through the
+            # guard handle, which forbids pre-terminal resolution.
+            handle = FinalEvaluationHandle(
+                X=X_all_raw, y=y_all_raw, indices=final_eval_indices,
+                ledger=final_eval_ledger)
+            final_X, final_y = handle.resolve(
+                stage="FEEDBACK", caller="TransactionOrchestrator",
+                terminal_state=terminal)
             # 用交易评估集训练 base 与 base+candidate，在 FinalEvaluation 上算 realised ΔU
             from valor.adapters import MNISTTrainerAdapter
 

@@ -42,3 +42,38 @@ class FinalEvaluationAccessLedger:
 
 
 __all__ = ["FinalEvaluationAccessLedger", "FinalEvaluationAccessRecord"]
+
+
+class FinalEvaluationHandle:
+    """Round 6 Phase 18: raw FinalEval arrays live only inside this handle.
+
+    Evaluators must call resolve() to obtain the data. resolve() records an
+    access attempt and raises FINAL_EVALUATION_ACCESS_FORBIDDEN before the
+    terminal state is frozen.
+    """
+
+    def __init__(self, *, X, y, indices, ledger: FinalEvaluationAccessLedger) -> None:
+        self._X = X
+        self._y = y
+        self._indices = tuple(sorted(int(i) for i in indices))
+        self._ledger = ledger
+
+    def resolve(self, *, stage: str, caller: str, terminal_state) -> tuple:
+        """Return (final_X, final_y) only after terminal state is frozen."""
+        import numpy as np
+
+        if str(terminal_state) != "TRADE":
+            self._ledger.record(
+                caller=caller, stage=stage, role="R_eval",
+                reason="FINAL_EVALUATION_ACCESS_FORBIDDEN")
+            raise ValueError("FINAL_EVALUATION_ACCESS_FORBIDDEN")
+        self._ledger.record(
+            caller=caller, stage=stage, role="R_eval",
+            reason="terminal_frozen_feedback_resolution")
+        idx = np.sort(np.asarray(self._indices, dtype=int))
+        final_X = self._X.iloc[idx].reset_index(drop=True)
+        final_y = self._y.iloc[idx].reset_index(drop=True)
+        return final_X, final_y
+
+    def ledger(self) -> FinalEvaluationAccessLedger:
+        return self._ledger

@@ -169,14 +169,15 @@ def build_experiment_world(
                 "B world requires scenario.audit.breach_world with a real "
                 "breach mechanism (CLAIM_FALSE/POST_COMMIT_DATA_TAMPER/...)")
         family = breach.get("family")
+        # Only breach families with a real observable mechanism are allowed.
+        # CLAIM_FALSE / OPENING_TAMPER / VERSION_MISMATCH are NOT in the
+        # certified envelope until a real corruption adapter exists.
         if family == "POST_COMMIT_DATA_TAMPER":
             breach_family = "POST_COMMIT_DATA_TAMPER"
-        elif family == "CLAIM_FALSE":
-            breach_family = "CLAIM_FALSE"
-        elif family == "OPENING_TAMPER":
-            breach_family = "OPENING_TAMPER"
-        elif family == "VERSION_MISMATCH":
-            raise NotImplementedError("VERSION_MISMATCH breach world not yet implemented")
+        elif family in ("CLAIM_FALSE", "OPENING_TAMPER", "VERSION_MISMATCH"):
+            raise ValueError(
+                f"BREACH_FAMILY_NOT_CERTIFIED: {family} is removed from the "
+                "certified breach envelope until a real corruption adapter exists")
         else:
             raise ValueError(f"unsupported breach family: {family}")
         ground_truth_ref = breach.get("ground_truth_ref", "rcal-B-post-commit-data-tamper")

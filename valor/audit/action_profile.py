@@ -33,14 +33,14 @@ class AuditActionProfile:
     security_profile: str
     decision_thresholds: dict
     execution_version_hash: str
-    decision_rule_id: str
-    privacy_budget_cost_model_id: str
-    computation_cost_model_id: str
-    likelihood_model_version: str
-    evidence_schema_version: str
-    timeout_s: float
-    replacement_behavior: str
-    signature_policy: str
+    decision_rule_id: str = "MULTINOMIAL_GOF"
+    privacy_budget_cost_model_id: str = "unique-rows-fraction-bytes-v1"
+    computation_cost_model_id: str = "vcg-chain-challenge-dispute-v1"
+    likelihood_model_version: str = "empirical-dirichlet-v1"
+    evidence_schema_version: str = "privacy-audit-evidence-v1"
+    timeout_s: float = 10.0
+    replacement_behavior: str = "offline-replacement"
+    signature_policy: str = "ED25519_REQUIRED"
 
     @property
     def action_profile_hash(self) -> str:

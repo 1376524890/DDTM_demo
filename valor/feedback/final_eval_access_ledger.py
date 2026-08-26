@@ -62,7 +62,8 @@ class FinalEvaluationHandle:
         """Return (final_X, final_y) only after terminal state is frozen."""
         import numpy as np
 
-        if str(terminal_state) != "TRADE":
+        terminal_val = getattr(terminal_state, "value", terminal_state)
+        if str(terminal_val) != "TRADE":
             self._ledger.record(
                 caller=caller, stage=stage, role="R_eval",
                 reason="FINAL_EVALUATION_ACCESS_FORBIDDEN")

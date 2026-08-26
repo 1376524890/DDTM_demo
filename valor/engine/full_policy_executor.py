@@ -243,18 +243,13 @@ class FullAuditPolicyExecutor:
                     content_hash(self.audit_runtime.to_plain())
                     if self.audit_runtime is not None else ""),
             ))
-        if not attempts:
+        # Round 6 Phase 12: canonical policy terminal status comes directly
+        # from PrivacyAuditVOIResult.audit_policy_status. Attempts are evidence,
+        # not the source of truth (a later mandatory failure must not be hidden
+        # by an earlier successful attempt).
+        status = getattr(result, "audit_policy_status", "")
+        if not status:
             status = AuditPolicyExecutionStatus.POLICY_ERROR
-        elif any(a.status == "CERTIFIED" for a in attempts):
-            status = AuditPolicyExecutionStatus.CERTIFIED
-        elif any(a.status == "INVALID_EVIDENCE" for a in attempts):
-            status = AuditPolicyExecutionStatus.INVALID_EVIDENCE
-        elif any(a.status == "NO_QUORUM" for a in attempts):
-            status = AuditPolicyExecutionStatus.NO_QUORUM
-        elif any(a.status == "ACTION_INFEASIBLE_PRIVACY_BUDGET" for a in attempts):
-            status = AuditPolicyExecutionStatus.ACTION_INFEASIBLE_DISCLOSURE
-        else:
-            status = AuditPolicyExecutionStatus.POLICY_STOP
         raw_hashes = [content_hash(a.to_plain()) for a in attempts]
         return PolicyWorldResult(
             world_id=world_id, state=state,

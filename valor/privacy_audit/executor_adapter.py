@@ -92,6 +92,9 @@ def make_privacy_audit_executor(
             "challenge_hashes": [a["challenge_hash"] for a in action_results],
             "unique_disclosure": res.disclosure.get("unique_disclosure", 0),
             "disclosure_fraction": res.disclosure.get("disclosure_fraction", 0.0),
+            "frozen_audit_decision_records": res.frozen_audit_decision_records,
+            "audit_execution_records": res.audit_execution_records,
+            "selected_quote_hash": res.selected_quote_hash,
         }
 
     return executor

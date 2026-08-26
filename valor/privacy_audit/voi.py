@@ -21,6 +21,7 @@ from valor.audit.action_profile import AuditActionProfile, build_action_profile,
 from valor.audit.bayes_update import bayes_update
 from valor.audit.likelihood import ActionLikelihood
 from valor.audit.loss import LossMatrix
+from valor.audit.market_quote import AuditExecutionRecord, FrozenAuditDecisionRecord
 from valor.audit.state_model import StateBelief
 from valor.audit.voi import choose_best_action, marginal_value_of_audit
 from valor.core.enums import ExecutionMode
@@ -53,6 +54,9 @@ class PrivacyAuditVOIResult:
     audit_policy_hash: str = ""
     audit_policy_status: str = "CERTIFIED"
     audit_attempt_trace: list[dict] = field(default_factory=list)
+    frozen_audit_decision_records: list[dict] = field(default_factory=list)
+    audit_execution_records: list[dict] = field(default_factory=list)
+    selected_quote_hash: str = ""
 
     def to_plain(self) -> dict:
         return {
@@ -67,6 +71,9 @@ class PrivacyAuditVOIResult:
             "audit_policy_hash": self.audit_policy_hash,
             "audit_policy_status": self.audit_policy_status,
             "audit_attempt_trace": self.audit_attempt_trace,
+            "frozen_audit_decision_records": self.frozen_audit_decision_records,
+            "audit_execution_records": self.audit_execution_records,
+            "selected_quote_hash": self.selected_quote_hash,
         }
 
 
@@ -404,6 +411,9 @@ class PrivacyAuditVOIExecutor:
                 payer=profile.payer, action_profile_hash=profile.action_profile_hash))
 
         steps = []
+        frozen_decision_records: list[FrozenAuditDecisionRecord] = []
+        execution_records: list[AuditExecutionRecord] = []
+        selected_quote_hash = ""
         posterior = belief.to_plain()
         executed_any = False
         seq = 0
@@ -412,6 +422,34 @@ class PrivacyAuditVOIExecutor:
             voi_decision_seq = seq + 2
             execution_seq = seq + 3
             seq += 3
+            # Round 6 Phase 9: freeze per-candidate decision records.
+            for aid in catalog.likelihoods():
+                profile, action = self._action(int(aid.split("_CC_")[-1]))
+                quote = self._quote(profile, registry, bids, snapshot)
+                mv, _ = marginal_value_of_audit(
+                    belief, catalog.get(aid).likelihood, loss)
+                voi = mv - catalog.get(aid).expected_cash_cost
+                lik_artifact = None
+                if lik_catalog is not None:
+                    try:
+                        lik_artifact = lik_catalog.resolve(profile.action_profile_hash)
+                    except KeyError:
+                        lik_artifact = None
+                frozen_decision_records.append(FrozenAuditDecisionRecord(
+                    action_profile_hash=profile.action_profile_hash,
+                    likelihood_artifact_hash=(
+                        lik_artifact.artifact_hash if lik_artifact is not None else ""),
+                    quote_hash=quote.quote_hash,
+                    market_snapshot_hash=snapshot.snapshot_hash,
+                    quoted_committee=list(quote.committee),
+                    quoted_vcg_payments={str(k): float(v) for k, v in quote.vcg_payments.items()},
+                    expected_chain_fee=quote.expected_chain_fee,
+                    expected_challenge_cost=quote.expected_challenge_cost,
+                    expected_dispute_cost=quote.expected_dispute_cost,
+                    expected_cash_cost=quote.expected_cash_cost,
+                    MV=mv,
+                    VOI=voi,
+                ))
             aid, best_voi, _ = choose_best_action(
                 belief, catalog.likelihoods(), loss, catalog.costs())
             if aid is None or best_voi <= 0:
@@ -427,6 +465,17 @@ class PrivacyAuditVOIExecutor:
                 action, tx_id=tx_id, commitment=commitment, claim=claim,
                 disclosure=disclosure, seller_open_fn=_seller_open)
             outcome = res.cert_result
+            quote = self._quote(profile, registry, bids, snapshot)
+            selected_quote_hash = quote.quote_hash
+            execution_records.append(AuditExecutionRecord(
+                action_id=aid,
+                selected_quote_hash=quote.quote_hash,
+                selected_action_profile_hash=profile.action_profile_hash,
+                selected_market_snapshot_hash=snapshot.snapshot_hash,
+                realized_committee=[str(n) for n in res.committee],
+                realized_vcg={str(k): float(v) for k, v in res.payments.items()},
+                realized_cost=float(res.mc_a_pay),
+            ))
             steps.append({
                 "audit_step": len(steps) + 1, "action_id": aid, "k": k,
                 "quote_seq": quote_seq, "voi_decision_seq": voi_decision_seq,
@@ -439,6 +488,8 @@ class PrivacyAuditVOIExecutor:
                 "unique_disclosure_after": disclosure.unique_disclosure,
                 "cost": res.cost.to_plain(),
                 "action_profile_hash": action.action_profile_hash,
+                "quote_hash": quote.quote_hash,
+                "selected_quote_hash": quote.quote_hash,
                 "result_counts": res.result_counts,
                 "vcg_payments": (
                     {str(k): float(v) for k, v in res.payments.items()}
@@ -504,6 +555,9 @@ class PrivacyAuditVOIExecutor:
                 if self.audit_policy is not None
                 else profile_catalog.catalog_hash()),
             audit_policy_status=policy_status,
+            frozen_audit_decision_records=[r.to_plain() for r in frozen_decision_records],
+            audit_execution_records=[r.to_plain() for r in execution_records],
+            selected_quote_hash=selected_quote_hash,
         )
 
     def _quote(self, profile: AuditActionProfile, registry, bids, snapshot) -> "AuditMarketQuote":

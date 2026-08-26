@@ -81,3 +81,40 @@ def test_per_action_cost_changes_quote():
     )
     assert q_expensive.expected_challenge_cost > q_cheap.expected_challenge_cost
     assert q_expensive.expected_cash_cost > q_cheap.expected_cash_cost
+
+
+def test_frozen_audit_decision_record_hash_binds_quote_and_likelihood():
+    from valor.audit.market_quote import FrozenAuditDecisionRecord
+
+    r1 = FrozenAuditDecisionRecord(
+        action_profile_hash="p", likelihood_artifact_hash="l",
+        quote_hash="q", market_snapshot_hash="s",
+        quoted_committee=["n1", "n2"], quoted_vcg_payments={"n1": 1.0, "n2": 2.0},
+        expected_chain_fee=0.1, expected_challenge_cost=0.2,
+        expected_dispute_cost=0.3, expected_cash_cost=3.6, MV=1.0, VOI=0.5,
+    )
+    r2 = FrozenAuditDecisionRecord(
+        action_profile_hash="p", likelihood_artifact_hash="l",
+        quote_hash="q2", market_snapshot_hash="s",
+        quoted_committee=["n1", "n2"], quoted_vcg_payments={"n1": 1.0, "n2": 2.0},
+        expected_chain_fee=0.1, expected_challenge_cost=0.2,
+        expected_dispute_cost=0.3, expected_cash_cost=3.6, MV=1.0, VOI=0.5,
+    )
+    assert r1.record_hash != r2.record_hash
+    assert r1.to_plain()["record_hash"] == r1.record_hash
+
+
+def test_audit_execution_record_binds_quote_profile_snapshot():
+    from valor.audit.market_quote import AuditExecutionRecord
+
+    e1 = AuditExecutionRecord(
+        action_id="a", selected_quote_hash="q",
+        selected_action_profile_hash="p", selected_market_snapshot_hash="s",
+        realized_committee=["n1"], realized_vcg={"n1": 1.0}, realized_cost=1.0,
+    )
+    e2 = AuditExecutionRecord(
+        action_id="a", selected_quote_hash="q",
+        selected_action_profile_hash="p2", selected_market_snapshot_hash="s",
+        realized_committee=["n1"], realized_vcg={"n1": 1.0}, realized_cost=1.0,
+    )
+    assert e1.record_hash != e2.record_hash

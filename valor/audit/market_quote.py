@@ -257,3 +257,101 @@ __all__ = [
     "AuditMarketSnapshot", "AuditMarketQuote", "AuditActionExecutionRecord",
     "build_quote",
 ]
+
+
+@dataclass(frozen=True)
+class FrozenAuditDecisionRecord:
+    """Frozen per-candidate audit decision artifact (Round 6 Phase 9).
+
+    Captures the exact quote and VOI inputs used before any audit execution.
+    """
+
+    action_profile_hash: str
+    likelihood_artifact_hash: str
+    quote_hash: str
+    market_snapshot_hash: str
+    quoted_committee: list[str]
+    quoted_vcg_payments: dict[str, float]
+    expected_chain_fee: float
+    expected_challenge_cost: float
+    expected_dispute_cost: float
+    expected_cash_cost: float
+    MV: float
+    VOI: float
+
+    @property
+    def record_hash(self) -> str:
+        return content_hash({
+            "action_profile_hash": self.action_profile_hash,
+            "likelihood_artifact_hash": self.likelihood_artifact_hash,
+            "quote_hash": self.quote_hash,
+            "market_snapshot_hash": self.market_snapshot_hash,
+            "quoted_committee": sorted(self.quoted_committee),
+            "quoted_vcg_payments": {k: float(v) for k, v in sorted(self.quoted_vcg_payments.items())},
+            "expected_chain_fee": self.expected_chain_fee,
+            "expected_challenge_cost": self.expected_challenge_cost,
+            "expected_dispute_cost": self.expected_dispute_cost,
+            "expected_cash_cost": self.expected_cash_cost,
+            "MV": self.MV,
+            "VOI": self.VOI,
+        })
+
+    def to_plain(self) -> dict:
+        return {
+            "action_profile_hash": self.action_profile_hash,
+            "likelihood_artifact_hash": self.likelihood_artifact_hash,
+            "quote_hash": self.quote_hash,
+            "market_snapshot_hash": self.market_snapshot_hash,
+            "quoted_committee": self.quoted_committee,
+            "quoted_vcg_payments": {str(k): float(v) for k, v in self.quoted_vcg_payments.items()},
+            "expected_chain_fee": self.expected_chain_fee,
+            "expected_challenge_cost": self.expected_challenge_cost,
+            "expected_dispute_cost": self.expected_dispute_cost,
+            "expected_cash_cost": self.expected_cash_cost,
+            "MV": self.MV,
+            "VOI": self.VOI,
+            "record_hash": self.record_hash,
+        }
+
+
+@dataclass(frozen=True)
+class AuditExecutionRecord:
+    """Post-execution audit action record bound to the frozen quote."""
+
+    action_id: str
+    selected_quote_hash: str
+    selected_action_profile_hash: str
+    selected_market_snapshot_hash: str
+    realized_committee: list[str]
+    realized_vcg: dict[str, float]
+    realized_cost: float
+
+    @property
+    def record_hash(self) -> str:
+        return content_hash({
+            "action_id": self.action_id,
+            "selected_quote_hash": self.selected_quote_hash,
+            "selected_action_profile_hash": self.selected_action_profile_hash,
+            "selected_market_snapshot_hash": self.selected_market_snapshot_hash,
+            "realized_committee": sorted(self.realized_committee),
+            "realized_vcg": {k: float(v) for k, v in sorted(self.realized_vcg.items())},
+            "realized_cost": self.realized_cost,
+        })
+
+    def to_plain(self) -> dict:
+        return {
+            "action_id": self.action_id,
+            "selected_quote_hash": self.selected_quote_hash,
+            "selected_action_profile_hash": self.selected_action_profile_hash,
+            "selected_market_snapshot_hash": self.selected_market_snapshot_hash,
+            "realized_committee": self.realized_committee,
+            "realized_vcg": {str(k): float(v) for k, v in self.realized_vcg.items()},
+            "realized_cost": self.realized_cost,
+            "record_hash": self.record_hash,
+        }
+
+
+__all__ = [
+    "AuditMarketSnapshot", "AuditMarketQuote", "AuditActionExecutionRecord",
+    "FrozenAuditDecisionRecord", "AuditExecutionRecord",
+]

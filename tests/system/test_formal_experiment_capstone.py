@@ -207,6 +207,12 @@ def test_formal_experiment_capstone(tmp_path):
         # no TEST_FIXTURE source / scenario fallback in FORMAL path
         assert audit["execution_mode"] == "COMMIT_CHALLENGE"
         assert orch._stages["data_voi"].output["valuation_calibration_hash"] == val.artifact_hash
+        # Round 6 Phase 9: quote/likelihood/profile/snapshot exact binding
+        assert audit.get("selected_quote_hash")
+        for ex in audit.get("audit_execution_records", []):
+            assert ex["selected_action_profile_hash"]
+            assert ex["selected_quote_hash"]
+            assert ex["selected_market_snapshot_hash"]
         assert orch._stages["audit"].output["audit_policy_hash"] == policy.policy_hash
         manifest_plain = __import__("json").loads(
             (orch.artifacts.root / "manifest.json").read_text(encoding="utf-8"))

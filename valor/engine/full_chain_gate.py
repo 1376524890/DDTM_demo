@@ -798,7 +798,7 @@ class FullChainGate:
             public_keys = d.get("node_public_keys", {})
         audit = self._stage("audit")
         snap = audit.get("market_snapshot") or {}
-        public_keys = public_keys or snap.get("public_key_fingerprint", {})
+        public_keys = public_keys or audit.get("auditor_public_keys") or snap.get("public_key_fingerprint", {})
         for e in audit.get("audit_trace_events", []):
             if e.get("status") != "CERTIFIED":
                 continue
@@ -807,7 +807,16 @@ class FullChainGate:
                 return False
             counts = {}
             for ref in refs:
-                ev = store.get(ref) if isinstance(store, dict) else None
+                ev = None
+                if isinstance(store, dict):
+                    ev = store.get(ref)
+                    if ev is None:
+                        ev = store.get(str(ref))
+                    if ev is None:
+                        for k, v in store.items():
+                            if v.get("evidence_id") == ref or v.get("node_id") == ref:
+                                ev = v
+                                break
                 if ev is None:
                     return False
                 nid = str(ev.get("node_id", ""))

@@ -98,6 +98,11 @@ def make_privacy_audit_executor(
             "audit_execution_records": res.audit_execution_records,
             "selected_quote_hash": res.selected_quote_hash,
             "market_snapshot": res.market_snapshot,
+            "raw_evidence": {
+                ev.get("evidence_id") or ev.get("node_id"): ev
+                for step in action_results
+                for ev in (step.get("raw_evidence") or {}).values()
+            },
         }
 
     return executor

@@ -157,6 +157,7 @@ def run_offline_calibration(
     *,
     run_dir: str | Path = "calibration",
     run_id: str | None = None,
+    fail_on_unconverged: bool = False,
 ) -> CalibrationBundle:
     """执行离线校准，写入 artifacts，返回冻结 bundle。"""
     from valor.core.ids import new_id
@@ -169,7 +170,7 @@ def run_offline_calibration(
     # ---- 1. 估值校准：真实 pseudo-historical residuals（C1）----
     vc = ValuationCalibrator(alpha_v=config.alpha_v)
     if config.y_historical is not None and config.payoff_matrix is not None:
-        residuals = _real_pseudo_historical_residuals(config)
+        residuals = _real_pseudo_historical_residuals(config, vc)
         for r_ in residuals:
             vc.add(r_["realized"], r_["predicted"])
     else:
@@ -181,6 +182,8 @@ def run_offline_calibration(
     valuation_art = vc.freeze(
         dataset_hash=config.dataset_hash, trainer_hash=config.trainer_hash,
         buyer_context_family=config.buyer_context_family, seed=config.seed)
+    if fail_on_unconverged and valuation_art.data.get("converged") is not True:
+        raise ValueError("CALIBRATION_NOT_CONVERGED: valuation calibration did not converge")
 
     # ---- 2. 受控 breach injection → 检测 TP/FN ----
     # 用 exact_duplicate 注入（不引入 NaN，structural/duplicate 可处理）
@@ -232,7 +235,7 @@ def run_offline_calibration(
     return bundle
 
 
-def _real_pseudo_historical_residuals(config: CalibrationConfig) -> list[dict]:
+def _real_pseudo_historical_residuals(config: CalibrationConfig, vc=None) -> list[dict]:
     """真实伪历史 residual：在历史池内做多次伪交易，真实训练估值。
 
     每次伪历史交易：
@@ -274,16 +277,28 @@ def _real_pseudo_historical_residuals(config: CalibrationConfig) -> list[dict]:
         X_eval, y_eval = X.iloc[eval_idx], y.iloc[eval_idx]
 
         # V̂：base vs base+candidate，LogisticRegression 估值
-        u_base, u_plus = exact_retraining_utility(
-            X_base=X_base, y_base=y_base, X_batch=X_cand, y_batch=y_cand,
-            X_val=X_eval, y_val=y_eval, payoff=payoff,
-            model_factory=config.model_factory, seed=config.seed + k,
-        )
+        import warnings
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            u_base, u_plus = exact_retraining_utility(
+                X_base=X_base, y_base=y_base, X_batch=X_cand, y_batch=y_cand,
+                X_val=X_eval, y_val=y_eval, payoff=payoff,
+                model_factory=config.model_factory, seed=config.seed + k,
+            )
+        if vc is not None:
+            for w in caught:
+                vc.add_warning(str(w.message))
         predicted = u_plus - u_base
 
         # V^real：oracle 重训练（更可信），在独立 eval 上
-        v_real = _oracle_realised(config, X_base, y_base, X_cand, y_cand,
-                                  X_eval, y_eval, payoff, seed=config.seed + k)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            v_real = _oracle_realised(config, X_base, y_base, X_cand, y_cand,
+                                      X_eval, y_eval, payoff, seed=config.seed + k)
+        if vc is not None:
+            for w in caught:
+                vc.add_warning(str(w.message))
 
         residuals.append({"predicted": predicted, "realized": v_real,
                           "seed": config.seed + k})

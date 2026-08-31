@@ -52,6 +52,7 @@ class PrivacyAuditActionResult:
     cost: AuditCostBreakdown
     valid_signature_count: int = 0
     evidence_artifact_refs: list[str] = field(default_factory=list)
+    raw_evidence: dict = field(default_factory=dict)
 
     def to_plain(self) -> dict:
         return {
@@ -69,6 +70,7 @@ class PrivacyAuditActionResult:
             "cost": self.cost.to_plain(),
             "valid_signature_count": self.valid_signature_count,
             "evidence_artifact_refs": self.evidence_artifact_refs,
+            "raw_evidence": self.raw_evidence,
         }
 
 
@@ -242,6 +244,7 @@ class PrivacyAuditScheduler:
                 result_counts=counts, disclosure=disclosure.to_plain(), cost=cost,
                 valid_signature_count=len(valid_evidence),
                 evidence_artifact_refs=[e["evidence_id"] for e in valid_evidence.values()],
+                raw_evidence=dict(valid_evidence),
             )
 
 

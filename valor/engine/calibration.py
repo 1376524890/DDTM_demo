@@ -55,6 +55,10 @@ class ValuationCalibrator:
     def __init__(self, alpha_v: float) -> None:
         self.alpha_v = alpha_v
         self._residuals: list[float] = []
+        self._warnings: list[str] = []
+
+    def add_warning(self, warning: str) -> None:
+        self._warnings.append(warning)
 
     def add(self, realized: float, predicted: float) -> None:
         self._residuals.append(realized - predicted)
@@ -90,6 +94,12 @@ class ValuationCalibrator:
             "trainer_hash": trainer_hash,
             "buyer_context_family": buyer_context_family,
             "seed": seed,
+            "convergence_warnings": list(self._warnings),
+            "converged": not bool(self._warnings),
+            "estimator": "LogisticRegression",
+            "solver": "lbfgs",
+            "max_iter": 2000,
+            "warnings_count": len(self._warnings),
         })
 
 

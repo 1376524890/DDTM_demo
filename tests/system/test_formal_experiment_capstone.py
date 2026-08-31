@@ -183,11 +183,27 @@ def test_formal_experiment_capstone(tmp_path):
             r_cal_event_ids=[e.event_id for e in rcal_events],
         )
 
-        val = FrozenArtifact(kind="valuation_calibration", data={
-            "alpha_v": 0.05, "n_samples": 4, "residual_quantile": 0.0,
-            "coverage": 1.0, "residuals": [0.0, 0.0, 0.0, 0.0],
-            "dataset_hash": "d", "trainer_hash": "t", "buyer_context_family": "f", "seed": 0,
-        })
+        import pandas as pd
+        from valor.engine.calibration_runner import CalibrationConfig, run_offline_calibration
+
+        cal_pool = pd.DataFrame(X[: len(cal_manifest.sample_ids)])
+        cal_y = pd.Series(y[: len(cal_manifest.sample_ids)])
+        cal_cfg = CalibrationConfig(
+            historical_pool=cal_pool,
+            y_historical=cal_y,
+            dataset_hash=cal_manifest.source_dataset_hash,
+            trainer_hash=content_hash({"trainer": "mnist-mlp", "scope": cal_manifest.trainer_scope_hash}),
+            seed=11,
+            payoff_matrix=[[1.0, -2.0], [-5.0, 3.0]],
+            deployment_scale=3000,
+            n_pseudo_trades=2,
+            policy_hash=policy.policy_hash,
+            action_catalog_hash=profile_catalog.catalog_hash(),
+        )
+        cal_bundle = run_offline_calibration(
+            cal_cfg, run_dir=str(tmp_path / "cal"), fail_on_unconverged=True)
+        val = cal_bundle.valuation
+        assert val.data.get("trainer_hash")  # real trainer/scope binding, not placeholder
 
         orch = TransactionOrchestrator(
             sc, run_dir=str(tmp_path / "runs"),

@@ -105,6 +105,9 @@ class TransactionOrchestrator:
         self.node_client_factory = node_client_factory
         self.delivery_provider = delivery_provider
         self.public_keys = public_keys
+        from valor.engine.randomness_manifest import RandomnessManifest, ProtectedRandomnessStore
+        self._randomness_manifest = RandomnessManifest(run_id=self.run_id)
+        self._protected_randomness = ProtectedRandomnessStore("seller_private/randomness")
         if execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
             missing = [
                 name for name, value in (
@@ -778,6 +781,7 @@ class TransactionOrchestrator:
             certificate_hash=cert_hash,
         ).freeze(
             repo_root=".", run_id=self.run_id, tx_id=tx_id, seed=sc.split_seed)
+        self.artifacts.write_json("randomness_manifest.json", self._randomness_manifest.to_plain())
 
         self._write_artifacts(manifest, ledger, terminal, clearance)
 
@@ -803,6 +807,7 @@ class TransactionOrchestrator:
             audit_policy=self.audit_policy,
             policy_certificate=self.policy_certificate,
             market_snapshot=self.market_provider,
+            randomness_manifest=self._randomness_manifest.to_plain(),
             replay_artifact=replay_artifact.to_plain(),
         )
         full_gate = evaluate_full_chain(
@@ -865,10 +870,17 @@ class TransactionOrchestrator:
         # seed（由 split_seed + dataset 名派生），使 replay 复现同一 commitment。
         store = CommittedDatasetStore(str(self.artifacts.root / "seller_private"))
         dataset_id = f"{self.scenario.dataset_name}-v1"
-        salt_seed = content_hash({
-            "dataset": self.scenario.dataset_name, "version": "v1",
-            "split_seed": self.scenario.split_seed,
-        })
+        # Round 7 P0-21: DatasetCommitment salt randomness comes from CSPRNG once,
+        # persisted in the protected randomness store; public manifest only holds ref.
+        import secrets
+        kind = "dataset_commitment_salt"
+        try:
+            salt_seed = self._protected_randomness.resolve(kind, self._randomness_manifest.entries[kind].reference)
+        except Exception:
+            salt_seed = secrets.token_bytes(32)
+            ref = self._protected_randomness.store(kind=kind, data=salt_seed)
+            self._randomness_manifest.add(kind=kind, reference=ref, producer="DatasetCommitment")
+            salt_seed = ref
         seller = SellerCommittedDataset.create(
             store, dataset_id=dataset_id, version="v1", X=Xa, y=ya,
             schema_hash=content_hash({"schema": "MNIST-784"}),
@@ -1075,7 +1087,10 @@ class TransactionOrchestrator:
             role_registry=role_registry,
             seller_open_fn=self.seller_open_fn,
         )
-        return executor(sc, ctx)
+        result = executor(sc, ctx)
+        if isinstance(result, dict):
+            result.setdefault("auditor_public_keys", dict(public_keys))
+        return result
 
     def _early_audit_no_trade(self, ledger, manifest, audit, audit_policy_status,
                               b_s_pre, audit_pay_s, audit_pay_b, tx_id):
@@ -1615,19 +1630,41 @@ class TransactionOrchestrator:
                 self._stages.get("settlement", type("S", (), {"output": {}})()).output.get("money_events", []))
             lineage_hash = content_hash(
                 self._stages.get("usage", type("S", (), {"output": {}})()).output.get("lineage", []))
+            orig_commitment = self._stages.get("listing", type("S", (), {"output": {}})()).output.get("commitment_hash")
+            replay_commitment = replay._stages.get("listing", type("S", (), {"output": {}})()).output.get("commitment_hash")
+            commitment_eq = bool(orig_commitment and orig_commitment == replay_commitment)
+            if not commitment_eq:
+                mismatches.append("commitment differed")
+            orig_posterior = self._stages.get("audit", type("S", (), {"output": {}})()).output.get("posterior")
+            replay_posterior = replay._stages.get("audit", type("S", (), {"output": {}})()).output.get("posterior")
+            posterior_eq = bool(orig_posterior and orig_posterior == replay_posterior)
+            if not posterior_eq:
+                mismatches.append("posterior differed")
+            orig_quote = self._stages.get("audit", type("S", (), {"output": {}})()).output.get("selected_quote_hash")
+            replay_quote = replay._stages.get("audit", type("S", (), {"output": {}})()).output.get("selected_quote_hash")
+            quote_eq = bool(orig_quote and orig_quote == replay_quote)
+            if not quote_eq:
+                mismatches.append("quote binding differed")
+            cert_hashes = {
+                "audit_policy": manifest.audit_policy_hash or "",
+                "certificate": manifest.certificate_hash or "",
+            }
             return ReplayVerificationArtifact(
                 original_run_hash=manifest.manifest_hash,
                 replay_run_hash=r.full_chain_gate.get("paper_closure_gate", "FAIL"),
-                randomness_manifest_hash="",
+                randomness_manifest_hash=content_hash(self._randomness_manifest.to_plain()),
                 decision_equality=decision_eq,
                 terminal_equality=terminal_eq,
                 pricing_equality=pricing_eq,
                 stage_semantic_hashes=stage_semantic,
                 money_ledger_hash=money_hash,
                 lineage_hash=lineage_hash,
-                commitment_equality=True,
-                posterior_equality=True,
+                commitment_equality=commitment_eq,
+                policy_certificate_hashes=cert_hashes,
+                quote_execution_bindings={"selected_quote_hash": orig_quote or ""},
+                posterior_equality=posterior_eq,
                 provenance_root_equality=True,
+                signature_verification_results=[],
                 mismatch_list=mismatches,
                 nested_replay_status="COMPLETE",
             )

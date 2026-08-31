@@ -88,6 +88,15 @@ class CapstoneScenario:
         "chain_fee": 0.0, "challenge_cost": 0.0, "dispute_cost": 0.0,
         "max_audit_steps": 10,
         "execution_version_hash": "cc-audit-v1",
+        # ActionProfile resolved parameters (Round 7 fail-closed)
+        "decision_rule_id": "MULTINOMIAL_GOF",
+        "privacy_budget_cost_model_id": "unique-rows-fraction-bytes-v1",
+        "computation_cost_model_id": "vcg-chain-challenge-dispute-v1",
+        "likelihood_model_version": "empirical-dirichlet-v1",
+        "evidence_schema_version": "privacy-audit-evidence-v1",
+        "timeout_s": 10.0,
+        "replacement_behavior": "offline-replacement",
+        "signature_policy": "ED25519_REQUIRED",
         # AuditDisclosureBudget（P0-H）：显式 rows/fraction/bytes，禁止 DP ε 映射
         "privacy_budget": {
             "max_unique_rows": 200,

@@ -21,6 +21,7 @@ from valor.seller import SellerCommittedDataset
 @dataclass(frozen=True)
 class ExperimentWorld:
     seller: Any
+    X_committed: np.ndarray
     y_committed: np.ndarray
     state: str
     ground_truth_ref: str
@@ -212,7 +213,7 @@ def build_experiment_world(
                 seller.dataset_id, int(i),
                 new_y=rng.choice([c for c in range(10) if c != old]))
     return ExperimentWorld(
-        seller=seller, y_committed=yy, state=state,
+        seller=seller, X_committed=X.copy(), y_committed=yy.copy(), state=state,
         ground_truth_ref=ground_truth_ref, breach_family=breach_family,
         suitability_metric=suitability_metric,
         suitability_threshold=suitability_threshold,

@@ -96,6 +96,10 @@ class PolicyWorldResult:
     audit_pay_s: float
     audit_pay_b: float
     challenge_k: int = 0
+    action_profile_hash: str = ""
+    likelihood_artifact_hash: str = ""
+    selected_quote_hash: str = ""
+    market_snapshot_hash: str = ""
     attempts: list[AuditAttemptRecord] = field(default_factory=list)
     raw_event_hashes: list[str] = field(default_factory=list)
 
@@ -110,6 +114,10 @@ class PolicyWorldResult:
             "audit_pay_s": self.audit_pay_s,
             "audit_pay_b": self.audit_pay_b,
             "challenge_k": self.challenge_k,
+            "action_profile_hash": self.action_profile_hash,
+            "likelihood_artifact_hash": self.likelihood_artifact_hash,
+            "selected_quote_hash": self.selected_quote_hash,
+            "market_snapshot_hash": self.market_snapshot_hash,
             "attempts": [a.to_plain() for a in self.attempts],
             "raw_event_hashes": self.raw_event_hashes,
         }
@@ -186,17 +194,24 @@ class FullAuditPolicyExecutor:
             raise ValueError("AUDIT_POLICY_EMPTY: policy.likelihood_artifact_hashes must be non-empty")
 
         results: list[PolicyWorldResult] = []
-        k = self.challenge_sizes[0]
-        for state in ("G", "L", "B"):
-            for run in range(self.n_runs):
-                world = build_experiment_world(
-                    scenario=self.scenario, store=self.seller_store,
-                    X=self.X, y=self.y, role_id=self.role_id,
-                    state=state, k=k, run=run,
-                )
-                world_id = f"{self.role_id}-{state}-{k}-{run}"
-                res = self._run_world(state, world, world_id, k)
-                results.append(res)
+        if len(self.challenge_sizes) < 1:
+            raise ValueError("R_cert requires at least one certified profile")
+        if self.execution_mode in (ExecutionMode.FORMAL_EXPERIMENT,
+                                   ExecutionMode.PRODUCTION) and len(self.challenge_sizes) < 2:
+            raise ValueError(
+                "R_cert FORMAL/PRODUCTION requires challenge_sizes with at "
+                "least 2 certified profiles; [16,32,64] is the required default")
+        for k in self.challenge_sizes:
+            for state in ("G", "L", "B"):
+                for run in range(self.n_runs):
+                    world = build_experiment_world(
+                        scenario=self.scenario, store=self.seller_store,
+                        X=self.X, y=self.y, role_id=self.role_id,
+                        state=state, k=k, run=run,
+                    )
+                    world_id = f"{self.role_id}-{state}-{k}-{run}"
+                    res = self._run_world(state, world, world_id, k)
+                    results.append(res)
         return results
 
     def _run_world(self, state: str, world, world_id: str, k: int) -> PolicyWorldResult:
@@ -207,7 +222,7 @@ class FullAuditPolicyExecutor:
         }
         ex = PrivacyAuditVOIExecutor(
             scenario=sc,
-            candidate_X=self.X,
+            candidate_X=world.X_committed,
             candidate_y=world.y_committed,
             claim_type=self.claim_type,
             challenge_sizes=self.challenge_sizes,
@@ -253,6 +268,21 @@ class FullAuditPolicyExecutor:
         if not status:
             status = AuditPolicyExecutionStatus.POLICY_ERROR
         raw_hashes = [content_hash(a.to_plain()) for a in attempts]
+        selected_profile = ""
+        selected_quote = ""
+        selected_snapshot_hash = ""
+        selected_lik = ""
+        if getattr(result, "audit_execution_records", None):
+            er = result.audit_execution_records[0] if result.audit_execution_records else {}
+            selected_profile = er.get("selected_action_profile_hash", "")
+            selected_quote = er.get("selected_quote_hash", "")
+            selected_snapshot_hash = er.get("selected_market_snapshot_hash", "")
+            if self.likelihood_catalog is not None and selected_profile:
+                try:
+                    lik_art = self.likelihood_catalog.resolve(selected_profile)
+                    selected_lik = lik_art.artifact_hash
+                except Exception:
+                    selected_lik = ""
         return PolicyWorldResult(
             world_id=world_id, state=state,
             ground_truth_ref=world.ground_truth_ref,
@@ -262,6 +292,10 @@ class FullAuditPolicyExecutor:
             audit_pay_s=result.audit_pay_s,
             audit_pay_b=result.audit_pay_b,
             challenge_k=k,
+            action_profile_hash=selected_profile,
+            likelihood_artifact_hash=selected_lik,
+            selected_quote_hash=selected_quote,
+            market_snapshot_hash=selected_snapshot_hash,
             attempts=attempts,
             raw_event_hashes=raw_hashes,
         )

@@ -126,7 +126,16 @@ def test_c13_prelock_insufficient_funds(tmp_path):
     orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c13"))
     res = orch.run()
     assert res.terminal_state == "NO_TRADE"
-    assert orch._stages["prelock"].output.get("locked") is False
+    prelock = orch._stages["prelock"].output
+    assert prelock.get("locked") is False
+    # fail-closed downstream absent
+    assert "audit" not in orch._stages or orch._stages["audit"].output.get("audit_trace_events", []) == []
+    audit = orch._stages.get("audit")
+    assert audit is None or len(audit.output.get("audit_trace_events", [])) == 0
+    assert audit is None or audit.output.get("audit_pay_s", 0) == 0.0
+    assert audit is None or audit.output.get("audit_pay_b", 0) == 0.0
+    assert "pricing" not in orch._stages
+    assert "delivery" not in orch._stages
 
 
 def test_c14_buyer_usage_bond_slash(tmp_path):
@@ -158,6 +167,16 @@ def test_c14_buyer_usage_bond_slash(tmp_path):
     money = [e for e in settlement.get("money_events", [])]
     assert any(e["from_account"] == "B_B^use" and e["to_account"] == "seller"
                for e in money)
+    # expected slash amount: buyer usage bond full amount (lambda_b * B_B_use)
+    ub = sc.usage.get("usage_bond", {})
+    b_b_use = settlement.get("b_b_use", 0.0) or orch._stages.get("pricing", type("S", (), {"output": {}})()).output.get("b_b_use", 0.0)
+    expected = float(ub.get("lambda_b", 1.0)) * float(b_b_use or 0.0)
+    if expected > 0:
+        slash_events = [e for e in money if e["from_account"] == "B_B^use" and e["to_account"] == "seller"]
+        assert slash_events and abs(sum(float(e["amount"]) for e in slash_events) - expected) < 1e-6
+    else:
+        # if bond amount is zero, at least one B_B^use -> seller transfer must exist
+        assert any(e["from_account"] == "B_B^use" and e["to_account"] == "seller" for e in money)
 
 
 def test_c9_invalid_signature(tmp_path):
@@ -226,3 +245,97 @@ def test_c8_legal_training_runs(tmp_path):
     assert out.get("worker_pid") is not None
     assert out.get("model_artifact_hash")
     assert "accuracy" in out["metrics"]
+
+
+def test_c10_action_profile_likelihood_mismatch_fails_closed(tmp_path):
+    """C10: action profile without certified likelihood must never execute."""
+    import numpy as np
+
+    from valor.audit.policy import AuditPolicy
+    from valor.core.enums import ExecutionMode
+    from valor.core.hashing import content_hash
+    from valor.engine.distributed_calibration_runner import DistributedAuditCalibrationRunner
+    from valor.engine.distributed_policy_certifier import DistributedPolicyCertifier
+    from valor.engine.experiment_world import build_experiment_world
+    from valor.experiments.registry import DataRoleManifest
+    from valor.privacy_audit import ClaimType, CommittedDatasetStore
+    from tests.privacy_audit.test_distributed_policy_certifier import (
+        _client_factory, _role, _scenario, _policy,
+    )
+
+    rng = np.random.default_rng(123)
+    X = rng.integers(0, 256, size=(200, 784), dtype=np.uint8)
+    y = rng.integers(0, 10, size=200)
+    sc = _scenario()
+    sc.audit["low_suitability_world"]["row_utilities"] = [0.1] * 30 + [0.9] * 70
+    factory, public_keys = _client_factory()
+    rcal = DistributedAuditCalibrationRunner(
+        scenario=sc, X=X, y=y, role_manifest=_role("R_cal", 100, 11),
+        claim_type=ClaimType.LABEL_DISTRIBUTION, challenge_sizes=[16], n_runs=1,
+        f=2, seller_store=CommittedDatasetStore(str(tmp_path / "rcal")),
+        node_client_factory=factory, public_keys=public_keys,
+        execution_mode=ExecutionMode.TEST_FIXTURE,
+    )
+    rcal.run()
+    lik_arts = rcal.freeze_likelihood()
+    # policy references a profile hash that has no likelihood artifact
+    bad_profile = content_hash({"action": "phantom", "k": 99})
+    bad_lik = content_hash({"lik": "phantom"})
+    with pytest.raises(ValueError, match="ACTION_NOT_CERTIFIED|CERTIFICATION_POLICY_BINDING_MISMATCH"):
+        DistributedPolicyCertifier(
+            policy=_policy(sc, [bad_profile], [bad_lik]),
+            scenario=sc, X=X, y=y,
+            role_manifest=_role("R_cert", 100, 21, start=100),
+            likelihood_artifacts=lik_arts,
+            claim_type=ClaimType.LABEL_DISTRIBUTION, challenge_sizes=[16],
+            n_runs=1, f=2,
+            seller_store=CommittedDatasetStore(str(tmp_path / "rcert")),
+            node_client_factory=factory, public_keys=public_keys,
+            execution_mode=ExecutionMode.TEST_FIXTURE,
+        ).run()
+
+
+def test_c11_rcal_rcert_overlap_fails_closed(tmp_path):
+    """C11: overlapping R_cal/R_cert sample ids must fail with DATA_ROLE_OVERLAP."""
+    from valor.core.enums import ExecutionMode
+    from valor.engine.distributed_policy_certifier import DistributedPolicyCertifier
+    from valor.privacy_audit import ClaimType, CommittedDatasetStore
+    from tests.privacy_audit.test_distributed_policy_certifier import (
+        _client_factory, _role, _scenario, _policy,
+    )
+
+    rng = np.random.default_rng(124)
+    X = rng.integers(0, 256, size=(100, 784), dtype=np.uint8)
+    y = rng.integers(0, 10, size=100)
+    sc = _scenario()
+    factory, public_keys = _client_factory()
+    with pytest.raises(ValueError, match="DATA_ROLE_OVERLAP"):
+        DistributedPolicyCertifier(
+            policy=_policy(sc), scenario=sc, X=X, y=y,
+            role_manifest=_role("R_cert", 20, 31),  # overlaps with r_cal ids 0..2
+            likelihood_artifacts={},
+            claim_type=ClaimType.LABEL_DISTRIBUTION, challenge_sizes=[16],
+            n_runs=1, f=2,
+            seller_store=CommittedDatasetStore(str(tmp_path / "x")),
+            node_client_factory=factory, public_keys=public_keys,
+            execution_mode=ExecutionMode.TEST_FIXTURE,
+        ).run(r_cal_sample_ids=[0, 1, 2])
+
+
+def test_c12_final_eval_early_access_forbidden(tmp_path):
+    """C12: pre-terminal FinalEval access must record DENY and raise."""
+    import numpy as np
+    import pandas as pd
+
+    from valor.feedback.final_eval_access_ledger import (
+        FinalEvaluationAccessLedger, FinalEvaluationHandle, TerminalDecisionArtifact,
+    )
+
+    X = pd.DataFrame({"a": np.arange(10.0)})
+    y = pd.Series(np.arange(10))
+    ledger = FinalEvaluationAccessLedger()
+    handle = FinalEvaluationHandle(X=X, y=y, indices=[2, 4], ledger=ledger)
+    with pytest.raises(ValueError, match="FINAL_EVALUATION_ACCESS_FORBIDDEN"):
+        handle.resolve(stage="DATA_VOI", caller="orch",
+                       terminal_artifact=TerminalDecisionArtifact(terminal="TRADE", stage="DATA_VOI"))
+    assert any(r.reason == "FINAL_EVALUATION_ACCESS_FORBIDDEN" for r in ledger.records)

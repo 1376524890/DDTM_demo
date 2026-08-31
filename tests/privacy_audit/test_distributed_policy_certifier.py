@@ -12,6 +12,8 @@ from valor.engine.distributed_calibration_runner import DistributedAuditCalibrat
 from valor.engine.distributed_policy_certifier import (
     DistributedPolicyCertifier,
     PolicyCertificationArtifact,
+    PolicyCellCertification,
+    reconcile_policy_certification,
 )
 from valor.engine.scenario import CapstoneScenario
 from valor.experiments.registry import DataRoleManifest
@@ -157,6 +159,24 @@ def test_rcert_rejects_overlap(tmp_path):
                       r_cal_event_ids=["evt-rcert-G-32-0"])
 
 
+def _cell(a_D, b_D, alpha_D, tp, fn, cell_id="c_k16"):
+    return PolicyCellCertification(
+        cell_id=cell_id,
+        action_profile_hash="prof-1",
+        likelihood_artifact_hash="lik-1",
+        policy_hash="pol",
+        n_G=1, n_L=1, n_B=1,
+        tp=tp, fn=fn, fp=0, tn=0,
+        beta_prior={"a": a_D, "b": b_D},
+        beta_posterior={"a": a_D + tp, "b": b_D + fn},
+        alpha=alpha_D,
+        p_breach_lower=float(beta.ppf(alpha_D, a_D + tp, b_D + fn)),
+        raw_world_refs=["rcert://G-16-0"],
+        raw_evidence_refs=[],
+        runtime_hash="",
+    )
+
+
 def test_rcert_beta_lower_matches_scipy_exactly():
     """Canonical Beta posterior must equal scipy.stats.beta.ppf exactly."""
     from scipy.stats import beta
@@ -169,6 +189,7 @@ def test_rcert_beta_lower_matches_scipy_exactly():
         "c1", a_D, b_D, alpha_D, {"quality": (tp, fn)}))
     assert cat.p_breach_lower("c1", "quality") == expected
 
+    cell = _cell(a_D, b_D, alpha_D, tp, fn)
     art = PolicyCertificationArtifact(
         policy=None, policy_hash="h", action_catalog_hash="ac",
         likelihood_catalog_hash="lc", r_cert_hash="r",
@@ -180,6 +201,7 @@ def test_rcert_beta_lower_matches_scipy_exactly():
         p_breach_lower_sys=expected,
         omega_allowed_envelope=[],
         raw_certification_event_refs=[],
+        cells=[cell],
     )
     assert reconcile_policy_certification(art)
 
@@ -190,6 +212,7 @@ def test_rcert_beta_double_count_mutation_fails_reconciliation():
     a_D, b_D, alpha_D = 1.0, 2.0, 0.05
     tp, fn = 7, 1
     expected = float(beta.ppf(alpha_D, a_D + tp, b_D + fn))
+    cell = _cell(a_D, b_D, alpha_D, tp, fn)
     art = PolicyCertificationArtifact(
         policy=None, policy_hash="h", action_catalog_hash="ac",
         likelihood_catalog_hash="lc", r_cert_hash="r",
@@ -201,6 +224,7 @@ def test_rcert_beta_double_count_mutation_fails_reconciliation():
         p_breach_lower_sys=expected,
         omega_allowed_envelope=[],
         raw_certification_event_refs=[],
+        cells=[cell],
     )
     assert reconcile_policy_certification(art)
     mutated = PolicyCertificationArtifact(
@@ -255,4 +279,63 @@ def test_rcert_n_runs_creates_independent_worlds(tmp_path):
     assert art.n_G == 5
     assert art.n_L == 5
     assert art.n_B == 5
-    assert art.sample_size_by_cell["c1"]["tp"] + art.sample_size_by_cell["c1"]["fn"] == 5
+    assert art.sample_size_by_cell["c_k16"]["tp"] + art.sample_size_by_cell["c_k16"]["fn"] == 5
+
+
+def test_rcert_multi_profile_envelope_and_reconciliation(tmp_path):
+    """R_cert certifies Π_A over Ω_allowed across multiple profiles/cells."""
+    from dataclasses import replace
+    rng = np.random.default_rng(91)
+    X = rng.integers(0, 256, size=(400, 784), dtype=np.uint8)
+    y = rng.integers(0, 10, size=400)
+    sc = _scenario()
+    factory, public_keys = _client_factory()
+    challenge_sizes = [16, 32, 64]
+    sc.audit["low_suitability_world"]["row_utilities"] = [0.1]*80 + [0.9]*120
+    rcal = DistributedAuditCalibrationRunner(
+        scenario=sc, X=X, y=y, role_manifest=_role("R_cal", 200, 11),
+        claim_type=ClaimType.LABEL_DISTRIBUTION,
+        challenge_sizes=challenge_sizes, n_runs=1, f=2,
+        seller_store=CommittedDatasetStore(str(tmp_path / "rcal")),
+        node_client_factory=factory, public_keys=public_keys,
+        execution_mode=ExecutionMode.TEST_FIXTURE,
+    )
+    rcal_events = rcal.run()
+    lik_arts = rcal.freeze_likelihood()
+    profile_hashes = sorted(lik_arts.keys())
+    lik_hashes = [art.artifact_hash for art in lik_arts.values()]
+    assert len(profile_hashes) == 3
+    certifier = DistributedPolicyCertifier(
+        policy=_policy(sc, profile_hashes, lik_hashes), scenario=sc, X=X, y=y,
+        role_manifest=_role("R_cert", 200, 21, start=200),
+        likelihood_artifacts=lik_arts,
+        claim_type=ClaimType.LABEL_DISTRIBUTION,
+        challenge_sizes=challenge_sizes,
+        n_runs=1, f=2,
+        seller_store=CommittedDatasetStore(str(tmp_path / "rcert")),
+        node_client_factory=factory, public_keys=public_keys,
+        execution_mode=ExecutionMode.TEST_FIXTURE,
+    )
+    art = certifier.run(r_cal_sample_ids=[int(x) for x in range(200)],
+                        r_cal_event_ids=[e.event_id for e in rcal_events])
+    assert len(art.cells) == 3
+    assert len(art.omega_allowed_envelope) == 3
+    cell_ids = [c.cell_id for c in art.cells]
+    assert "c1" not in cell_ids
+    assert sorted(cell_ids) == sorted(art.sample_size_by_cell.keys())
+    for c in art.cells:
+        assert c.action_profile_hash in lik_arts
+        assert c.likelihood_artifact_hash == lik_arts[c.action_profile_hash].artifact_hash
+        assert c.policy_hash == art.policy_hash
+        assert c.n_G == 1 and c.n_L == 1 and c.n_B == 1
+        assert c.p_breach_lower > 0.0
+    # per-cell and system scipy reconciliation must PASS
+    assert reconcile_policy_certification(art)
+    # mutation: change one cell's TP/FN must make per-cell reconciliation fail
+    mutated_cells = [replace(c, tp=c.tp + 1) if c.cell_id == cell_ids[0] else c
+                     for c in art.cells]
+    mutated = replace(art, cells=mutated_cells)
+    assert not reconcile_policy_certification(mutated)
+    # mutation: change system envelope lower bound must fail system reconciliation
+    mutated_sys = replace(art, p_breach_lower_sys=art.p_breach_lower_sys + 0.01)
+    assert not reconcile_policy_certification(mutated_sys)

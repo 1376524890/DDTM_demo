@@ -28,6 +28,74 @@ from valor.security.certification import CertifiedCell, CertificationCatalog
 
 
 @dataclass
+class PolicyCellCertification:
+    """Per-profile/cell certification evidence for R_cert.
+
+    R_cert certifies Π_A over Ω_allowed: every profile/cell that is permitted
+    to enter the policy gets its own statistical evidence and raw world refs.
+    """
+
+    cell_id: str
+    action_profile_hash: str
+    likelihood_artifact_hash: str
+    policy_hash: str
+    n_G: int
+    n_L: int
+    n_B: int
+    tp: int
+    fn: int
+    fp: int
+    tn: int
+    beta_prior: dict
+    beta_posterior: dict
+    alpha: float
+    p_breach_lower: float
+    raw_world_refs: list[str]
+    raw_evidence_refs: list[str]
+    runtime_hash: str
+
+    def to_plain(self) -> dict:
+        return {
+            "cell_id": self.cell_id,
+            "action_profile_hash": self.action_profile_hash,
+            "likelihood_artifact_hash": self.likelihood_artifact_hash,
+            "policy_hash": self.policy_hash,
+            "n_G": self.n_G,
+            "n_L": self.n_L,
+            "n_B": self.n_B,
+            "tp": self.tp,
+            "fn": self.fn,
+            "fp": self.fp,
+            "tn": self.tn,
+            "beta_prior": self.beta_prior,
+            "beta_posterior": self.beta_posterior,
+            "alpha": self.alpha,
+            "p_breach_lower": self.p_breach_lower,
+            "raw_world_refs": self.raw_world_refs,
+            "raw_evidence_refs": self.raw_evidence_refs,
+            "runtime_hash": self.runtime_hash,
+        }
+
+
+def envelope_operator(values: list[float], *, mode: str = "min") -> float:
+    """Pure EnvelopeOperator over per-cell p_B_lower values.
+
+    Paper risk semantics (fail-closed): the certified system lower bound is the
+    weakest cell lower bound across the allowed operating envelope. This is an
+    independent pure function and must never be confused with computing one
+    Beta lower bound over aggregated TP/FN.
+    """
+    if not values:
+        raise ValueError("ENVELOPE_EMPTY: cannot compute EnvelopeOperator over no cells")
+    vals = [float(v) for v in values]
+    if mode == "min":
+        return min(vals)
+    if mode == "max":
+        return max(vals)
+    raise ValueError(f"UNKNOWN_ENVELOPE_OPERATOR: {mode}")
+
+
+@dataclass
 class PolicyCertificationArtifact:
     policy: AuditPolicy
     policy_hash: str
@@ -52,6 +120,7 @@ class PolicyCertificationArtifact:
     n_L: int = 0
     n_B: int = 0
     sample_size_by_cell: dict = field(default_factory=dict)
+    cells: list[PolicyCellCertification] = field(default_factory=list)
     role_manifest_hash: str = ""
     trainer_hash: str = ""
     execution_runtime_hash: str = ""
@@ -80,6 +149,7 @@ class PolicyCertificationArtifact:
             "n_L": self.n_L,
             "n_B": self.n_B,
             "sample_size_by_cell": self.sample_size_by_cell,
+            "cells": [c.to_plain() for c in self.cells],
             "role_manifest_hash": self.role_manifest_hash,
             "trainer_hash": self.trainer_hash,
             "execution_runtime_hash": self.execution_runtime_hash,
@@ -155,10 +225,12 @@ class DistributedPolicyCertifier:
             except DataSplitIsolationError as e:
                 raise ValueError(f"DATA_ROLE_OVERLAP: {e}") from e
         # Build canonical catalogs from likelihood artifacts and scenario profiles.
+        # Build canonical catalogs from likelihood artifacts and scenario profiles.
         lik_catalog = LikelihoodCatalog()
         for art in self.likelihood_artifacts.values():
             lik_catalog.register(art)
         profile_catalog = ActionProfileCatalog()
+        profile_by_k: dict[int, str] = {}
         for k in self.challenge_sizes:
             profile = build_action_profile(
                 scenario_audit=self.scenario.audit,
@@ -166,8 +238,12 @@ class DistributedPolicyCertifier:
                 k=k, f=self.f,
                 execution_version_hash=str(self.scenario.audit.get("execution_version_hash", "cc-audit-v1")),
             )
-            if profile.action_profile_hash in self.likelihood_artifacts:
-                profile_catalog.register(profile)
+            if profile.action_profile_hash not in self.likelihood_artifacts:
+                raise ValueError(
+                    f"ACTION_NOT_CERTIFIED: no likelihood artifact for profile "
+                    f"{profile.action_profile_hash} (k={k})")
+            profile_catalog.register(profile)
+            profile_by_k[k] = profile.action_profile_hash
 
         # Phase 14: policy must be generated from the exact catalogs.
         mismatch: list[str] = []
@@ -196,61 +272,83 @@ class DistributedPolicyCertifier:
             market_provider=self.market_provider,
         )
         world_results = executor.run()
-        # Certification metrics from real policy executions (B state breach detection).
-        tp = sum(1 for w in world_results if w.state == "B"
-                 and any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
-        fn = sum(1 for w in world_results if w.state == "B"
-                 and not any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
-        fp = sum(1 for w in world_results if w.state == "G"
-                 and any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
-        tn = sum(1 for w in world_results if w.state == "G"
-                 and not any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
-        n_G = sum(1 for w in world_results if w.state == "G")
-        n_L = sum(1 for w in world_results if w.state == "L")
-        n_B = sum(1 for w in world_results if w.state == "B")
-        a, b = 1.0, 1.0
-        a_post, b_post = a + tp, b + fn
-        alpha_D = float(self.scenario.audit.get("alpha_D", 0.05))
-        # Round 6 Phase 14: build one certified cell per allowed challenge size
-        # so the Ω_allowed envelope is not a single degenerate point.
-        cat = CertificationCatalog()
-        cells = []
-        allowed_bounds = {
-            "challenge_sizes": sorted(int(x) for x in self.challenge_sizes),
-            "f": int(self.f),
-            "breach_families": ["quality"],
-        }
-        p_lower = float("inf")
-        for k in self.challenge_sizes:
-            k_worlds = [w for w in world_results if w.challenge_k == k]
-            if not k_worlds:
-                continue
-            k_tp = sum(1 for w in k_worlds if w.state == "B"
-                       and any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
-            k_fn = sum(1 for w in k_worlds if w.state == "B"
-                       and not any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
-            cell_id = f"c_k{k}"
-            cat.register(CertifiedCell(
-                cell_id, a, b, alpha_D, {"quality": (k_tp, k_fn)}))
-            p_lower_k = cat.p_breach_lower(cell_id, "quality")
-            cells.append({
-                "cell_id": cell_id, "k": int(k), "tp": k_tp, "fn": k_fn,
-                "p_breach_lower_sys": float(p_lower_k),
-            })
-        if not cells:
-            p_lower = 0.0
-            cells = [{"cell_id": "c1", "k": int(self.challenge_sizes[0]),
-                      "tp": tp, "fn": fn, "p_breach_lower_sys": float(p_lower)}]
-        else:
-            p_lower = min(c["p_breach_lower_sys"] for c in cells)
-        action_catalog_hash = profile_catalog.catalog_hash()
-        likelihood_catalog_hash = lik_catalog.catalog_hash()
-        role_manifest_hash = (
-            self.role_manifest.role_manifest_hash
-            if self.role_manifest is not None else "")
         execution_runtime_hash = (
             content_hash(self.audit_runtime.to_plain())
             if self.audit_runtime is not None else "")
+        role_manifest_hash = (
+            self.role_manifest.role_manifest_hash
+            if self.role_manifest is not None else "")
+        a, b = 1.0, 1.0
+        alpha_D = float(self.scenario.audit.get("alpha_D", 0.05))
+        cells: list[PolicyCellCertification] = []
+        cells_plain: list[dict] = []
+        sample_size_by_cell: dict[str, dict] = {}
+        for k in self.challenge_sizes:
+            profile_hash = profile_by_k[k]
+            k_worlds = [w for w in world_results if w.challenge_k == k]
+            if not k_worlds:
+                continue
+            n_G = sum(1 for w in k_worlds if w.state == "G")
+            n_L = sum(1 for w in k_worlds if w.state == "L")
+            n_B = sum(1 for w in k_worlds if w.state == "B")
+            tp = sum(1 for w in k_worlds if w.state == "B"
+                     and any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
+            fn = sum(1 for w in k_worlds if w.state == "B"
+                     and not any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
+            fp = sum(1 for w in k_worlds if w.state == "G"
+                     and any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
+            tn = sum(1 for w in k_worlds if w.state == "G"
+                     and not any(a.outcome == "BREACH_EVIDENCE" for a in w.attempts))
+            a_post, b_post = a + tp, b + fn
+            p_lower = float(_beta_ppf(alpha_D, a_post, b_post))
+            cell_id = f"c_k{k}"
+            lik_artifact_hash = ""
+            if profile_hash in self.likelihood_artifacts:
+                lik_artifact_hash = self.likelihood_artifacts[profile_hash].artifact_hash
+            raw_world_refs = [f"rcert://{w.world_id}" for w in k_worlds]
+            raw_evidence_refs = [
+                f"rcert://{w.world_id}#evidence/{i}"
+                for w in k_worlds for i in range(len(w.attempts))
+                if w.attempts[i].evidence_artifact_refs
+            ]
+            cell = PolicyCellCertification(
+                cell_id=cell_id,
+                action_profile_hash=profile_hash,
+                likelihood_artifact_hash=lik_artifact_hash,
+                policy_hash=self.policy.policy_hash,
+                n_G=n_G, n_L=n_L, n_B=n_B,
+                tp=tp, fn=fn, fp=fp, tn=tn,
+                beta_prior={"a": a, "b": b},
+                beta_posterior={"a": a_post, "b": b_post},
+                alpha=alpha_D,
+                p_breach_lower=p_lower,
+                raw_world_refs=raw_world_refs,
+                raw_evidence_refs=raw_evidence_refs,
+                runtime_hash=execution_runtime_hash,
+            )
+            cells.append(cell)
+            cells_plain.append(cell.to_plain())
+            sample_size_by_cell[cell_id] = {
+                "n_G": n_G, "n_L": n_L, "n_B": n_B,
+                "tp": tp, "fn": fn, "fp": fp, "tn": tn,
+                "action_profile_hash": profile_hash,
+                "likelihood_artifact_hash": lik_artifact_hash,
+            }
+        if not cells:
+            raise ValueError(
+                "R_CERT_NO_CELLS: no certified cells produced (policy/world "
+                "execution failed for every profile)")
+        # System envelope: independent pure EnvelopeOperator over per-cell bounds.
+        p_lower_sys = envelope_operator([c.p_breach_lower for c in cells])
+        omega_allowed_envelope = [{
+            "cell_id": c.cell_id,
+            "action_profile_hash": c.action_profile_hash,
+            "likelihood_artifact_hash": c.likelihood_artifact_hash,
+            "policy_hash": c.policy_hash,
+            "p_breach_lower": c.p_breach_lower,
+        } for c in cells]
+        action_catalog_hash = profile_catalog.catalog_hash()
+        likelihood_catalog_hash = lik_catalog.catalog_hash()
         world_construction_hashes = sorted(
             content_hash({
                 "world_id": w.world_id,
@@ -267,11 +365,11 @@ class DistributedPolicyCertifier:
             "world_construction_hashes": world_construction_hashes,
             "world_result_hashes": sorted(
                 content_hash(w.to_plain()) for w in world_results),
-            "tp": tp, "fn": fn, "fp": fp, "tn": tn,
+            "cells": [c.to_plain() for c in cells],
             "beta_prior": {"a": a, "b": b},
             "alpha_D": alpha_D,
-            "omega_allowed_envelope": cells,
-            "allowed_profile_bounds": allowed_bounds,
+            "omega_allowed_envelope": omega_allowed_envelope,
+            "envelope_operator": "min",
         })
         return PolicyCertificationArtifact(
             policy=self.policy, policy_hash=self.policy.policy_hash,
@@ -280,20 +378,25 @@ class DistributedPolicyCertifier:
             r_cert_hash=artifact_hash,
             trainer_task_family="digit-classification",
             breach_family="quality",
-            tp=tp, fn=fn, fp=fp, tn=tn,
+            tp=sum(c.tp for c in cells),
+            fn=sum(c.fn for c in cells),
+            fp=sum(c.fp for c in cells),
+            tn=sum(c.tn for c in cells),
             beta_prior={"a": a, "b": b},
-            beta_posterior={"a": a_post, "b": b_post},
+            beta_posterior={"a": a + sum(c.tp for c in cells),
+                            "b": b + sum(c.fn for c in cells)},
             alpha_D=alpha_D,
-            p_breach_lower_sys=float(p_lower),
-            omega_allowed_envelope=cells,
+            p_breach_lower_sys=float(p_lower_sys),
+            omega_allowed_envelope=omega_allowed_envelope,
             raw_certification_event_refs=[
                 f"rcert://{w.world_id}" for w in world_results],
             n_runs=self.n_runs,
             n_worlds=len(world_results),
-            n_G=n_G,
-            n_L=n_L,
-            n_B=n_B,
-            sample_size_by_cell={"c1": {"tp": tp, "fn": fn, "fp": fp, "tn": tn}},
+            n_G=sum(1 for w in world_results if w.state == "G"),
+            n_L=sum(1 for w in world_results if w.state == "L"),
+            n_B=sum(1 for w in world_results if w.state == "B"),
+            sample_size_by_cell=sample_size_by_cell,
+            cells=cells,
             role_manifest_hash=role_manifest_hash,
             trainer_hash=content_hash(self.scenario.trainer),
             execution_runtime_hash=execution_runtime_hash,
@@ -303,26 +406,38 @@ class DistributedPolicyCertifier:
         )
 
 
-__all__ = ["DistributedPolicyCertifier", "PolicyCertificationArtifact"]
+def _beta_ppf(alpha_D: float, a_post: float, b_post: float) -> float:
+    from scipy.stats import beta as beta_dist
+    if a_post <= 0 or b_post <= 0:
+        raise ValueError("INVALID_BETA_PARAMS: posterior shape must be positive")
+    return float(beta_dist.ppf(alpha_D, a_post, b_post))
+
+
+__all__ = [
+    "DistributedPolicyCertifier",
+    "PolicyCertificationArtifact",
+    "PolicyCellCertification",
+    "envelope_operator",
+    "reconcile_policy_certification",
+]
 
 
 def reconcile_policy_certification(artifact: PolicyCertificationArtifact) -> bool:
-    """Recompute p̲_B^sys from the canonical Beta posterior and compare.
+    """Recompute per-cell and system p_B_lower from scipy Beta ppf.
 
-    Canonical formula (spec §22):
-        posterior = Beta(a_D + TP, b_D + FN)
-        p_lower   = Q_{alpha_D}[posterior]
-    The CertifiedCell must be built with prior (a_D, b_D) and families=(TP,FN);
-    the artifact's beta_posterior is metadata only.
+    Requirement: each cell is verified independently, then the system envelope
+    is recomputed through the pure EnvelopeOperator. A mutation to one cell's
+    TP/FN or to the envelope operator output must make reconciliation FAIL.
     """
-    a_D = float(artifact.beta_prior["a"])
-    b_D = float(artifact.beta_prior["b"])
-    cat = CertificationCatalog()
-    cat.register(CertifiedCell(
-        "c1", a_D, b_D, artifact.alpha_D,
-        {"quality": (int(artifact.tp), int(artifact.fn))}))
-    expected = cat.p_breach_lower("c1", "quality")
-    return abs(float(expected) - float(artifact.p_breach_lower_sys)) < 1e-12
+    if not artifact.cells:
+        return False
+    for cell in artifact.cells:
+        a = float(cell.beta_prior["a"])
+        b = float(cell.beta_prior["b"])
+        expected = _beta_ppf(cell.alpha, a + cell.tp, b + cell.fn)
+        if abs(expected - cell.p_breach_lower) > 1e-12:
+            return False
+    expected_sys = envelope_operator([c.p_breach_lower for c in artifact.cells])
+    return abs(expected_sys - float(artifact.p_breach_lower_sys)) < 1e-12
 
 
-__all__ = ["DistributedPolicyCertifier", "PolicyCertificationArtifact", "reconcile_policy_certification"]

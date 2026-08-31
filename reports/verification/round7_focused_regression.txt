@@ -1,4 +1,5 @@
-Round 7 focused regression (exact-HEAD pending final commit)
+Round 7 exact-HEAD regression (commit beb4f06777bd9ba58c99ccf8181fb235c6136bd5)
+- full pytest: 359 passed, 0 failed, 0 errors
 - R_cert multi-profile envelope tests: PASS
 - FullChainGate tests: PASS
 - Capability tests: PASS
@@ -6,7 +7,7 @@ Round 7 focused regression (exact-HEAD pending final commit)
 - Replay/Randomness tests: PASS
 - PricingProvenance validate tests: PASS
 - Scenario matrix C10/C11/C12: PASS
-- Mutation suite 30 tests: PASS (focused)
+- Mutation suite 30 tests: PASS
 - Business-default scanner: PASS
 - Forbidden-pattern scanner: PASS
 - Mechanism purity scanner: PASS

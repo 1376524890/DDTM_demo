@@ -49,8 +49,8 @@ def base():
 def _eval(sc, stages, manifest, ledger, replay=True, final_eval_leak=False):
     return evaluate_full_chain(
         scenario=sc, manifest=manifest, ledger=ledger,
-        stages=stages, replay_consistent=replay,
-        final_eval_accessed_before_decision=final_eval_leak,
+        stages=stages, legacy_replay_consistent=replay,
+        legacy_final_eval_accessed_before_decision=final_eval_leak,
     )
 
 
@@ -99,8 +99,13 @@ def test_mutation_price_fails_g19(base):
 
 def test_mutation_final_eval_leak_fails_g37(base):
     sc, stages, manifest, ledger, _ = base
-    gate = _eval(sc, copy.deepcopy(stages), manifest, ledger,
-                 replay=True, final_eval_leak=True)
+    stages = copy.deepcopy(stages)
+    fb = stages.get("feedback")
+    if fb is None:
+        pytest.skip("feedback stage missing")
+    fb.output["terminal_decision_artifact"] = {
+        "terminal": "TRADE", "stage": "DATA_VOI", "artifact_hash": "x"}
+    gate = _eval(sc, stages, manifest, ledger, replay=True)
     assert gate["checks"]["MFC-G37_FINALEVAL_UNREADABLE_PRE_TERMINAL"] is False
 
 
@@ -235,3 +240,130 @@ def test_mutation_winner_committee_fails_g03(base):
             e["committee"][0] = "mutated-node"
     gate = _eval(sc, stages, manifest, ledger)
     assert gate["checks"]["MFC-G03_QUOTE_MATCHES_REVERSE_VCG"] is False
+
+
+def test_mutation_profile_hash_fails_g04(base):
+    sc, stages, manifest, ledger, _ = base
+    baseline = _eval(sc, copy.deepcopy(stages), manifest, ledger)
+    assert baseline["checks"]["MFC-G04_EXECUTION_BINDS_QUOTE"] is True
+    stages = copy.deepcopy(stages)
+    er = stages["audit"].output.get("audit_execution_records", [])
+    if er:
+        er[0]["selected_action_profile_hash"] = "mutated-profile"
+    else:
+        for e in stages["audit"].output.get("audit_trace_events", []):
+            e["action_profile_hash"] = "mutated-profile"
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G04_EXECUTION_BINDS_QUOTE"] is False
+
+
+def test_mutation_snapshot_hash_fails_g04(base):
+    sc, stages, manifest, ledger, _ = base
+    baseline = _eval(sc, copy.deepcopy(stages), manifest, ledger)
+    assert baseline["checks"]["MFC-G04_EXECUTION_BINDS_QUOTE"] is True
+    stages = copy.deepcopy(stages)
+    er = stages["audit"].output.get("audit_execution_records", [])
+    if er:
+        er[0]["selected_market_snapshot_hash"] = "mutated-snapshot"
+    else:
+        for e in stages["audit"].output.get("audit_trace_events", []):
+            e["market_snapshot_hash"] = "mutated-snapshot"
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G04_EXECUTION_BINDS_QUOTE"] is False
+
+
+def test_mutation_quote_hash_fails_g04(base):
+    sc, stages, manifest, ledger, _ = base
+    baseline = _eval(sc, copy.deepcopy(stages), manifest, ledger)
+    assert baseline["checks"]["MFC-G04_EXECUTION_BINDS_QUOTE"] is True
+    stages = copy.deepcopy(stages)
+    er = stages["audit"].output.get("audit_execution_records", [])
+    if er:
+        er[0]["selected_quote_hash"] = "mutated-quote"
+    else:
+        for e in stages["audit"].output.get("audit_trace_events", []):
+            e["quote_hash"] = "mutated-quote"
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G04_EXECUTION_BINDS_QUOTE"] is False
+
+
+
+def test_mutation_pmin_fails_g20(base):
+    sc, stages, manifest, ledger, _ = base
+    baseline = _eval(sc, copy.deepcopy(stages), manifest, ledger)
+    assert baseline["checks"]["MFC-G20_PMIN_RECONCILES"] is True
+    stages = copy.deepcopy(stages)
+    stages["pricing"].output["p_min"] += 1.0
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G20_PMIN_RECONCILES"] is False
+
+
+
+def test_mutation_rights_hash_fails_g22(base):
+    sc, stages, manifest, ledger, _ = base
+    baseline = _eval(sc, copy.deepcopy(stages), manifest, ledger)
+    assert baseline["checks"]["MFC-G22_RIGHTS_COMPATIBILITY_PASSED"] is True
+    stages = copy.deepcopy(stages)
+    if stages.get("entitlement"):
+        stages["entitlement"].output["compatible"]["passes"] = False
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G22_RIGHTS_COMPATIBILITY_PASSED"] is False
+
+
+def test_mutation_usage_receipt_fails_g28(base):
+    sc, stages, manifest, ledger, _ = base
+    baseline = _eval(sc, copy.deepcopy(stages), manifest, ledger)
+    assert baseline["checks"]["MFC-G28_EVERY_USAGE_HAS_RECEIPT"] is True
+    stages = copy.deepcopy(stages)
+    stages["usage"].output["n_requests"] = 999
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G28_EVERY_USAGE_HAS_RECEIPT"] is False
+
+
+def test_mutation_lineage_fails_g35(base):
+    sc, stages, manifest, ledger, _ = base
+    baseline = _eval(sc, copy.deepcopy(stages), manifest, ledger)
+    assert baseline["checks"]["MFC-G35_LINEAGE_HASH_CHAIN_VALID"] is True
+    stages = copy.deepcopy(stages)
+    stages["usage"].output["chain_valid"] = False
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G35_LINEAGE_HASH_CHAIN_VALID"] is False
+
+
+
+
+
+
+def test_mutation_posterior_fails_g12(base):
+    sc, stages, manifest, ledger, events = base
+    baseline = _eval(sc, copy.deepcopy(stages), manifest, ledger)
+    assert baseline["checks"]["MFC-G12_POSTERIOR_REPLAYED"] is True
+    stages = copy.deepcopy(stages)
+    stages["audit"].output["posterior"] = {"pi_b": 0.999, "q_l": 0.999}
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G12_POSTERIOR_REPLAYED"] is False
+
+
+def test_mutation_pB_fails_g14(base):
+    sc, stages, manifest, ledger, _ = base
+    baseline = _eval(sc, copy.deepcopy(stages), manifest, ledger)
+    assert baseline["checks"]["MFC-G14_PB_SYS_RECOMPUTED"] is True
+    stages = copy.deepcopy(stages)
+    stages["certification"].output["p_breach_lower_sys"] = 0.5
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G14_PB_SYS_RECOMPUTED"] is False
+
+
+def test_mutation_delete_quorum_evidence_fails_g06(base):
+    sc, stages, manifest, ledger, events = base
+    baseline = _eval(sc, copy.deepcopy(stages), manifest, ledger)
+    assert baseline["checks"]["MFC-G06_QUORUM_COUNTS_VALID_EVIDENCE_ONLY"] is True
+    stages = copy.deepcopy(stages)
+    if events:
+        e = stages["audit"].output["audit_trace_events"][0]
+        refs = e.get("evidence_artifact_refs", [])
+        if refs:
+            q = 2 * int(sc.audit.get("f", 2)) + 1
+            e["evidence_artifact_refs"] = refs[: max(0, q - 1)]
+    gate = _eval(sc, stages, manifest, ledger)
+    assert gate["checks"]["MFC-G06_QUORUM_COUNTS_VALID_EVIDENCE_ONLY"] is False

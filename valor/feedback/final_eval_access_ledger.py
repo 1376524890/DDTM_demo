@@ -41,7 +41,37 @@ class FinalEvaluationAccessLedger:
         }
 
 
-__all__ = ["FinalEvaluationAccessLedger", "FinalEvaluationAccessRecord"]
+__all__ = ["FinalEvaluationAccessLedger", "FinalEvaluationAccessRecord", "TerminalDecisionArtifact"]
+
+
+@dataclass(frozen=True)
+class TerminalDecisionArtifact:
+    """Unforgeable terminal decision produced only after the transaction terminal
+    state is frozen. FinalEvaluationHandle.resolve requires this artifact; callers
+    cannot pass terminal_state directly in FORMAL/PRODUCTION closure paths."""
+
+    terminal: str
+    stage: str
+    tx_id: str = ""
+    run_id: str = ""
+
+    @property
+    def artifact_hash(self) -> str:
+        return content_hash({
+            "terminal": self.terminal,
+            "stage": self.stage,
+            "tx_id": self.tx_id,
+            "run_id": self.run_id,
+        })
+
+    def to_plain(self) -> dict:
+        return {
+            "terminal": self.terminal,
+            "stage": self.stage,
+            "tx_id": self.tx_id,
+            "run_id": self.run_id,
+            "artifact_hash": self.artifact_hash,
+        }
 
 
 class FinalEvaluationHandle:
@@ -58,11 +88,31 @@ class FinalEvaluationHandle:
         self._indices = tuple(sorted(int(i) for i in indices))
         self._ledger = ledger
 
-    def resolve(self, *, stage: str, caller: str, terminal_state) -> tuple:
-        """Return (final_X, final_y) only after terminal state is frozen."""
+    def resolve(self, *, stage: str, caller: str, terminal_state=None,
+                terminal_artifact: TerminalDecisionArtifact | None = None) -> tuple:
+        """Return (final_X, final_y) only after terminal state is frozen.
+
+        In FORMAL/PRODUCTION closure paths callers must supply a real
+        TerminalDecisionArtifact. Pre-terminal resolution records DENY and
+        raises FINAL_EVALUATION_ACCESS_FORBIDDEN.
+        """
         import numpy as np
 
-        terminal_val = getattr(terminal_state, "value", terminal_state)
+        terminal_val = None
+        if terminal_artifact is not None:
+            if str(getattr(terminal_artifact, "stage", "")) != "FEEDBACK":
+                self._ledger.record(
+                    caller=caller, stage=stage, role="R_eval",
+                    reason="FINAL_EVALUATION_ACCESS_FORBIDDEN")
+                raise ValueError("FINAL_EVALUATION_ACCESS_FORBIDDEN")
+            terminal_val = getattr(terminal_artifact, "terminal", "")
+        elif terminal_state is not None:
+            terminal_val = getattr(terminal_state, "value", terminal_state)
+        else:
+            self._ledger.record(
+                caller=caller, stage=stage, role="R_eval",
+                reason="FINAL_EVALUATION_ACCESS_FORBIDDEN")
+            raise ValueError("FINAL_EVALUATION_ACCESS_FORBIDDEN")
         if str(terminal_val) != "TRADE":
             self._ledger.record(
                 caller=caller, stage=stage, role="R_eval",

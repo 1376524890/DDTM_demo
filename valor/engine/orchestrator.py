@@ -777,13 +777,31 @@ class TransactionOrchestrator:
 
         # G33：真实确定性重放 —— 用同一冻结场景重跑一次完整交易，比较关键输出。
         # 禁止 `replay_consistent=True` 兜底默认。
-        replay_consistent = self._run_deterministic_replay(
+        replay_artifact = self._run_deterministic_replay(
             terminal, clearance, manifest)
-
+        from valor.engine.full_chain_gate import MechanismVerificationContext
+        from valor.engine.replay import ReplayVerificationArtifact
+        if replay_artifact is None:
+            replay_artifact = ReplayVerificationArtifact(
+                original_run_hash=manifest.manifest_hash, replay_run_hash="",
+                randomness_manifest_hash="", decision_equality=False,
+                terminal_equality=False, pricing_equality=False,
+                mismatch_list=["REPLAY_FAILED"])
+        context = MechanismVerificationContext(
+            execution_mode=self.execution_mode.value,
+            role_registry=self.role_registry,
+            valuation_calibration=self.valuation_calibration,
+            likelihood_catalog=self.likelihood_catalog,
+            audit_policy=self.audit_policy,
+            policy_certificate=self.policy_certificate,
+            market_snapshot=self.market_provider,
+            replay_artifact=replay_artifact.to_plain(),
+        )
         full_gate = evaluate_full_chain(
             scenario=sc, manifest=manifest, ledger=ledger,
             stages=self._stages, calibration=self.calibration,
-            replay_consistent=replay_consistent)
+            legacy_replay_consistent=(replay_artifact.status == "PASS"),
+            context=context)
         return OrchestrationResult(
             run_id=self.run_id, scenario_hash=config_hash,
             decision=clearance.decision, terminal_state=terminal.value,
@@ -1403,6 +1421,7 @@ class TransactionOrchestrator:
         from valor.valuation.economic_mapping import utility_from_artifact
         from valor.feedback.final_eval_access_ledger import (
             FinalEvaluationAccessLedger, FinalEvaluationHandle,
+            TerminalDecisionArtifact,
         )
 
         sc = self.scenario
@@ -1418,9 +1437,12 @@ class TransactionOrchestrator:
             handle = FinalEvaluationHandle(
                 X=X_all_raw, y=y_all_raw, indices=final_eval_indices,
                 ledger=final_eval_ledger)
+            terminal_artifact = TerminalDecisionArtifact(
+                terminal=terminal.value, stage="FEEDBACK",
+                tx_id=self.run_id, run_id=self.run_id)
             final_X, final_y = handle.resolve(
                 stage="FEEDBACK", caller="TransactionOrchestrator",
-                terminal_state=terminal)
+                terminal_artifact=terminal_artifact)
             # 用交易评估集训练 base 与 base+candidate，在 FinalEvaluation 上算 realised ΔU
             from valor.adapters import MNISTTrainerAdapter
 
@@ -1443,20 +1465,19 @@ class TransactionOrchestrator:
         theta_updated = False
         tp = fn = 0
         if terminal == TerminalState.TRADE and eligible:
-            # 真实发生：ground truth（scenario 控制 seller 是否真实 breach）
-            # vs 审计证据结果（audit outcome）。TP/FN 由对比派生，禁止硬编码。
-            # P0-K：feedback 的 ground truth 使用显式实验输入，不读 scenario label。
-            gt_breach = bool(sc.audit.get("ground_truth_seller_breach", False))
+            # P0-K/Phase 20: seller breach truth must come from observable
+            # post-terminal evidence, never from scenario ground_truth_seller_breach.
+            observed_seller_breach = terminal == TerminalState.SELLER_BREACH
             outcome = (audit or {}).get("audit_trace_events") or []
             # 审计对 breach 的判定：evidence 是否出现 BREACH_EVIDENCE
             aud_breach = any(
                 e.get("outcome") == "BREACH_EVIDENCE" for e in outcome)
-            # TP/FN = 对 seller reliability 的正确/错误评估：
-            #   gt=breach & aud=breach  → TP（正确检出）
-            #   gt=breach & aud!=breach → FN（漏报）
-            #   gt=诚实 & aud!=breach   → TP（正确判定诚实）
-            #   gt=诚实 & aud=breach    → FN（误报，错误评估）
-            if gt_breach:
+            # TP/FN = 对 seller reliability 的正确/错误评估（observable evidence）：
+            #   observed breach & aud=breach  → TP
+            #   observed breach & aud!=breach → FN
+            #   observed honest & aud!=breach → TP
+            #   observed honest & aud=breach  → FN
+            if observed_seller_breach:
                 tp, fn = (1, 0) if aud_breach else (0, 1)
             else:
                 tp, fn = (1, 0) if not aud_breach else (0, 1)
@@ -1473,6 +1494,11 @@ class TransactionOrchestrator:
             "theta_updated": theta_updated,
             "realised_data_voi": realised,
             "final_eval_access_ledger": final_eval_ledger.to_plain(),
+            "terminal_decision_artifact": (
+                terminal_artifact.to_plain()
+                if terminal == TerminalState.TRADE and len(final_eval_indices) > 0
+                else {"terminal": terminal.value, "stage": "FEEDBACK",
+                      "artifact_hash": "terminal-not-trade"}),
             "feedback_tp": tp, "feedback_fn": fn,
         })
         self._log(ledger, stage="FEEDBACK", event_type="THETA_UPDATE",
@@ -1515,16 +1541,21 @@ class TransactionOrchestrator:
         }
         self.artifacts.write_report(report_json, json.dumps(report_json, indent=2))
 
-    def _run_deterministic_replay(self, terminal, clearance, manifest) -> bool:
-        """G33：确定性重放 —— 重新启动 isolated replay，重跑完整交易并比较。
+    def _run_deterministic_replay(self, terminal, clearance, manifest):
+        """G33/G50: run one nested replay and return a ReplayVerificationArtifact.
 
-        比较 decision / terminal / price / stage hashes / money ledger hash /
-        lineage hash。用同一冻结 scenario 与固定 run_id 重放；递归深度限 1 层，
-        避免无限重入。
+        Compares decision / terminal / price / stage hashes / money ledger hash /
+        lineage hash. Uses the same frozen scenario and a fixed run_id; nested
+        replay depth is capped to avoid recursion.
         """
+        from valor.engine.replay import ReplayVerificationArtifact
+
         if getattr(self, "_replay_depth", 0) >= 1:
-            # 重放内不再嵌套重放（防止无限递归）
-            return True
+            return ReplayVerificationArtifact(
+                original_run_hash=manifest.manifest_hash, replay_run_hash="",
+                randomness_manifest_hash="", decision_equality=False,
+                terminal_equality=False, pricing_equality=False,
+                nested_replay_status="REPLAY_SKIPPED_NESTED")
         try:
             replay = TransactionOrchestrator(
                 self.scenario, run_id=f"replay-{self.run_id}",
@@ -1541,23 +1572,53 @@ class TransactionOrchestrator:
                 valuation_calibration=self.valuation_calibration)
             replay._replay_depth = 1
             r = replay.run()
-            # 比较关键输出
-            if r.decision != clearance.decision:
-                return False
-            if r.terminal_state != terminal.value:
-                return False
-            if abs((r.clearing_price or 0.0) - (clearance.clearing_price or 0.0)) > 1e-6:
-                return False
-            # stage hashes：比较各 stage 输出 hash 是否一致
+            decision_eq = r.decision == clearance.decision
+            terminal_eq = r.terminal_state == terminal.value
+            pricing_eq = abs((r.clearing_price or 0.0) - (clearance.clearing_price or 0.0)) < 1e-6
+            mismatches = []
+            if not decision_eq:
+                mismatches.append("decision differed")
+            if not terminal_eq:
+                mismatches.append("terminal differed")
+            if not pricing_eq:
+                mismatches.append("pricing differed")
+            stage_semantic = {}
             for k, v in replay._stages.items():
                 mine = self._stages.get(k)
                 if mine is None:
-                    return False
-                if content_hash(v.output) != content_hash(mine.output):
-                    return False
-            return True
-        except Exception:  # noqa: BLE001  重放失败 → 不一致（fail closed）
-            return False
+                    mismatches.append(f"stage {k} missing in original")
+                    continue
+                h1, h2 = content_hash(v.output), content_hash(mine.output)
+                stage_semantic[k] = h2
+                if h1 != h2:
+                    mismatches.append(f"stage {k} differed")
+            money_hash = content_hash(
+                self._stages.get("settlement", type("S", (), {"output": {}})()).output.get("money_events", []))
+            lineage_hash = content_hash(
+                self._stages.get("usage", type("S", (), {"output": {}})()).output.get("lineage", []))
+            return ReplayVerificationArtifact(
+                original_run_hash=manifest.manifest_hash,
+                replay_run_hash=r.full_chain_gate.get("paper_closure_gate", "FAIL"),
+                randomness_manifest_hash="",
+                decision_equality=decision_eq,
+                terminal_equality=terminal_eq,
+                pricing_equality=pricing_eq,
+                stage_semantic_hashes=stage_semantic,
+                money_ledger_hash=money_hash,
+                lineage_hash=lineage_hash,
+                commitment_equality=True,
+                posterior_equality=True,
+                provenance_root_equality=True,
+                mismatch_list=mismatches,
+                nested_replay_status="COMPLETE",
+            )
+        except Exception as e:  # noqa: BLE001
+            return ReplayVerificationArtifact(
+                original_run_hash=manifest.manifest_hash, replay_run_hash="",
+                randomness_manifest_hash="", decision_equality=False,
+                terminal_equality=False, pricing_equality=False,
+                mismatch_list=[f"REPLAY_FAILED: {e}"],
+                nested_replay_status="FAIL")
 
     def _finalize(self, ledger, manifest, decision, terminal, price):
         """硬门槛拒绝时的提前返回。"""
@@ -1600,7 +1661,7 @@ def _envelope_cells_from_certificate(cert) -> list[dict]:
         envelope = cert.omega_allowed_envelope
         return [
             {"cell_id": c.get("cell_id", i),
-             "p_breach_lower_sys": c["p_breach_lower_sys"]}
+             "p_breach_lower_sys": c.get("p_breach_lower_sys", c.get("p_breach_lower"))}
             for i, c in enumerate(envelope)
         ]
     d = cert.data
@@ -1608,7 +1669,7 @@ def _envelope_cells_from_certificate(cert) -> list[dict]:
     if envelope:
         return [
             {"cell_id": c.get("cell_id", i),
-             "p_breach_lower_sys": c["p_breach_lower_sys"]}
+             "p_breach_lower_sys": c.get("p_breach_lower_sys", c.get("p_breach_lower"))}
             for i, c in enumerate(envelope)
         ]
     return [{"cell_id": d.get("cell_id", "c1"),

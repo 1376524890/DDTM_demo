@@ -55,3 +55,35 @@ def test_worker_execute_requires_valid_capability():
     bad = replace(cap, actor="mallory")
     with pytest.raises(ValueError, match="CAPABILITY_INVALID"):
         prov.execute(bad, job, [], [])
+
+
+def test_invalid_forged_token_does_not_consume_nonce():
+    issuer = CapabilityIssuer("issuer-1")
+    cap = _issued(issuer)
+    forged = replace(cap, actor="mallory", nonce="fresh-nonce")
+    assert issuer.verify(forged) is False
+    # nonce must NOT have been consumed by the invalid token
+    good = issuer.issue(
+        tx_id="tx-1", job_spec_hash="job", dataset_commitment="d",
+        rights_hash="r", actor="buyer_org_A", purpose="digit-classification",
+        algorithm_hash="alg", output_policy="MODEL_ARTIFACT",
+        execution_profile="ep", expiry="2099-12-31", nonce="fresh-nonce",
+    )
+    assert issuer.verify(good) is True
+
+
+def test_capability_uses_injectable_clock():
+    from datetime import datetime, timezone
+    from valor.execution.secure_execution import ClockProvider
+
+    clock = ClockProvider(now=datetime(2099, 1, 1, tzinfo=timezone.utc))
+    issuer = CapabilityIssuer("issuer-clock", clock=clock)
+    cap = issuer.issue(
+        tx_id="tx", job_spec_hash="job", dataset_commitment="d",
+        rights_hash="r", actor="a", purpose="p", algorithm_hash="alg",
+        output_policy="out", execution_profile="ep",
+        expiry="2100-01-01", nonce="clock-nonce",
+    )
+    assert issuer.verify(cap) is True
+    clock.set_now(datetime(2101, 1, 1, tzinfo=timezone.utc))
+    assert issuer.verify(cap) is False

@@ -61,6 +61,7 @@ class PricingProvenanceGraph:
     nodes: dict[str, ResolvedParameter] = field(default_factory=dict)
     edges: list[dict] = field(default_factory=list)
     root: str = "P_star"
+    required_nodes: set[str] = field(default_factory=set)
     # backward-compatible flat view
     parameters: list[ResolvedParameter] = field(default_factory=list)
 
@@ -97,6 +98,58 @@ class PricingProvenanceGraph:
                       "CONTRACT_INPUT", "CALIBRATION", "MARKET_DISCOVERED",
                       "CERTIFIED", "OBSERVED_DATA"}]
         return leaves
+
+    def validate(self, *, required_nodes: list[str] | None = None) -> list[str]:
+        """Return a list of validation violations (empty means valid)."""
+        violations: list[str] = []
+        if self.root not in self.nodes:
+            violations.append(f"ROOT_MISSING: {self.root}")
+            return violations
+        req = list(self.required_nodes) if self.required_nodes else (required_nodes or [])
+        closure = self.reverse(self.root)
+        for node in req:
+            if node not in self.nodes:
+                violations.append(f"REQUIRED_NODE_MISSING: {node}")
+            elif node not in closure:
+                violations.append(f"REQUIRED_NODE_UNREACHABLE: {node}")
+        # cycle detection via DFS on edges
+        children: dict[str, list[str]] = {nid: [] for nid in self.nodes}
+        for e in self.edges:
+            children.setdefault(e["parent"], []).append(e["child"])
+        visiting, visited = set(), set()
+        def dfs(nid):
+            if nid in visited:
+                return False
+            if nid in visiting:
+                return True
+            visiting.add(nid)
+            for c in children.get(nid, []):
+                if c in self.nodes and dfs(c):
+                    return True
+            visiting.remove(nid)
+            visited.add(nid)
+            return False
+        for nid in self.nodes:
+            if dfs(nid):
+                violations.append(f"CYCLE_DETECTED")
+                break
+        for nid, node in self.nodes.items():
+            if node.source_kind == "UNKNOWN":
+                violations.append(f"UNKNOWN_SOURCE_KIND: {nid}")
+            if node.source_kind == "COMPUTED":
+                if not node.formula_id:
+                    violations.append(f"COMPUTED_WITHOUT_FORMULA: {nid}")
+                parents = [e for e in self.edges if e["child"] == nid]
+                if not parents:
+                    violations.append(f"COMPUTED_WITHOUT_PARENT: {nid}")
+            else:
+                if node.source_kind not in {
+                        "CONTRACT_INPUT", "CALIBRATION", "MARKET_DISCOVERED",
+                        "CERTIFIED", "OBSERVED_DATA", "AUDIT", "TEST_FIXTURE"}:
+                    violations.append(f"ILLEGAL_SOURCE_KIND: {nid}:{node.source_kind}")
+                if not node.source_artifact_hash and node.source_kind != "TEST_FIXTURE":
+                    violations.append(f"MISSING_SOURCE_ARTIFACT_HASH: {nid}")
+        return violations
 
     def graph_hash(self) -> str:
         return content_hash({

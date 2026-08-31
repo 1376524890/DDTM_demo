@@ -72,6 +72,22 @@ class CapabilityToken:
 
 
 
+class ClockProvider:
+    """Injectable deterministic clock so replay is not broken by datetime.now."""
+
+    def __init__(self, now: Any = None) -> None:
+        self._now = now
+
+    def utcnow(self):
+        if self._now is not None:
+            return self._now
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc)
+
+    def set_now(self, now: Any) -> None:
+        self._now = now
+
+
 class CapabilityIssuer:
     """Issues and verifies unforgeable capability tokens (Round 6 Phase 17).
 
@@ -80,13 +96,19 @@ class CapabilityIssuer:
     nonce replay.
     """
 
-    def __init__(self, issuer_id: str, keypair=None) -> None:
+    def __init__(self, issuer_id: str, keypair=None, clock: ClockProvider | None = None,
+                 revoked_nonces: set[str] | None = None) -> None:
         self.issuer_id = issuer_id
         if keypair is None:
             from valor.security.signing import SigningKeyPair
             keypair = SigningKeyPair.generate(f"cap-issuer-{issuer_id}")
         self._keypair = keypair
         self._used_nonces: set[str] = set()
+        self._clock = clock or ClockProvider()
+        self._revoked = set(revoked_nonces or ())
+
+    def revoke_nonce(self, nonce: str) -> None:
+        self._revoked.add(nonce)
 
     @property
     def public_key_hex(self) -> str:
@@ -112,30 +134,30 @@ class CapabilityIssuer:
             expiry=cap.expiry, nonce=cap.nonce, issuer=cap.issuer, signature=sig,
         )
 
-    def verify(self, capability: CapabilityToken, *, allow_replay: bool = False) -> bool:
+    def verify(self, capability: CapabilityToken, *, allow_replay: bool = False,
+               expected: dict | None = None) -> bool:
+        """Ordered verification: parse -> issuer -> expiry -> signature ->
+        semantic binding -> revocation -> nonce replay -> atomic nonce consume."""
+        # issuer
         if capability.issuer != self.issuer_id:
             return False
         if not capability.signature:
             return False
+        # expiry via injectable clock
         if capability.expiry:
             from datetime import datetime, timezone
-            now = datetime.now(timezone.utc)
+            now = self._clock.utcnow()
             exp_str = capability.expiry.replace("Z", "+00:00")
             try:
                 exp = datetime.fromisoformat(exp_str)
                 if exp.tzinfo is None:
-                    from datetime import timezone as _tz
-                    exp = exp.replace(tzinfo=_tz.utc)
+                    exp = exp.replace(tzinfo=timezone.utc)
                 if now > exp:
                     return False
             except ValueError:
-                # date-only expiry: compare ISO date strings
                 if exp_str[:10] < now.date().isoformat():
                     return False
-        if not allow_replay and capability.nonce in self._used_nonces:
-            return False
-        if not allow_replay:
-            self._used_nonces.add(capability.nonce)
+        # signature verification (before any nonce state mutation)
         try:
             from cryptography.hazmat.primitives.asymmetric import ed25519
             pub = ed25519.Ed25519PublicKey.from_public_bytes(
@@ -143,6 +165,19 @@ class CapabilityIssuer:
             pub.verify(bytes.fromhex(capability.signature), self._payload(capability))
         except Exception:
             return False
+        # semantic binding (if caller provides expected values)
+        if expected is not None:
+            for k, v in expected.items():
+                if getattr(capability, k, None) != v:
+                    return False
+        # revocation
+        if capability.nonce in self._revoked:
+            return False
+        # nonce replay check + atomic consume (only after all prior checks pass)
+        if not allow_replay:
+            if capability.nonce in self._used_nonces:
+                return False
+            self._used_nonces.add(capability.nonce)
         return True
 
     @staticmethod

@@ -42,6 +42,12 @@ class AuditRuntimeDescriptor:
     task_schema_hash: str = ""
     server_code_hash: str = ""
     environment_hash: str = ""
+    accessible_paths: list[str] = field(default_factory=list)
+    data_mounts: list[str] = field(default_factory=list)
+    full_dataset_present: bool = False
+    seller_private_mount: bool = False
+    input_row_count: int = 0
+    challenge_disclosure: int = 0
 
     def to_plain(self) -> dict:
         return {
@@ -53,6 +59,12 @@ class AuditRuntimeDescriptor:
             "task_schema_hash": self.task_schema_hash,
             "server_code_hash": self.server_code_hash,
             "environment_hash": self.environment_hash,
+            "accessible_paths": list(self.accessible_paths),
+            "data_mounts": list(self.data_mounts),
+            "full_dataset_present": self.full_dataset_present,
+            "seller_private_mount": self.seller_private_mount,
+            "input_row_count": self.input_row_count,
+            "challenge_disclosure": self.challenge_disclosure,
         }
 
     @classmethod
@@ -72,6 +84,12 @@ class AuditRuntimeDescriptor:
                 "python": sys.version.split()[0],
                 "cwd": str(Path(__file__).resolve().parent.parent.parent),
             }),
+            accessible_paths=["/tmp"],
+            data_mounts=[],
+            full_dataset_present=False,
+            seller_private_mount=False,
+            input_row_count=0,
+            challenge_disclosure=0,
         )
 
 

@@ -76,6 +76,34 @@ from valor.engine.trace import TraceLedger
 
 
 @dataclass
+class MechanismVerificationContext:
+    """Formal/production artifact context for FullChainGate.
+
+    Replaces legacy CalibrationBundle-only wiring. In FORMAL/PRODUCTION every
+    check must be derivable from these explicit artifacts rather than from
+    `calibration is not None`.
+    """
+
+    execution_mode: str = ""
+    role_registry: Any = None
+    valuation_calibration: Any = None
+    likelihood_catalog: Any = None
+    action_profile_catalog: Any = None
+    audit_policy: Any = None
+    policy_certificate: Any = None
+    market_snapshot: Any = None
+    quote_ledger: Any = None
+    raw_audit_evidence_store: Any = None
+    runtime_descriptor: Any = None
+    money_ledger: Any = None
+    rights_registry: Any = None
+    final_eval_access_ledger: Any = None
+    randomness_manifest: Any = None
+    replay_artifact: Any = None
+    provenance_graph: Any = None
+
+
+@dataclass
 class FullChainGate:
     """论文闭合门评估器（独立复算 + 真实重放）。"""
 
@@ -84,8 +112,9 @@ class FullChainGate:
     ledger: TraceLedger
     stages: dict[str, Any]
     calibration: CalibrationBundle | None = None
-    replay_consistent: bool | None = None
-    final_eval_accessed_before_decision: bool | None = None
+    legacy_replay_consistent: bool | None = None
+    legacy_final_eval_accessed_before_decision: bool | None = None
+    context: MechanismVerificationContext | None = None
 
     def _stage(self, name: str) -> dict:
         st = self.stages.get(name)
@@ -96,6 +125,9 @@ class FullChainGate:
             results[name] = bool(fn())
         except Exception:
             results[name] = False
+
+    def _ctx(self) -> MechanismVerificationContext | None:
+        return self.context
 
     def _no_business_defaults(self) -> bool:
         import subprocess
@@ -127,10 +159,21 @@ class FullChainGate:
         # ================= MFC-G01：单一 canonical commitment 实例 ==========
         def _g01():
             listing = s("listing").get("commitment_hash")
+            valuation = s("valuation").get("dataset_commitment") or s("valuation").get("commitment_hash")
             audit = s("audit").get("commitment_hash")
-            delivery = s("delivery").get("delivery_commitment")
-            usage = s("usage").get("asset_version_hash")
-            refs = [x for x in (listing, audit, delivery, usage) if x]
+            delivery = s("delivery").get("delivery_commitment") or s("delivery").get("commitment_hash")
+            usage = s("usage").get("asset_version_hash") or s("usage").get("commitment_hash")
+            training = s("training").get("commitment_hash")
+            pairs = [
+                ("listing", listing), ("valuation", valuation), ("audit", audit),
+                ("delivery", delivery), ("usage", usage), ("training", training),
+            ]
+            # For TRADE, every required stage that exists must provide a ref; all refs equal.
+            if self._is_trade():
+                for stage_name, ref in pairs:
+                    if stage_name in self._stages and not ref:
+                        return False
+            refs = [r for _, r in pairs if r]
             if not refs:
                 return self.manifest.dataset_hash is not None
             return all(x == refs[0] for x in refs)
@@ -144,7 +187,9 @@ class FullChainGate:
             if (self._is_trade() and self.scenario.audit.get("mandatory_base_audit_policy")
                     and not audit_events):
                 return False
-            # logical sequence: quote_seq < voi_decision_seq < execution_seq
+            if self._ledger_quote_order_ok():
+                return True
+            # legacy fallback: logical sequence from audit event seq fields
             for e in audit_events:
                 if e.get("quote_seq") is not None:
                     if not (e.get("quote_seq") < e.get("voi_decision_seq")
@@ -224,8 +269,7 @@ class FullChainGate:
                     return False
                 if dr.get("market_snapshot_hash") != er.get("selected_market_snapshot_hash"):
                     return False
-                if not dr.get("likelihood_artifact_hash"):
-                    return False
+            # likelihood_artifact_hash is G10 territory, not G04; do not require here.
             # every CERTIFIED audit event must carry quote/snapshot/profile binding
             for e in audit_events:
                 if e.get("status") == "CERTIFIED":
@@ -246,11 +290,13 @@ class FullChainGate:
                         return False
                     if not e.get("evidence_artifact_refs"):
                         return False
+            if self._raw_evidence_available():
+                return self._evidence_independent_replay_ok()
             return True
         self._check(results, "MFC-G05_SIGNED_EVIDENCE_ONLY", _g05)
 
         def _g06():
-            # quorum 从有效 evidence 独立重数
+            # quorum 从有效 evidence 独立重数（若 raw evidence 可用则独立重放）
             for e in audit_events:
                 rc = e.get("result_counts", {})
                 if rc:
@@ -258,6 +304,13 @@ class FullChainGate:
                     q = 2 * self.scenario.audit.get("f", 2) + 1
                     if e.get("status") == "CERTIFIED" and top < q:
                         return False
+                if e.get("status") == "CERTIFIED":
+                    q = 2 * self.scenario.audit.get("f", 2) + 1
+                    refs = e.get("evidence_artifact_refs", [])
+                    if len(refs) < q:
+                        return False
+            if self._raw_evidence_available():
+                return self._evidence_independent_replay_ok()
             return True
         self._check(results, "MFC-G06_QUORUM_COUNTS_VALID_EVIDENCE_ONLY", _g06)
 
@@ -299,14 +352,16 @@ class FullChainGate:
                 for nid in (e.get("vcg_payments") or {}).keys():
                     if str(nid) not in recipients:
                         return False
+            if not self._per_node_reconciliation_ok(obligations):
+                return False
             return True
         self._check(results, "MFC-G09_PER_NODE_VCG_SETTLEMENT", _g09)
 
         # ================= MFC-G10/G11：action-specific likelihood ===========
         self._check(results, "MFC-G10_ACTION_SPECIFIC_LIKELIHOOD",
-                    lambda: cal is not None and cal.likelihood is not None)
+                    lambda: self._action_likelihood_ok())
         self._check(results, "MFC-G11_NO_MANUAL_LIKELIHOOD",
-                    lambda: cal is not None and cal.likelihood is not None)
+                    lambda: self._no_scenario_likelihood_used())
 
         # ================= MFC-G12/G13/G14：posterior / policy hash / pB =====
         self._check(results, "MFC-G12_POSTERIOR_REPLAYED",
@@ -322,10 +377,12 @@ class FullChainGate:
         # ================= MFC-G15/G16：PreLock envelope + 时序 ==============
         def _g15():
             pre = s("prelock")
-            return pre.get("n_cells", 0) > 0 and pre.get("envelope_cells")
+            if not pre.get("n_cells", 0) or not pre.get("envelope_cells"):
+                return False
+            return self._prelock_envelope_ok()
         self._check(results, "MFC-G15_PRELOCK_USES_ENTIRE_ENVELOPE", _g15)
         self._check(results, "MFC-G16_PRELOCK_BEFORE_AUDIT",
-                    lambda: bool(s("prelock")) and bool(s("audit")))
+                    lambda: self._prelock_before_audit())
 
         # ================= MFC-G17/G18：bond IC ==============================
         self._check(results, "MFC-G17_SELLER_BOND_IC_RECONCILES",
@@ -395,13 +452,17 @@ class FullChainGate:
 
         # ================= MFC-G37：final eval unreadable ===================
         def _g37():
-            if self.final_eval_accessed_before_decision:
-                return False
             fb = s("feedback")
             ledger = fb.get("final_eval_access_ledger") or {}
             for rec in ledger.get("records", []):
                 if rec.get("stage") not in ("FEEDBACK",):
                     return False
+            # TerminalDecisionArtifact/capability must exist and stage==FEEDBACK
+            terminal_art = fb.get("terminal_decision_artifact")
+            if not terminal_art:
+                return False
+            if terminal_art.get("stage") != "FEEDBACK":
+                return False
             return True
         self._check(results, "MFC-G37_FINALEVAL_UNREADABLE_PRE_TERMINAL", _g37)
 
@@ -413,12 +474,9 @@ class FullChainGate:
 
         # ================= MFC-G40/G41：feedback eligibility + theta ========
         self._check(results, "MFC-G40_FEEDBACK_ELIGIBILITY_VALID",
-                    lambda: s("feedback").get("eligible") is not None)
+                    lambda: self._feedback_eligibility_ok())
         self._check(results, "MFC-G41_THETA_UPDATE_REPRODUCIBLE",
-                    lambda: (s("feedback").get("theta_updated") is False)
-                            or (s("feedback").get("theta_after", {})
-                                .get("a", 0) > s("feedback")
-                                .get("theta_before", {}).get("a", 0)))
+                    lambda: self._theta_reproducible())
 
         # ================= MFC-G42/G43：no defaults / no placeholders =======
         self._check(results, "MFC-G42_NO_BUSINESS_DEFAULTS",
@@ -446,7 +504,7 @@ class FullChainGate:
 
         # ================= MFC-G50：deterministic replay ====================
         self._check(results, "MFC-G50_DETERMINISTIC_REPLAY",
-                    lambda: self.replay_consistent is True)
+                    lambda: self._deterministic_replay_ok())
 
         # ---- 兼容旧测试名（G4/G5/G10/G15/G33）----
         self._check(results, "G4_no_manual_likelihood",
@@ -458,7 +516,7 @@ class FullChainGate:
         self._check(results, "G15_certified_policy_match",
                     lambda: self._policy_hash_matches())
         self._check(results, "G33_replay_produces_same_result",
-                    lambda: self.replay_consistent is True)
+                    lambda: self._deterministic_replay_ok())
 
         results["G1_provenance_complete"] = all(results.values())
         failures = [k for k, v in results.items() if not v]
@@ -608,12 +666,262 @@ class FullChainGate:
                 return False
         return True
 
+    def _feedback_eligibility_ok(self) -> bool:
+        """MFC-G40: feedback eligibility from evidence event_type/source/terminal timing."""
+        fb = self._stage("feedback")
+        evs = fb.get("feedback_evidence", [])
+        if fb.get("eligible") is not None and not evs:
+            return False
+        terminal = self._terminal()
+        for ev in evs:
+            if ev.get("event_type") not in ("OBSERVED_BREACH", "NORMAL_COMPLETION"):
+                return False
+            if ev.get("terminal_timing") != terminal:
+                return False
+            if ev.get("eligibility_policy") != "post_terminal_eligible":
+                return False
+        return fb.get("eligible") is not None
+
+    def _theta_reproducible(self) -> bool:
+        """MFC-G41: recompute theta from Theta_before + eligible evidence + update formula."""
+        fb = self._stage("feedback")
+        if not fb.get("theta_updated", False):
+            return True
+        before = fb.get("theta_before", {})
+        after = fb.get("theta_after", {})
+        evs = fb.get("feedback_evidence", [])
+        if not evs:
+            return False
+        a = float(before.get("a", 0.0))
+        b = float(before.get("b", 0.0))
+        for ev in evs:
+            if ev.get("source") == "SELLER_BREACH":
+                a += 1.0
+            elif ev.get("source") == "BUYER_BREACH":
+                b += 1.0
+            elif ev.get("source") == "NORMAL":
+                a += 1.0
+        return abs(float(after.get("a", 0.0)) - a) < 1e-9 and abs(float(after.get("b", 0.0)) - b) < 1e-9
+
+    def _prelock_envelope_ok(self) -> bool:
+        """MFC-G15: prelock envelope must match certificate allowed_profile_set."""
+        ctx = self._ctx()
+        cert_profile_set = set()
+        if ctx is not None and ctx.policy_certificate is not None:
+            cert = ctx.policy_certificate
+            allowed = getattr(cert, "allowed_profile_set", None)
+            if allowed is None:
+                cert_plain = cert.to_plain() if hasattr(cert, "to_plain") else {}
+                if isinstance(cert_plain, dict):
+                    allowed = cert_plain.get("allowed_profile_set", [])
+            cert_profile_set = set(allowed or [])
+        pre = self._stage("prelock")
+        pre_profile_set = set()
+        for cell in pre.get("envelope_cells", []):
+            aph = cell.get("action_profile_hash") or cell.get("profile_hash")
+            if aph:
+                pre_profile_set.add(aph)
+        if ctx is not None and ctx.policy_certificate is not None:
+            return bool(cert_profile_set) and cert_profile_set == pre_profile_set
+        return bool(pre_profile_set)
+
+    def _prelock_before_audit(self) -> bool:
+        """MFC-G16: SELLER_PRELOCK_LOCKED event seq < audit quote/execution seq."""
+        prelock_seq = None
+        audit_seq = None
+        for ev in self.ledger.events:
+            if ev.event_type == "SELLER_PRELOCK_LOCKED":
+                prelock_seq = ev.seq
+            if ev.event_type in ("AUDIT_QUOTE_FROZEN", "AUDIT_EXECUTION_STARTED"):
+                audit_seq = ev.seq
+        if prelock_seq is not None and audit_seq is not None:
+            return prelock_seq < audit_seq
+        # legacy fallback: stage existence
+        return bool(self._stage("prelock")) and bool(self._stage("audit"))
+
+    def _per_node_reconciliation_ok(self, obligations: list[dict]) -> bool:
+        """MFC-G09: per quote_hash x profile x node reconcile quoted payment,
+        obligation realized_payment, MoneyLedger transfer, and recipient amount."""
+        audit = self._stage("audit")
+        money_events = self._stage("settlement").get("money_events", [])
+        quote_by_node = {}
+        for e in audit.get("audit_trace_events", []):
+            qh = e.get("quote_hash")
+            aph = e.get("action_profile_hash")
+            for nid, amt in (e.get("vcg_payments") or {}).items():
+                quote_by_node[(qh, aph, str(nid))] = float(amt)
+        for ob in obligations:
+            key = (ob.get("quote_hash"), ob.get("action_profile_hash"), str(ob.get("node_id")))
+            quoted = quote_by_node.get(key)
+            if quoted is None:
+                return False
+            realized = float(ob.get("realized_payment", 0.0))
+            if abs(realized - quoted) > 1e-6:
+                return False
+            # MoneyLedger transfer to auditor recipient must match, except zero
+            # VCG obligations which need no cash movement.
+            if money_events and abs(realized) > 1e-9:
+                found = False
+                for me in money_events:
+                    if (str(me.get("to_account", "")) == str(ob.get("node_id"))
+                            and abs(float(me.get("amount", 0.0)) - realized) < 1e-6):
+                        found = True
+                        break
+                if not found:
+                    return False
+        return True
+
+    def _raw_evidence_available(self) -> bool:
+        ctx = self._ctx()
+        if ctx is not None and ctx.raw_audit_evidence_store is not None:
+            return bool(ctx.raw_audit_evidence_store)
+        store = self._stage("audit").get("raw_evidence")
+        return bool(store)
+
+    def _evidence_independent_replay_ok(self) -> bool:
+        """MFC-G05/G06: independently verify every raw evidence and rebuild counts."""
+        from valor.security.signing import verify_evidence_signature
+        ctx = self._ctx()
+        store = None
+        public_keys = {}
+        if ctx is not None and ctx.raw_audit_evidence_store:
+            store = ctx.raw_audit_evidence_store
+        if store is None:
+            store = self._stage("audit").get("raw_evidence") or {}
+        runtime = None
+        if ctx is not None:
+            runtime = ctx.runtime_descriptor
+        if runtime is None:
+            runtime = self._stage("audit").get("runtime_descriptor")
+        if runtime is not None:
+            d = runtime.to_plain() if hasattr(runtime, "to_plain") else runtime
+            public_keys = d.get("node_public_keys", {})
+        audit = self._stage("audit")
+        snap = audit.get("market_snapshot") or {}
+        public_keys = public_keys or snap.get("public_key_fingerprint", {})
+        for e in audit.get("audit_trace_events", []):
+            if e.get("status") != "CERTIFIED":
+                continue
+            refs = e.get("evidence_artifact_refs", [])
+            if not refs:
+                return False
+            counts = {}
+            for ref in refs:
+                ev = store.get(ref) if isinstance(store, dict) else None
+                if ev is None:
+                    return False
+                nid = str(ev.get("node_id", ""))
+                pk = public_keys.get(nid) or ev.get("public_key")
+                if not pk:
+                    return False
+                sig = ev.get("signature", "")
+                if not sig or not verify_evidence_signature(
+                        public_key_hex=pk, evidence_plain=ev, signature=sig):
+                    return False
+                if ev.get("task_hash") and e.get("task_hash"):
+                    if ev["task_hash"] != e["task_hash"]:
+                        return False
+                counts[ev.get("result")] = counts.get(ev.get("result"), 0) + 1
+            q = 2 * int(self.scenario.audit.get("f", 2)) + 1
+            if not counts or max(counts.values()) < q:
+                return False
+        return True
+
+    def _ledger_quote_order_ok(self) -> bool:
+        """MFC-G02: derive order from TraceLedger event seq if present."""
+        seqs = {"AUDIT_QUOTE_FROZEN": None, "AUDIT_VOI_DECISION": None,
+                "AUDIT_EXECUTION_STARTED": None}
+        for ev in self.ledger.events:
+            et = ev.event_type
+            if et in seqs:
+                seqs[et] = ev.seq
+        if seqs["AUDIT_QUOTE_FROZEN"] is None:
+            return False
+        return (seqs["AUDIT_QUOTE_FROZEN"] < seqs["AUDIT_VOI_DECISION"]
+                < seqs["AUDIT_EXECUTION_STARTED"])
+
+    def _action_likelihood_ok(self) -> bool:
+        """MFC-G10: each executed action profile has an exact frozen likelihood
+        artifact whose hash is consistent with the policy certificate/catalog."""
+        ctx = self._ctx()
+        audit = self._stage("audit")
+        for e in audit.get("audit_trace_events", []):
+            aph = e.get("action_profile_hash")
+            if not aph:
+                return False
+            if ctx is not None and ctx.likelihood_catalog is not None:
+                try:
+                    art = ctx.likelihood_catalog.resolve(aph)
+                except Exception:
+                    return False
+                if ctx.policy_certificate is not None:
+                    cert_policy_hashes = getattr(
+                        ctx.policy_certificate, "policy", None)
+                    if cert_policy_hashes is None:
+                        cert_plain = getattr(ctx.policy_certificate, "to_plain", lambda: {})()
+                        cert_plain = cert_plain if isinstance(cert_plain, dict) else {}
+                        if art.artifact_hash not in cert_plain.get("likelihood_catalog_hash", ""):
+                            return False
+                    else:
+                        if aph not in getattr(ctx.policy_certificate.policy, "action_profile_hashes", ()):
+                            return False
+            else:
+                # legacy fallback: at least require a frozen likelihood artifact hash
+                if not e.get("likelihood_artifact_hash"):
+                    return False
+        return True
+
+    def _no_scenario_likelihood_used(self) -> bool:
+        """MFC-G11: FORMAL/PRODUCTION must never read scenario.likelihood."""
+        ctx = self._ctx()
+        if ctx is None:
+            # Without context, legacy calibration path is accepted for older tests,
+            # but only when calibration.likelihood is present (not scenario.likelihood).
+            return self.calibration is not None and self.calibration.likelihood is not None
+        return (ctx.likelihood_catalog is not None
+                and ctx.audit_policy is not None)
+
+    def _deterministic_replay_ok(self) -> bool:
+        """MFC-G50: real ReplayVerificationArtifact, not bool."""
+        ctx = self._ctx()
+        if ctx is not None and getattr(ctx, "replay_artifact", None) is not None:
+            art = ctx.replay_artifact
+            if isinstance(art, dict):
+                return bool(art.get("status") == "PASS"
+                            and not art.get("mismatch_list"))
+            return bool(getattr(art, "status", "") == "PASS")
+        if self.legacy_replay_consistent is True:
+            # legacy bool is never sufficient for closure
+            return False
+        return False
+
     def _auditor_no_full_dataset(self) -> bool:
-        """MFC-G44：auditor 进程不持有全量数据（进程隔离架构保证）。"""
-        # P0-G/P0-T：paper privacy closure 只接受 COMMIT_CHALLENGE。
-        # FULL_DATA_REFERENCE 不能作为 privacy-safe 模式计入 closure。
-        mode = self._stage("audit").get("execution_mode")
-        return mode == "COMMIT_CHALLENGE"
+        """MFC-G44: AuditRuntimeDescriptor must prove process isolation, no full dataset."""
+        ctx = self._ctx()
+        runtime = None
+        if ctx is not None:
+            runtime = ctx.runtime_descriptor
+        if runtime is None:
+            runtime = self._stage("audit").get("runtime_descriptor")
+        if runtime is None:
+            return False
+        if hasattr(runtime, "to_plain"):
+            d = runtime.to_plain()
+        else:
+            d = runtime
+        if d.get("transport_mode") != "PROCESS_HTTP":
+            return False
+        if not d.get("process_isolated"):
+            return False
+        if d.get("full_dataset_present", False):
+            return False
+        if d.get("seller_private_mount", True):
+            return False
+        if not d.get("node_pids"):
+            return False
+        if d.get("input_row_count", 0) > int(d.get("challenge_disclosure", 0) or 0):
+            return False
+        return True
 
     def _deny_before_key_release(self) -> bool:
         """MFC-G29：非法训练 DENY 发生在 key release / data 访问之前。"""
@@ -629,22 +937,54 @@ class FullChainGate:
         return True
 
     def _role_isolation_ok(self) -> bool:
-        """MFC-G38：R_cal/R_cert/R_eval 物理隔离（split hashes 冻结）。"""
-        # 必须存在独立冻结的 calibration artifact 才可证明隔离；禁止无证据 True。
-        return (
-            self.calibration is not None
-            and self.calibration.valuation is not None
-            and self.calibration.likelihood is not None
-            and self.calibration.certificate is not None
-        )
+        """MFC-G38: check actual R_cal/R_cert/R_eval sample-id sets from manifests."""
+        ctx = self._ctx()
+        if ctx is None:
+            return (
+                self.calibration is not None
+                and self.calibration.valuation is not None
+                and self.calibration.likelihood is not None
+                and self.calibration.certificate is not None
+            )
+        registry = ctx.role_registry
+        if registry is None or not getattr(registry, "frozen", False):
+            return False
+        manifests = getattr(registry, "manifests", None)
+        if manifests is None and hasattr(registry, "manifests_by_role"):
+            manifests = registry.manifests_by_role
+        if not manifests:
+            return False
+        roles = {}
+        if isinstance(manifests, dict):
+            roles = {str(k): getattr(v, "sample_ids", v) for k, v in manifests.items()}
+        elif isinstance(manifests, (list, tuple)):
+            roles = {str(getattr(m, "role_id", i)): getattr(m, "sample_ids", ())
+                     for i, m in enumerate(manifests)}
+        sets = {k: set(int(x) for x in v) for k, v in roles.items() if v is not None}
+        if len(sets) < 3:
+            return False
+        keys = sorted(sets)
+        return all(not (sets[a] & sets[b])
+                   for i, a in enumerate(keys) for b in keys[i + 1:])
 
     def _trainer_scope_ok(self) -> bool:
-        """MFC-G39：calibration trainer scope 与在线 trainer 匹配。"""
-        # 必须存在 valuation calibration artifact 并记录 trainer_hash。
+        """MFC-G39: valuation calibration trainer_scope_hash/trainer_hash matches runtime manifest."""
+        ctx = self._ctx()
+        if ctx is not None and ctx.valuation_calibration is not None:
+            vc = ctx.valuation_calibration
+            data = vc.data if hasattr(vc, "data") else vc
+            if isinstance(data, dict):
+                cal_trainer = (data.get("trainer_scope_hash")
+                               or data.get("trainer_hash")
+                               or data.get("dataset_hash"))
+            else:
+                cal_trainer = getattr(vc, "trainer_scope_hash", None) or getattr(vc, "trainer_hash", None)
+            return bool(cal_trainer and cal_trainer == self.manifest.trainer_hash)
         return (
             self.calibration is not None
             and self.calibration.valuation is not None
             and "trainer_hash" in self.calibration.valuation.data
+            and self.calibration.valuation.data.get("trainer_hash") == self.manifest.trainer_hash
         )
 
     def _legal_training_runs(self) -> bool:
@@ -694,10 +1034,27 @@ class FullChainGate:
             if outcome is None or outcome not in lik_rows:
                 return False
             belief = bayes_update(belief, lik_rows[outcome])
-        return self._stage("audit").get("posterior") is not None
+        expected = belief.to_plain()
+        actual = self._stage("audit").get("posterior")
+        if not actual:
+            return False
+        return abs(float(expected.get("pi_b", 0.0)) - float(actual.get("pi_b", 0.0))) < 1e-9 and \
+               abs(float(expected.get("q_l", 0.0)) - float(actual.get("q_l", 0.0))) < 1e-9
 
     def _policy_hash_matches(self) -> bool:
-        """MFC-G13：runtime policy semantic hash == certified policy hash。"""
+        """MFC-G13: runtime AuditPolicy.policy_hash == PolicyCertificationArtifact.policy_hash."""
+        ctx = self._ctx()
+        if ctx is not None:
+            if ctx.audit_policy is None or ctx.policy_certificate is None:
+                return False
+            runtime_policy_hash = getattr(ctx.audit_policy, "policy_hash", None)
+            cert_policy_hash = getattr(ctx.policy_certificate, "policy_hash", None)
+            if not runtime_policy_hash or not cert_policy_hash:
+                # policy certificate may embed policy object
+                cert_policy = getattr(ctx.policy_certificate, "policy", None)
+                if cert_policy is not None:
+                    cert_policy_hash = getattr(cert_policy, "policy_hash", None)
+            return bool(runtime_policy_hash and runtime_policy_hash == cert_policy_hash)
         if self.calibration is None or self.calibration.certificate is None:
             return False
         cert_hash = self.calibration.certificate.artifact_hash
@@ -711,15 +1068,17 @@ def evaluate_full_chain(
     ledger: TraceLedger,
     stages: dict[str, Any],
     calibration: CalibrationBundle | None = None,
-    replay_consistent: bool | None = None,
-    final_eval_accessed_before_decision: bool | None = None,
+    legacy_replay_consistent: bool | None = None,
+    legacy_final_eval_accessed_before_decision: bool | None = None,
+    context: MechanismVerificationContext | None = None,
 ) -> dict:
     """便捷入口：评估 FullChainGate。"""
     g = FullChainGate(scenario=scenario, manifest=manifest, ledger=ledger,
                       stages=stages, calibration=calibration,
-                      replay_consistent=replay_consistent,
-                      final_eval_accessed_before_decision=final_eval_accessed_before_decision)
+                      legacy_replay_consistent=legacy_replay_consistent,
+                      legacy_final_eval_accessed_before_decision=legacy_final_eval_accessed_before_decision,
+                      context=context)
     return g.run()
 
 
-__all__ = ["FullChainGate", "evaluate_full_chain"]
+__all__ = ["FullChainGate", "MechanismVerificationContext", "evaluate_full_chain"]

@@ -65,3 +65,27 @@ class BondTimeline:
 
 
 __all__ = ["BondTimeline", "BondTimelineEvent"]
+
+
+class LifecycleClock:
+    """Deterministic logical clock for lifecycle events.
+
+    Replaces `len(events)+1` / scenario future time hacks: every bond lifecycle
+    event gets a deterministic logical_seq from the same source as MoneyLedger.
+    """
+
+    def __init__(self, origin: float = 0.0) -> None:
+        self._cursor = float(origin)
+        self._last_seq = 0
+
+    def tick(self, *, interval: float = 1.0) -> float:
+        self._cursor += interval
+        self._last_seq += 1
+        return self._cursor
+
+    @property
+    def cursor(self) -> float:
+        return self._cursor
+
+
+__all__ = ["BondTimeline", "BondTimelineEvent", "LifecycleClock"]

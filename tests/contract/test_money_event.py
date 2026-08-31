@@ -58,3 +58,14 @@ def test_money_ledger_serializable():
     assert p["conservation"] is True
     assert p["events"][0]["from_account"] == "E_B^P"
     assert p["events"][0]["reason"] == "数据成交价"
+
+
+def test_lifecycle_clock_deterministic():
+    from valor.contract.bond_timeline import LifecycleClock
+
+    clock = LifecycleClock(origin=10.0)
+    t1 = clock.tick()
+    t2 = clock.tick(interval=2.0)
+    assert t1 == 11.0
+    assert t2 == 13.0
+    assert clock.cursor == 13.0

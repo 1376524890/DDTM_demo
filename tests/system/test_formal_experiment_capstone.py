@@ -43,17 +43,17 @@ def _scenario():
     sc = CapstoneScenario(scenario_id="formal-capstone", seller_id="s", buyer_id="b")
     sc.trainer.update({"epochs": 1, "batch_size": 128})
     sc.buyer_task["deployment_scale"] = 3000
-    sc.audit["challenge_sizes"] = [16]
+    sc.audit["challenge_sizes"] = [16, 32, 64]
     sc.audit["privacy_budget"] = {
-        "max_unique_rows": 100, "max_fraction": 0.9, "max_bytes": 100 * 784,
+        "max_unique_rows": 300, "max_fraction": 1.0, "max_bytes": 300 * 784,
     }
-    sc.rights["audit_reveal_max_rows"] = 100
-    sc.rights["audit_reveal_max_fraction"] = 0.9
-    sc.rights["audit_reveal_max_bytes"] = 100 * 784
+    sc.rights["audit_reveal_max_rows"] = 300
+    sc.rights["audit_reveal_max_fraction"] = 1.0
+    sc.rights["audit_reveal_max_bytes"] = 300 * 784
     sc.audit["low_suitability_world"] = {
         "method": "buyer_task_utility",
         "threshold": 0.5,
-        "row_utilities": [0.1] * 30 + [0.9] * 70,
+        "row_utilities": [0.1] * 64 + [0.9] * 96,
         "ground_truth_ref": "rcal-L-buyer-task-utility",
     }
     sc.audit["breach_world"] = {
@@ -120,13 +120,13 @@ def _market_provider(sc):
 
 def test_formal_experiment_capstone(tmp_path):
     rng = np.random.default_rng(11)
-    X = rng.integers(0, 256, size=(300, 784), dtype=np.uint8)
-    y = rng.integers(0, 10, size=300)
+    X = rng.integers(0, 256, size=(500, 784), dtype=np.uint8)
+    y = rng.integers(0, 10, size=500)
     sc = _scenario()
 
-    cal_manifest = _role("R_cal", 100, 11, 0)
-    cert_manifest = _role("R_cert", 100, 21, 100)
-    eval_manifest = _role("R_eval", 100, 31, 200)
+    cal_manifest = _role("R_cal", 160, 11, 0)
+    cert_manifest = _role("R_cert", 160, 21, 160)
+    eval_manifest = _role("R_eval", 160, 31, 320)
     role_registry = DataRoleRegistry()
     role_registry.register_role_manifest(cal_manifest)
     role_registry.register_role_manifest(cert_manifest)
@@ -142,7 +142,7 @@ def test_formal_experiment_capstone(tmp_path):
         rcal = DistributedAuditCalibrationRunner(
             scenario=sc, X=X, y=y, role_manifest=cal_manifest,
             claim_type=ClaimType.LABEL_DISTRIBUTION,
-            challenge_sizes=[16], n_runs=1, f=2,
+            challenge_sizes=[16, 32, 64], n_runs=1, f=2,
             seller_store=CommittedDatasetStore(str(tmp_path / "rcal")),
             node_client_factory=factory, public_keys=public_keys,
             execution_mode=ExecutionMode.FORMAL_EXPERIMENT,
@@ -157,7 +157,7 @@ def test_formal_experiment_capstone(tmp_path):
         for art in lik_arts.values():
             lik_catalog.register(art)
         profile_catalog = ActionProfileCatalog()
-        for k in [16]:
+        for k in [16, 32, 64]:
             profile = build_action_profile(
                 scenario_audit=sc.audit,
                 claim_type=ClaimType.LABEL_DISTRIBUTION.value,
@@ -170,7 +170,7 @@ def test_formal_experiment_capstone(tmp_path):
         certifier = DistributedPolicyCertifier(
             policy=policy, scenario=sc, X=X, y=y, role_manifest=cert_manifest,
             likelihood_artifacts=lik_arts,
-            claim_type=ClaimType.LABEL_DISTRIBUTION, challenge_sizes=[16],
+            claim_type=ClaimType.LABEL_DISTRIBUTION, challenge_sizes=[16, 32, 64],
             n_runs=1, f=2, seller_store=CommittedDatasetStore(str(tmp_path / "rcert")),
             node_client_factory=factory, public_keys=public_keys,
             execution_mode=ExecutionMode.FORMAL_EXPERIMENT,

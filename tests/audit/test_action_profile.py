@@ -11,6 +11,13 @@ def _audit():
         "alpha_shift": 0.01, "label_error_threshold": 0.28,
         "execution_version_hash": "cc-audit-v1",
         "timeout_s": 10.0,
+        "decision_rule_id": "MULTINOMIAL_GOF",
+        "privacy_budget_cost_model_id": "unique-rows-fraction-bytes-v1",
+        "computation_cost_model_id": "vcg-chain-challenge-dispute-v1",
+        "likelihood_model_version": "empirical-dirichlet-v1",
+        "evidence_schema_version": "privacy-audit-evidence-v1",
+        "replacement_behavior": "offline-replacement",
+        "signature_policy": "ED25519_REQUIRED",
     }
 
 

@@ -38,6 +38,7 @@ def make_privacy_audit_executor(
     market_provider=None,
     audit_policy=None,
     role_registry=None,
+    seller_open_fn=None,
 ) -> Callable:
     """构造 orchestrator 兼容的 audit_executor（COMMIT_CHALLENGE 模式）。"""
 
@@ -72,6 +73,7 @@ def make_privacy_audit_executor(
             market_provider=market_provider,
             audit_policy=audit_policy,
             role_registry=role_registry,
+            seller_open_fn=seller_open_fn,
         )
         res = ex.run(sc, ctx)
         # 映射为 orchestrator 兼容 dict

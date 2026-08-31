@@ -147,6 +147,7 @@ class FullAuditPolicyExecutor:
         audit_runtime: AuditRuntimeDescriptor | None = None,
         role_registry=None,
         market_provider=None,
+        seller_open_fn=None,
     ) -> None:
         if n_runs < 1:
             raise ValueError("R_cert n_runs must be >= 1")
@@ -166,6 +167,7 @@ class FullAuditPolicyExecutor:
         self.audit_runtime = audit_runtime
         self.role_registry = role_registry
         self.market_provider = market_provider
+        self.seller_open_fn = seller_open_fn
 
         full_X = np.asarray(X, dtype=np.uint8)
         full_y = np.asarray(y, dtype=np.int64)
@@ -239,6 +241,7 @@ class FullAuditPolicyExecutor:
             market_provider=self.market_provider,
             audit_policy=self.policy,
             role_registry=self.role_registry,
+            seller_open_fn=self.seller_open_fn,
         )
         result = ex.run(sc, ctx)
         attempts: list[AuditAttemptRecord] = []

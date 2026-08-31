@@ -19,7 +19,13 @@ def test_c0_normal_trade(tmp_path):
 
 
 def test_c2_seller_breach_terminal(tmp_path):
-    res = run_capstone(scenario_c2_seller_breach(), run_dir=str(tmp_path))
+    from valor.experiments.adapters import TamperingSellerProvider
+
+    def seller_open_fn(challenge, seller_svc):
+        return TamperingSellerProvider(seller_svc).process_challenge(challenge)
+
+    res = run_capstone(scenario_c2_seller_breach(), run_dir=str(tmp_path),
+                       seller_open_fn=seller_open_fn)
     assert res.terminal_state == "SELLER_BREACH"
 
 

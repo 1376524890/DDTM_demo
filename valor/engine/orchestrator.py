@@ -83,6 +83,10 @@ class TransactionOrchestrator:
         audit_policy=None,
         policy_certificate=None,
         valuation_calibration=None,
+        seller_open_fn=None,
+        node_client_factory=None,
+        delivery_provider=None,
+        public_keys: dict[str, str] | None = None,
     ) -> None:
         self.scenario = scenario
         self.run_id = run_id or new_id("run", entropy=12)
@@ -97,6 +101,10 @@ class TransactionOrchestrator:
         self.audit_policy = audit_policy
         self.policy_certificate = policy_certificate
         self.valuation_calibration = valuation_calibration
+        self.seller_open_fn = seller_open_fn
+        self.node_client_factory = node_client_factory
+        self.delivery_provider = delivery_provider
+        self.public_keys = public_keys
         if execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
             missing = [
                 name for name, value in (
@@ -998,7 +1006,8 @@ class TransactionOrchestrator:
             cluster = ProcessHttpAuditorCluster(n=n_nodes)
             self._audit_cluster = cluster
             audit_runtime = AuditRuntimeDescriptor.from_cluster(cluster)
-            factory = cluster.client_factory()
+            base_factory = cluster.client_factory()
+            factory = self.node_client_factory or base_factory
             public_keys = cluster.registry.public_keys()
             ex_mode = ExecutionMode.FORMAL_EXPERIMENT
         elif self.execution_mode == ExecutionMode.PRODUCTION:
@@ -1007,7 +1016,8 @@ class TransactionOrchestrator:
                     "PRODUCTION_AUDIT_RUNTIME_REQUIRED: PRODUCTION requires "
                     "audit_runtime_provider")
             provider = self.audit_runtime_provider
-            factory = provider.client_factory()
+            base_factory = provider.client_factory()
+            factory = self.node_client_factory or base_factory
             audit_runtime = provider.descriptor()
             public_keys = provider.public_keys()
             ex_mode = ExecutionMode.PRODUCTION
@@ -1023,6 +1033,8 @@ class TransactionOrchestrator:
                 clients[node_id] = TestClient(
                     create_privacy_app(verifier))
                 public_keys[node_id] = verifier.signing_key.public_key_hex
+            if self.public_keys is not None:
+                public_keys = dict(self.public_keys)
 
             class _NodeClient:
                 def __init__(self, tc):
@@ -1033,7 +1045,8 @@ class TransactionOrchestrator:
                     r.raise_for_status()
                     return r.json()
 
-            factory = lambda nid: _NodeClient(clients[str(nid)])  # noqa: E731
+            base_factory = lambda nid: _NodeClient(clients[str(nid)])  # noqa: E731
+            factory = self.node_client_factory or base_factory
             audit_runtime = None
             ex_mode = ExecutionMode.TEST_FIXTURE
         if self.execution_mode == ExecutionMode.FORMAL_EXPERIMENT:
@@ -1060,6 +1073,7 @@ class TransactionOrchestrator:
             market_provider=market_provider,
             audit_policy=audit_policy,
             role_registry=role_registry,
+            seller_open_fn=self.seller_open_fn,
         )
         return executor(sc, ctx)
 
@@ -1127,9 +1141,14 @@ class TransactionOrchestrator:
         mode = DeliveryMode(sc.rights["access_mode"])
         listing_commitment = binding.listing.data_commitment
         delivery_commitment = commitment.commitment_hash
-        # C6/Delivery fail：ExperimentWorld 显式注入交付替换。
-        if sc.audit.get("delivery_hash_mismatch"):
-            delivery_commitment = "mismatch"
+        # C6/Delivery fail：experiment-layer delivery_provider injects mismatch.
+        if self.delivery_provider is not None:
+            prov_out = self.delivery_provider.deliver(
+                delivery_commitment=delivery_commitment,
+                listing_commitment=listing_commitment,
+                tx_id=tx_id, mode=mode.value)
+            if prov_out.get("verified") is False:
+                delivery_commitment = str(prov_out.get("delivery_commitment", "mismatch"))
         # MFC-G26：H(D_delivery) == H(D_listing)
         if delivery_commitment != listing_commitment:
             self._stage("delivery", {

@@ -106,11 +106,13 @@ class PrivacyAuditVOIExecutor:
         market_provider=None,
         audit_policy=None,
         role_registry=None,
+        seller_open_fn: Callable[[Any], Any] | None = None,
     ) -> None:
         self.scenario = scenario
         self.market_provider = market_provider
         self.audit_policy = audit_policy
         self.role_registry = role_registry
+        self.seller_open_fn = seller_open_fn
         self.candidate_X = candidate_X
         self.candidate_y = candidate_y
         self.claim_type = claim_type
@@ -319,28 +321,12 @@ class PrivacyAuditVOIExecutor:
         seller_svc = SellerAuditService(dataset=self._seller, disclosure=disclosure)
         seller_svc.add_claim(claim)
 
-        # P0-K/P0-L：真实 corruption 由 ExperimentWorld 构造。TEST_FIXTURE 仍可
-        # 显式注入 tamper_openings；FORMAL/PRODUCTION 禁止读取故障 flag。
-        tamper_openings = False
-        if self.execution_mode == ExecutionMode.TEST_FIXTURE:
-            tamper_openings = bool(sc.audit.get("tamper_openings", False))
-
+        # P0-K/P0-L：真实 corruption 由 ExperimentWorld / experiment-layer
+        # seller_open_fn adapter 构造。Mechanism never reads scenario fault flags.
         def _seller_open(challenge):
-            opens = seller_svc.process_challenge(challenge)
-            if tamper_openings and opens:
-                from .canonicalize import canonical_mnist_row, canonical_row_from_payload
-                from .opening import make_opening
-
-                o = opens[0]
-                idx, img, label = canonical_row_from_payload(
-                    o.row_payload, index=o.index)
-                img = img.copy()
-                img[0] = (int(img[0]) + 1) % 256
-                opens[0] = make_opening(
-                    index=o.index,
-                    row_payload=canonical_mnist_row(o.index, img, label),
-                    salt=bytes.fromhex(o.salt), proof=o.proof)
-            return opens
+            if self.seller_open_fn is not None:
+                return self.seller_open_fn(challenge, seller_svc)
+            return seller_svc.process_challenge(challenge)
 
         # P0-F：scheduler 需要 auditor 公钥注册表。私钥只在 auditor 子进程内。
         if self.auditor_identity_registry is not None:
@@ -351,30 +337,13 @@ class PrivacyAuditVOIExecutor:
             # fail closed: without public keys no signed evidence can be accepted
             public_keys = {}
         base_factory = self.node_client_factory
-        offline_set = set()
-        invalid_sig_set = set()
-        if self.execution_mode == ExecutionMode.TEST_FIXTURE:
-            offline_set = set(str(x) for x in sc.audit.get("offline_nodes", []))
-            invalid_sig_set = set(str(x) for x in sc.audit.get("invalid_signature_nodes", []))
 
-        # P0-F: the mechanism never signs on behalf of a node. If the transport
-        # already returned signed evidence we keep it; if it is unsigned the
-        # scheduler will reject it. TEST_FIXTURE may corrupt signatures to
-        # exercise fail-closed paths, but only when explicitly requested.
+        # P0-F: the mechanism never signs on behalf of a node. Offline/invalid
+        # signature behaviors are injected by experiment-layer transports.
         def _signed_client_factory(nid):
-            if str(nid) in offline_set:
-                raise ConnectionError(f"offline node {nid} (test scenario)")
-            client = base_factory(nid) if base_factory else None
-            if client is None:
+            if base_factory is None:
                 return None
-            orig_submit = client.submit_task
-            def _submit(task):
-                ev = orig_submit(task)
-                if str(nid) in invalid_sig_set:
-                    ev["signature"] = "0" * 128
-                return ev
-            client.submit_task = _submit  # type: ignore
-            return client
+            return base_factory(nid)
         self._node_clients = _signed_client_factory
 
         scheduler = PrivacyAuditScheduler(

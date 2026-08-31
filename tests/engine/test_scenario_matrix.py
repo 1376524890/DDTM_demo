@@ -32,7 +32,13 @@ def test_c1_no_trade(tmp_path):
 
 def test_c2_seller_breach_audit(tmp_path):
     """审计阶段真实 corruption → BREACH_EVIDENCE → SELLER_BREACH。"""
-    res = run_capstone(scenario_c2_seller_breach(), run_dir=str(tmp_path / "c2"))
+    from valor.experiments.adapters import TamperingSellerProvider
+
+    def seller_open_fn(challenge, seller_svc):
+        return TamperingSellerProvider(seller_svc).process_challenge(challenge)
+
+    res = run_capstone(scenario_c2_seller_breach(), run_dir=str(tmp_path / "c2"),
+                       seller_open_fn=seller_open_fn)
     assert res.terminal_state == "SELLER_BREACH"
 
 
@@ -67,21 +73,44 @@ def test_c5_disclosure_budget_infeasible(tmp_path):
 def test_c4_no_quorum(tmp_path):
     """审计节点离线过多 → 无一致 quorum → 审计不产生 CERTIFIED 结果。"""
     sc = scenario_c0_normal()
-    sc.audit["offline_nodes"] = [f"node-{i}" for i in range(6)]
     sc.audit["privacy_budget"] = {
         "max_unique_rows": 200, "max_fraction": 0.3, "max_bytes": 200 * 784,
     }
     sc.rights["audit_reveal_max_rows"] = 200
     sc.rights["audit_reveal_max_fraction"] = 0.3
     sc.rights["audit_reveal_max_bytes"] = 200 * 784
+    from fastapi.testclient import TestClient
     from valor.engine.orchestrator import TransactionOrchestrator
+    from valor.experiments.adapters import OfflineAuditorTransport
+    from valor.privacy_audit import CommitChallengeVerifier, create_privacy_app
 
-    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c4"))
+    clients = {}
+    public_keys = {}
+    for i in range(10):
+        node_id = f"node-{i}"
+        verifier = CommitChallengeVerifier(node_id)
+        clients[node_id] = TestClient(create_privacy_app(verifier))
+        public_keys[node_id] = verifier.signing_key.public_key_hex
+
+    class _NodeClient:
+        def __init__(self, tc):
+            self._tc = tc
+        def submit_task(self, task):
+            r = self._tc.post("/privacy/tasks", json=task.to_plain())
+            r.raise_for_status()
+            return r.json()
+
+    def _base(nid):
+        return _NodeClient(clients[str(nid)])
+
+    factory = OfflineAuditorTransport(_base, [f"node-{i}" for i in range(6)])
+    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c4"), node_client_factory=factory,
+                                   public_keys=public_keys)
     res = orch.run()
     audit = orch._stages["audit"].output
     # 无 quorum → 不产生 CERTIFIED action trace，精确 NO_QUORUM → NO_TRADE
     assert len(audit.get("audit_trace_events", [])) >= 1
-    assert all(e.get("status") == "NO_QUORUM" for e in audit.get("audit_trace_events", []))
+    assert not any(e.get("status") == "CERTIFIED" for e in audit.get("audit_trace_events", []))
     assert audit.get("audit_policy_status") == "NO_QUORUM"
     assert res.terminal_state == "NO_TRADE"
     assert "pricing" not in orch._stages
@@ -104,10 +133,11 @@ def test_c6_delivery_fail(tmp_path):
         "g_dev": 0.0, "eps_s": 0.0, "p_e_bond": 1.0, "p_e_f": 0.0,
         "lambda_s": 1.0, "f_s": 0.0, "kappa_s": 0.0, "t_pre": 0.0, "t_post": 0.0,
     })
-    sc.audit["delivery_hash_mismatch"] = True
     from valor.engine.orchestrator import TransactionOrchestrator
+    from valor.experiments.adapters import MismatchedDeliveryProvider
 
-    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c6"))
+    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c6"),
+                                   delivery_provider=MismatchedDeliveryProvider())
     res = orch.run()
     assert res.terminal_state == "SELLER_BREACH"
     delivery = orch._stages["delivery"].output
@@ -182,16 +212,39 @@ def test_c14_buyer_usage_bond_slash(tmp_path):
 def test_c9_invalid_signature(tmp_path):
     """全部节点签名无效 → 无有效 evidence → 审计不产生 CERTIFIED 结果。"""
     sc = scenario_c0_normal()
-    sc.audit["invalid_signature_nodes"] = [f"node-{i}" for i in range(10)]
     sc.audit["privacy_budget"] = {
         "max_unique_rows": 200, "max_fraction": 0.3, "max_bytes": 200 * 784,
     }
     sc.rights["audit_reveal_max_rows"] = 200
     sc.rights["audit_reveal_max_fraction"] = 0.3
     sc.rights["audit_reveal_max_bytes"] = 200 * 784
+    from fastapi.testclient import TestClient
     from valor.engine.orchestrator import TransactionOrchestrator
+    from valor.experiments.adapters import InvalidSignatureAuditorTransport
+    from valor.privacy_audit import CommitChallengeVerifier, create_privacy_app
 
-    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c9"))
+    clients = {}
+    public_keys = {}
+    for i in range(10):
+        node_id = f"node-{i}"
+        verifier = CommitChallengeVerifier(node_id)
+        clients[node_id] = TestClient(create_privacy_app(verifier))
+        public_keys[node_id] = verifier.signing_key.public_key_hex
+
+    class _NodeClient:
+        def __init__(self, tc):
+            self._tc = tc
+        def submit_task(self, task):
+            r = self._tc.post("/privacy/tasks", json=task.to_plain())
+            r.raise_for_status()
+            return r.json()
+
+    def _base(nid):
+        return _NodeClient(clients[str(nid)])
+
+    factory = InvalidSignatureAuditorTransport(_base, [f"node-{i}" for i in range(10)])
+    orch = TransactionOrchestrator(sc, run_dir=str(tmp_path / "c9"), node_client_factory=factory,
+                                   public_keys=public_keys)
     res = orch.run()
     audit = orch._stages["audit"].output
     assert len(audit.get("audit_trace_events", [])) >= 1

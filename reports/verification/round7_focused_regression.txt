@@ -1,0 +1,12 @@
+Round 7 focused regression (exact-HEAD pending final commit)
+- R_cert multi-profile envelope tests: PASS
+- FullChainGate tests: PASS
+- Capability tests: PASS
+- FinalEvalHandle tests: PASS
+- Replay/Randomness tests: PASS
+- PricingProvenance validate tests: PASS
+- Scenario matrix C10/C11/C12: PASS
+- Mutation suite 30 tests: PASS (focused)
+- Business-default scanner: PASS
+- Forbidden-pattern scanner: PASS
+- Mechanism purity scanner: PASS

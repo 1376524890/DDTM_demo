@@ -1,0 +1,59 @@
+{
+  "evaluated_code_commit": "bfa0926d9ee09c74b4d45eb0e34dcdc9c8bad763",
+  "status": "PARTIAL",
+  "mandatory_coverage_PARTIAL": 1,
+  "mandatory_coverage_FAILED": 0,
+  "entries": {
+    "P0-01_R_cert_multi_profile": {
+      "mechanism_id": "rcert-multi-profile",
+      "production_entrypoint": "valor/engine/distributed_policy_certifier.py",
+      "formal_entrypoint": "valor/engine/distributed_policy_certifier.py",
+      "positive_test_ids": [
+        "test_rcert_multi_profile_envelope_and_reconciliation"
+      ],
+      "negative_test_ids": [
+        "test_rcert_beta_double_count_mutation_fails_reconciliation"
+      ],
+      "gate_ids": [
+        "G14"
+      ],
+      "reconciliation_ids": [
+        "reconcile_policy_certification"
+      ],
+      "mutation_ids": [],
+      "provenance_root": "PolicyCertificationArtifact",
+      "forbidden_shortcuts": [],
+      "required_artifacts": [
+        "PolicyCellCertification",
+        "EnvelopeOperator"
+      ],
+      "status": "PARTIAL"
+    },
+    "P0-05_FORMAL_artifacts": {
+      "mechanism_id": "formal-artifact-context",
+      "production_entrypoint": "valor/engine/full_chain_gate.py",
+      "formal_entrypoint": "valor/engine/full_chain_gate.py",
+      "positive_test_ids": [
+        "test_full_chain_gate_with_calibration"
+      ],
+      "negative_test_ids": [],
+      "gate_ids": [
+        "G10",
+        "G11",
+        "G13",
+        "G38",
+        "G39"
+      ],
+      "reconciliation_ids": [],
+      "mutation_ids": [],
+      "provenance_root": "MechanismVerificationContext",
+      "forbidden_shortcuts": [
+        "calibration is not None"
+      ],
+      "required_artifacts": [
+        "MechanismVerificationContext"
+      ],
+      "status": "PARTIAL"
+    }
+  }
+}

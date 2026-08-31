@@ -1,0 +1,9 @@
+{
+  "evaluated_code_commit": "bfa0926d9ee09c74b4d45eb0e34dcdc9c8bad763",
+  "failures": 0,
+  "warnings": [
+    "ConvergenceWarning observed during calibration runner LogisticRegression"
+  ],
+  "note": "Convergence artifact not yet fully captured; calibration runner does not suppress warnings.",
+  "status": "PARTIAL"
+}

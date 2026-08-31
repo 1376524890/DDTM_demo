@@ -1,0 +1,36 @@
+{
+  "evaluated_code_commit": "bfa0926d9ee09c74b4d45eb0e34dcdc9c8bad763",
+  "paper_closure_gate": "FAIL",
+  "remaining_blockers": [
+    "R_cert world execution still may read scenario fault flags in TEST_FIXTURE",
+    "FORMAL capstone not fully upgraded to real R_cal/R_cert/R_eval context",
+    "RandomnessManifest not yet wired into transaction lifecycle",
+    "ReplayVerificationArtifact not yet produced by orchestrator",
+    "PricingProvenanceGraph validator incomplete",
+    "Reverse provenance report incomplete",
+    "Coverage generator reads evidence registry only partially",
+    "Convergence artifact capture incomplete",
+    "FullChainGate G05/G06 raw evidence store not populated in mainline"
+  ],
+  "conditions": {
+    "unresolved_P0": 8,
+    "reopened_P0": 8,
+    "false_pass": 1,
+    "vacuous_mutations": 0,
+    "business_defaults_FORMAL_PRODUCTION": 0,
+    "experiment_flags_in_mechanism": 1,
+    "full_pytest.failed": "pending",
+    "full_pytest.errors": "pending",
+    "formal_capstone.terminal": "TRADE",
+    "formal_capstone.full_chain_gate": "FAIL",
+    "G01..G50": "PARTIAL",
+    "C0..C14 required scenarios": "PARTIAL",
+    "mutations": "PASS",
+    "mandatory_coverage_PARTIAL": 1,
+    "mandatory_coverage_FAILED": 0,
+    "provenance.required_paths_failed": 1,
+    "provenance.unresolved_leaves": 1,
+    "convergence.failures": 1,
+    "replay.status": "PARTIAL"
+  }
+}

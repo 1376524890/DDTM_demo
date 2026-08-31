@@ -1,0 +1,7 @@
+{
+  "evaluated_code_commit": "bfa0926d9ee09c74b4d45eb0e34dcdc9c8bad763",
+  "required_paths_failed": 1,
+  "unresolved_leaves": 1,
+  "note": "PricingProvenanceGraph validator and cross-mechanism reverse provenance not fully implemented.",
+  "status": "PARTIAL"
+}

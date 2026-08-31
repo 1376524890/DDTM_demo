@@ -1,0 +1,21 @@
+{
+  "evaluated_code_commit": "bfa0926d9ee09c74b4d45eb0e34dcdc9c8bad763",
+  "status": "PARTIAL",
+  "findings": [
+    {
+      "pattern": "tamper_openings",
+      "location": "valor/privacy_audit/voi.py",
+      "verdict": "TEST_FIXTURE-only but still scenario-flag based; should move to TamperingSellerProvider"
+    },
+    {
+      "pattern": "replay_consistent",
+      "location": "legacy param retained",
+      "verdict": "G50 now ignores bool; legacy param remains for compatibility"
+    },
+    {
+      "pattern": "final_eval_accessed_before_decision",
+      "location": "legacy param retained",
+      "verdict": "G37 now requires TerminalDecisionArtifact; legacy param ignored"
+    }
+  ]
+}

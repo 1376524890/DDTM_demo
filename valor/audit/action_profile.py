@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from valor.core.hashing import content_hash
 
 
+def _req(cfg: dict, key: str) -> str:
+    if key not in cfg or cfg[key] is None:
+        raise ValueError(f"UNRESOLVED_PARAMETER: action_profile missing required {key!r}")
+    return str(cfg[key])
+
+
 @dataclass(frozen=True)
 class AuditActionProfile:
     action_id: str
@@ -131,14 +137,14 @@ def build_action_profile(
         execution_version_hash=(
             execution_version_hash if execution_version_hash is not None
             else str(a["execution_version_hash"])),
-        decision_rule_id=str(a.get("decision_rule_id", "MULTINOMIAL_GOF")),
-        privacy_budget_cost_model_id=str(a.get("privacy_budget_cost_model_id", "unique-rows-fraction-bytes-v1")),
-        computation_cost_model_id=str(a.get("computation_cost_model_id", "vcg-chain-challenge-dispute-v1")),
-        likelihood_model_version=str(a.get("likelihood_model_version", "empirical-dirichlet-v1")),
-        evidence_schema_version=str(a.get("evidence_schema_version", "privacy-audit-evidence-v1")),
-        timeout_s=float(a.get("timeout_s", 10.0)),
-        replacement_behavior=str(a.get("replacement_behavior", "offline-replacement")),
-        signature_policy=str(a.get("signature_policy", "ED25519_REQUIRED")),
+        decision_rule_id=_req(a, "decision_rule_id"),
+        privacy_budget_cost_model_id=_req(a, "privacy_budget_cost_model_id"),
+        computation_cost_model_id=_req(a, "computation_cost_model_id"),
+        likelihood_model_version=_req(a, "likelihood_model_version"),
+        evidence_schema_version=_req(a, "evidence_schema_version"),
+        timeout_s=float(_req(a, "timeout_s")),
+        replacement_behavior=_req(a, "replacement_behavior"),
+        signature_policy=_req(a, "signature_policy"),
     )
 
 

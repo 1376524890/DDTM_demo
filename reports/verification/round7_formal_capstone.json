@@ -1,7 +1,7 @@
 {
-  "evaluated_code_commit": "beb4f06777bd9ba58c99ccf8181fb235c6136bd5",
+  "evaluated_code_commit": "d2537beab7fb6c4694e718f73bff132767cbe75f",
   "terminal": "TRADE",
   "full_chain_gate": "PASS",
-  "note": "Formal capstone test passed on exact HEAD; still uses placeholder valuation FrozenArtifact in test fixture.",
-  "status": "PARTIAL"
+  "note": "Formal capstone uses real run_offline_calibration valuation artifact; test passed on exact HEAD.",
+  "status": "PASS"
 }

@@ -1,24 +1,19 @@
 {
-  "evaluated_code_commit": "beb4f06777bd9ba58c99ccf8181fb235c6136bd5",
+  "evaluated_code_commit": "d2537beab7fb6c4694e718f73bff132767cbe75f",
   "paper_closure_gate": "FAIL",
   "remaining_blockers": [
-    "R_cert world execution still may read scenario fault flags in TEST_FIXTURE",
-    "FORMAL capstone not fully upgraded to real R_cal/R_cert/R_eval context",
-    "RandomnessManifest not yet wired into transaction lifecycle",
-    "ReplayVerificationArtifact not yet produced by orchestrator with full semantic equality",
-    "PricingProvenanceGraph validator incomplete",
-    "Reverse provenance report incomplete",
-    "Coverage generator reads evidence registry only partially",
-    "Convergence artifact capture incomplete",
-    "FullChainGate G05/G06 raw evidence store not populated in mainline"
+    "RandomnessManifest not yet records challenge/sampling/tie-break randomness references",
+    "ReplayVerificationArtifact signature semantic verification not yet populated",
+    "Full reverse provenance not yet wired to orchestrator artifact graph",
+    "Evidence-driven coverage generator still not reading all report sources"
   ],
   "conditions": {
-    "unresolved_P0": 8,
-    "reopened_P0": 8,
-    "false_pass": 1,
+    "unresolved_P0": 4,
+    "reopened_P0": 0,
+    "false_pass": 0,
     "vacuous_mutations": 0,
     "business_defaults_FORMAL_PRODUCTION": 0,
-    "experiment_flags_in_mechanism": 1,
+    "experiment_flags_in_mechanism": 0,
     "full_pytest.failed": 0,
     "full_pytest.errors": 0,
     "formal_capstone.terminal": "TRADE",
@@ -30,7 +25,7 @@
     "mandatory_coverage_FAILED": 0,
     "provenance.required_paths_failed": 1,
     "provenance.unresolved_leaves": 1,
-    "convergence.failures": 1,
+    "convergence.failures": 0,
     "replay.status": "PARTIAL"
   }
 }

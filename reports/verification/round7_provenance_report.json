@@ -1,7 +1,7 @@
 {
-  "evaluated_code_commit": "beb4f06777bd9ba58c99ccf8181fb235c6136bd5",
+  "evaluated_code_commit": "d2537beab7fb6c4694e718f73bff132767cbe75f",
   "required_paths_failed": 1,
   "unresolved_leaves": 1,
-  "note": "PricingProvenanceGraph validate() added; cross-mechanism reverse provenance still incomplete.",
+  "note": "ReverseProvenanceValidator module added; not yet wired to orchestrator artifact graph.",
   "status": "PARTIAL"
 }

@@ -1,7 +1,11 @@
 {
-  "evaluated_code_commit": "beb4f06777bd9ba58c99ccf8181fb235c6136bd5",
+  "evaluated_code_commit": "d2537beab7fb6c4694e718f73bff132767cbe75f",
   "status": "PARTIAL",
   "mandatory_coverage_PARTIAL": 1,
   "mandatory_coverage_FAILED": 0,
-  "note": "MechanismVerificationRegistry still not fully wired to pytest JSON; several entries PARTIAL."
+  "evidence": {
+    "full_pytest_ok": true,
+    "mutation_ok": true
+  },
+  "note": "Evidence-driven generator improved but not fully wired to all evidence sources."
 }

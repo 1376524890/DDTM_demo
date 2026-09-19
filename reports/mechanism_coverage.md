@@ -1,5 +1,12 @@
 # VALOR Mechanism Coverage Matrix
 
+> ⚠️ **SUPERSEDED / 过期报告**：本表为早期手工编写的覆盖矩阵，HEAD 标记为 `WORKING TREE (VALOR-v1)`，
+> 未由机器生成（`tests: []`、`gate: ""`），且部分条目 `independent_reconciliation: false` 却标为 `IMPLEMENTED`，
+> 与「IMPLEMENTED 须独立复算」的定义自相矛盾。
+> 当前权威覆盖状态见 `reports/verification/mechanism_coverage.json` 与 `reports/verification/round7_coverage.json`：
+> **强制覆盖度为 PARTIAL**（10 个强制模块 PARTIAL），并非 44/44 IMPLEMENTED。
+> 以下为历史原文，仅作追溯，不代表当前状态。
+
 设计真值：VALOR_可实施原型系统_完整数学代码闭环与开发规范.md
 HEAD：WORKING TREE (VALOR-v1)
 
@@ -61,6 +68,7 @@ HEAD：WORKING TREE (VALOR-v1)
 | Evidence Signature | §19 | IMPLEMENTED | `valor/security/signing.py` | sign_evidence/verify_evidence_signature |
 | DP/Disclosure Separation | §34 | IMPLEMENTED | `valor/usage/privacy_budget.py` | QueryPrivacyBudget vs AuditDisclosureBudget |
 
-## Summary
+## Summary（已被 Round 7 推翻）
 
-- Implemented: 44/44
+> 本表原始结论 `Implemented: 44/44` 已失效。Round 7 机器验证（`round7_coverage.json`）：
+> `mandatory_coverage_PARTIAL = 1`（10 个强制模块 PARTIAL），覆盖度状态为 **PARTIAL**，非 44/44 IMPLEMENTED。

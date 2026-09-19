@@ -1,5 +1,11 @@
 # VALOR-v1 最终机制忠实性收敛报告
 
+> ⚠️ **SUPERSEDED / 过期报告**：本文档为早期手工收敛报告（HEAD `1015677`）。
+> 其「paper_mechanism_closure = PASS / 56/56 / 44/44 IMPLEMENTED」结论已被 Round 7 机器验证推翻。
+> 当前权威状态见 `reports/verification/final_mechanism_closure_v3.json` 与 `reports/verification/round7_gate.json`：
+> **paper_closure_gate = FAIL**（56 项中 38 通过、18 失败），未闭合 P0 = 4，覆盖度/逆向 provenance/确定性重放均为 PARTIAL。
+> 以下为历史原文，仅作追溯，不代表当前状态。
+
 ## A. HEAD
 - Commit: 1015677aa230044c948887a9d9217e567785753f
 
@@ -93,9 +99,7 @@ G01..G50 全部实现为真实结构性验证 / 独立复算，无 `lambda: True
 ## O. Unresolved Issues
 - 无 unresolved P0。TEE（SGX/CoCo）硬件 attestation **NOT VERIFIED**（无硬件）；代码提供 LocalIsolatedProvider + ConfidentialProvider interface，trust boundary 明确。
 
-## 最终判定
-```
-unresolved_P0 = 0
-unresolved_mechanism_gaps = 0
-paper_mechanism_closure = PASS
-```
+## 最终判定（已被 Round 7 推翻）
+
+> 本报告原始结论 `paper_mechanism_closure = PASS` 已失效。Round 7 机器验证（`round7_gate.json`）：
+> `paper_closure_gate = FAIL`，56 项检查通过 38、失败 18；未闭合 P0 4 项（见 `final_mechanism_closure_v3.json`）。

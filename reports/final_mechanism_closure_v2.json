@@ -1,4 +1,6 @@
 {
+  "_status": "SUPERSEDED",
+  "_superseded_note": "本 v2 报告（HEAD d06e5f1，285 passed）已被 Round 7 机器验证取代。当前权威状态见 reports/verification/final_mechanism_closure_v3.json 与 reports/verification/round7_gate.json：paper_closure_gate = FAIL（56 项中 38 通过、18 失败），未闭合 P0 4 项。",
   "report": "final_mechanism_closure_v2",
   "head_commit": "d06e5f1",
   "worktree": "clean",

@@ -94,7 +94,7 @@ bash scripts/run-experiments.sh                                          # 一�
 - **P6 离线校准**：受控 breach injection → 检测 TP/FN → Beta 下界 `p̲_B^sys` 冻结；似然由检测敏感度/误报派生。
 - **P7 Seller Bond IC 对账**：输出 `constraint_lhs/rhs/slack`，`slack≥−tol` 才 PASS。
 - **P8 MoneyLedger**：语义化资金事件（payer/recipient/trigger 白名单），退款用实际锁定 escrow 而非 price=0。
-- **P11 FullChainGate**：G1–G33 论文闭合门，全部 PASS 才输出 `Paper Closure Gate = PASS`。
+- **P11 FullChainGate**：MFC-G01..G50 论文闭合门（56 项检查），全部 PASS 才输出 `Paper Closure Gate = PASS`；当前实际为 **FAIL**（38/56）。
 
 ### 使用（CLI）
 ```bash
@@ -160,7 +160,7 @@ res = orch.run()   # COMMIT_CHALLENGE 审计，披露受限，FullChainGate 可 
   卖方只提交承诺 H(D) + 聚合摘要 + 零星被挑战行。
 - **披露预算**：`DisclosureState` 统计 `L_t = |∪Opened|`，超限 fail closed。
 - **验收**：`PP-AUDIT-G01..G12` 全 PASS（`tests/privacy_audit/test_gate_full.py`）。
-- **实测**：MNIST 3000 候选，披露 4.1%，VCG 119 进 MC_A^pay，FullChainGate PASS (33/33)。
+- **实测**：MNIST 3000 候选，披露 4.1%，VCG 119 进 MC_A^pay；FullChainGate 旧版示例值为 33/33，当前 56 项 `MFC-G01..G50` 为 **FAIL（38/56）**。
 - 详见 `docs/PRIVATE_AUDIT_ZK.md`。
 
 ## 实验框架（Experiment Framework，`valor/experiments/`）
@@ -204,6 +204,9 @@ python scripts/experiment_framework_demo.py   # 2 seeds × 2 methods 真实 pair
 
 > 以下是一次真实 MNIST 完整交易（`CapstoneScenario` 默认场景）逐步执行与求值记录，
 > 对应 `runs/<run_id>/` 下 `report.json` / `transaction_trace.jsonl` / `manifest.json`。
+> ⚠️ **示例性说明**：本表数值为演示用途的示例记录（对应 run 已不在工作区），
+> 其中「FullChainGate = PASS」为旧版 33 项 gate 的示例值。当前 56 项 `MFC-G01..G50`
+> 论文闭合门实际为 **FAIL（38/56）**，权威状态见上方「验证/闭环状态」小节与 `reports/verification/round7_gate.json`。
 > **场景冻结**：MNIST（60000×784，10 类），五角色划分
 > `historical 25% / buyer_base 20% / seller_candidate 5% / transaction_eval 10% / FinalEvaluation 40%`，
 > 训练器 `MNISTMLP(784→128→64→10, epochs=3, lr=1e-3)`，部署规模 `N_b = 100,000`，
@@ -242,7 +245,7 @@ python scripts/experiment_framework_demo.py   # 2 seeds × 2 methods 真实 pair
 decision = TRADE
 clearing_price (P*) = 307.86 CU
 terminal_state = TRADE
-FullChainGate = PASS (33/33)   # Paper Closure Gate = PASS
+FullChainGate = FAIL (38/56)   # Paper Closure Gate = FAIL（示例值；旧 33/33 已废弃）
 ```
 
 ### 可复现性（manifest.json 冻结）

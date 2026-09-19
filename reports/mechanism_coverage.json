@@ -1,4 +1,6 @@
 {
+  "_status": "SUPERSEDED",
+  "_superseded_note": "本文件为早期手工编写的覆盖矩阵，未由机器生成（tests 均为空、gate 均为空），且 dominance/no-arbitrage/retention 等条目 independent_reconciliation=false 却标记为 IMPLEMENTED，与 IMPLEMENTED 须独立复算的定义自相矛盾。当前权威覆盖状态见 reports/verification/mechanism_coverage.json 与 reports/verification/round7_coverage.json：强制覆盖度为 PARTIAL（10 个强制模块 PARTIAL），并非 44/44 IMPLEMENTED。",
   "doc_version": "VALOR_可实施原型系统_完整数学代码闭环与开发规范.md",
   "head_commit": "WORKING TREE (VALOR-v1)",
   "status_legend": {

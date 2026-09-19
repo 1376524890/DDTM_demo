@@ -10,7 +10,9 @@ Entitlement → QualityReference → DistributedQualityAudit → V̲_{D,R}^{gros
 → Π_A^* → p̲_B^{sys} → B_S^* → (P_τ^{min},P_τ^{max}) → P_τ^* → UsageControl → S_T → Θ_{t+1}
 ```
 
-## 当前进度：Phase 0–8 全部完成 ✅
+## 当前进度
+
+### 功能实现：Phase 0–8 已完成 ✅
 - **Phase 0**：类型/参数治理（Gate phase0 全 PASS）。
 - **Phase 1**：数据管线 + 质量 primitive reference/native + 复现 Gate B（7 primitive 全 PASS）。
 - **Phase 2**：真实分布式质量节点（独立进程 + HTTP）+ Reverse VCG + BFT/liveness。
@@ -20,6 +22,35 @@ Entitlement → QualityReference → DistributedQualityAudit → V̲_{D,R}^{gros
 - **Phase 6**：用途控制（PDP/PEP/PIP/PXP + UsageReceipt）+ 数据流向血缘（hash 链）+ 交付模式。
 - **Phase 7**：状态机（四终态）+ 结算 + 反馈（GroundTruthEligibilityGate）。
 - **Phase 8**：实验/报告 + 全流程交易编排（主链完整数值闭环）。
+
+### 验证/闭环状态：论文数学-代码闭环（paper closure）尚未闭合 ⚠️
+
+> 规范文档标题即「完整数学代码闭环」。功能主链已经跑通，但按冻结规范要求，
+> 机制公式闭合 gate（`MFC-G01..G50`）当前为 **FAIL**，**尚不能宣称论文级数学-代码闭环完成**。
+> 「Phase 0–8 功能实现完成」与「论文数学-代码闭环完成」是两件事，前者已达成，后者仍待收尾。
+> 此前 README 的「Phase 0–8 全部完成」仅指功能实现层面。
+
+Round 7 验证报告（评估 commit `d2537be`，见 `reports/verification/`）：
+
+| 维度 | 状态 | 证据 |
+| --- | --- | --- |
+| 全量测试 | ✅ PASS（361 passed） | `round7_full_pytest.txt` |
+| 变异测试 | ✅ PASS（30/30 killed） | `round7_mutation_report.json` |
+| FORMAL capstone 全链 | ✅ PASS（terminal=TRADE） | `round7_formal_capstone.json` |
+| 机制公式闭合 gate | ❌ FAIL（56 项中 38 通过，18 失败） | `round7_gate.json` |
+| 强制覆盖度 | ⚠️ PARTIAL（10 个强制模块） | `round7_coverage.json` |
+| 逆向 provenance | ⚠️ PARTIAL（1 条必需路径失败，1 个未解析叶子） | `round7_provenance_report.json` |
+| 确定性重放 | ⚠️ PARTIAL（签名语义验证未填） | `round7_replay.json` |
+| 敌对自审计 | ⚠️ PARTIAL（3 条发现） | `round7_hostile_self_audit.md` |
+
+剩余未闭合 P0（4 项，见 `reports/verification/final_mechanism_closure_v3.json`）：
+
+- `RandomnessManifest` 未记录 challenge/sampling/tie-break 随机性引用；
+- `ReplayVerificationArtifact` 签名语义验证未填；
+- 全量逆向 provenance 未接入编排器 artifact 图；
+- 证据驱动覆盖生成器未读取全部报告源。
+
+因此：**功能实现层面已达成 Phase 0–8；论文级「完整数学代码闭环」仍未闭合，需继续收尾。**
 
 ## 真实 MNIST（本地缓存）
 MNIST（60000×784）经 7891 SOCKS5 代理下载至 `data/raw/mnist/`（不入库）。

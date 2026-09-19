@@ -100,12 +100,24 @@ def main() -> None:
         "- `final_eval_accessed_before_decision` legacy parameter retained; G37 now requires `TerminalDecisionArtifact`.\n",
         encoding="utf-8")
 
-    # --- round7_coverage.json ---
+    # --- round7_coverage.json (evidence-driven from full pytest + mutation) ---
+    full_txt = (OUT / "round7_full_pytest.txt").read_text(encoding="utf-8", errors="ignore") if (OUT / "round7_full_pytest.txt").exists() else ""
+    full_ok = " passed," in full_txt and " failed" not in full_txt.split(" passed,")[1][:20] if " passed," in full_txt else False
+    mutation_json = None
+    mut_path = OUT / "round7_mutation_report.json"
+    if mut_path.exists():
+        try:
+            mutation_json = json.loads(mut_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    mutation_ok = bool(mutation_json and mutation_json.get("executed") == mutation_json.get("required") and mutation_json.get("survivors") == 0)
+    partial = 0 if (full_ok and mutation_ok) else 1
     coverage = {
         "evaluated_code_commit": head,
-        "status": "PARTIAL",
-        "mandatory_coverage_PARTIAL": 1,
+        "status": "PARTIAL" if partial else "PASS",
+        "mandatory_coverage_PARTIAL": partial,
         "mandatory_coverage_FAILED": 0,
+        "evidence": {"full_pytest_ok": full_ok, "mutation_ok": mutation_ok},
         "entries": {
             "P0-01_R_cert_multi_profile": {
                 "mechanism_id": "rcert-multi-profile",

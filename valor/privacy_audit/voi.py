@@ -469,6 +469,7 @@ class PrivacyAuditVOIExecutor:
                 "committee": [str(n) for n in res.committee],
                 "evidence_artifact_refs": res.evidence_artifact_refs,
                 "valid_signature_count": res.valid_signature_count,
+                "raw_evidence": res.raw_evidence,
                 "payer": "SELLER",
             })
             if res.status != "CERTIFIED":

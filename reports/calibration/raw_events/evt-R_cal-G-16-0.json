@@ -1,0 +1,73 @@
+{
+  "event_id": "evt-R_cal-G-16-0",
+  "action_profile_hash": "64185ab6b514ff265a194501b380a77094a6ba27c13e2666eb06871244cad118",
+  "state": "G",
+  "outcome": "INCONCLUSIVE",
+  "task_hash": "10925a2c41e854591d97a65e7a88db6ed005a5d80f8cdda6a1cb921e96131c1c",
+  "status": "CERTIFIED",
+  "committee": [
+    "node-0",
+    "node-1",
+    "node-2",
+    "node-3",
+    "node-4",
+    "node-5",
+    "node-6"
+  ],
+  "result_counts": {
+    "INCONCLUSIVE": 7
+  },
+  "source_ref": "rcal://R_cal-G-16-0",
+  "calibration_run_id": "run-R_cal-16-0",
+  "world_id": "R_cal-G-16-0",
+  "world_ground_truth_ref": "seller_honest_authentic_suitable",
+  "role_manifest_hash": "305119bbe8624e84a6c3d9481629ac1c5f612b870ad0ce8d4397343adea050ac",
+  "action_id": "LABEL_DISTRIBUTION_CC_16",
+  "action_profile_hash_full": "64185ab6b514ff265a194501b380a77094a6ba27c13e2666eb06871244cad118",
+  "market_snapshot_hash": "b1bf114c7db573a6c6f0a4297cf0f64cbb6eec41e860de46a1a35f11ee161ece",
+  "quote_hash": "d8af8aecc24635d33c1bd7d0f3362a1201645e84b754790bed979bba1e4b1985",
+  "task_binding_hash": "",
+  "challenge_hash": "ad4db3361ab070108356f87e4543efbd365f65deaac67d6c4673ec33017c0dd4",
+  "evidence_artifact_refs": [
+    "evt-fc70b91cfdb0",
+    "evt-eaa3a0a4e931",
+    "evt-27e777e890d8",
+    "evt-3df38f3e877e",
+    "evt-5547ee019954",
+    "evt-dbdb27752515",
+    "evt-49f18179e957"
+  ],
+  "valid_signature_count": 7,
+  "final_outcome": "INCONCLUSIVE",
+  "disclosure": {
+    "dataset_commitment_hash": "b1420b53e0aa56b53c311c3a4f5b674a5405372130d41c493cb962d99d236408",
+    "revealed_indices": [
+      10,
+      35,
+      40,
+      70,
+      88,
+      94,
+      97,
+      102,
+      127,
+      131,
+      135,
+      141,
+      143,
+      155,
+      157,
+      158
+    ],
+    "total_openings": 16,
+    "total_bytes": 12688,
+    "unique_disclosure": 16,
+    "disclosure_fraction": 0.1,
+    "max_unique_rows": 300,
+    "max_fraction": 1.0,
+    "max_bytes": 235200,
+    "n_rows": 160
+  },
+  "execution_runtime_hash": "5c17d8134822b34e1cbd6928111ca10469887ddbfc715b3b8331f57713e069da",
+  "raw_event_artifact_hash": "c8292af62e024b36745728a340d023c0789a696172d60b7640a6506ceba43662"
+}

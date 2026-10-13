@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "cc101fb8-548d-46a2-bbe0-ec8fa0dd4ddc",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/home/gb/DDTM_demo/.archify/architecture-valor-framework-20261013-123451/candidate.json",
+  "output": "/home/gb/DDTM_demo/.archify/architecture-valor-framework-20261013-123451/valor-framework.html",
+  "specification": {
+    "sha256": "a4854854955ef6c67a80f64fa59d5a6c32502ec05ccfc2a4b7e6e9a6024f9998",
+    "bytes": 12024
+  },
+  "artifact": {
+    "sha256": "d190d74e4b5f53b2ec44a50184432841fe5ab171363b9f0dc830a41dacc01156",
+    "bytes": 785252
+  }
+}

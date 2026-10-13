@@ -1,0 +1,302 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "VALOR 系统框架",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-valor-framework-20261013-123451/valor-framework.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:1376524890/DDTM_demo.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "b2f62a09b016eaa63bd608ed14ce2b61b17b0519"
+    }
+  },
+  "components": [
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "VALOR CLI",
+      "sublabel": "python -m valor",
+      "tag": "必须 --config",
+      "pos": [30, 110],
+      "size": [170, 72],
+      "sources": [{ "path": "valor/cli.py", "line": 39, "label": "transaction run" }]
+    },
+    {
+      "id": "scenario",
+      "type": "backend",
+      "label": "CapstoneScenario",
+      "sublabel": "冻结交易输入",
+      "pos": [280, 110],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/engine/scenario.py", "line": 34, "label": "CapstoneScenario" },
+        { "path": "valor/engine/scenario.py", "line": 244, "label": "scenario_from_config" }
+      ]
+    },
+    {
+      "id": "orchestrator",
+      "type": "backend",
+      "label": "TransactionOrchestrator",
+      "sublabel": "唯一主链编排",
+      "pos": [530, 110],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/engine/orchestrator.py", "line": 67, "label": "class" },
+        { "path": "valor/engine/orchestrator.py", "line": 162, "label": "run()" }
+      ]
+    },
+    {
+      "id": "rights",
+      "type": "security",
+      "label": "权利与合规 Gate",
+      "sublabel": "Entitlement · Compliance",
+      "pos": [800, 110],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/asset/entitlement.py", "line": 15, "label": "Entitled" },
+        { "path": "valor/asset/compliance.py", "line": 15, "label": "Compliant" },
+        { "path": "valor/rights/compatibility.py", "line": 45, "label": "check_compatible" }
+      ]
+    },
+    {
+      "id": "valuation",
+      "type": "backend",
+      "label": "Data-VOI 估值",
+      "sublabel": "Oracle · V̲_gross 下界",
+      "pos": [800, 360],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/valuation/oracle.py", "line": 23, "label": "exact_retraining_utility" },
+        { "path": "valor/valuation/economic_mapping.py", "line": 123, "label": "utility_delta_from_artifact" }
+      ]
+    },
+    {
+      "id": "audit",
+      "type": "backend",
+      "label": "质量基准与审计",
+      "sublabel": "Reverse VCG · quorum",
+      "pos": [530, 360],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/quality/catalog.py", "line": 140, "label": "QualityAlgorithmCatalog" },
+        { "path": "valor/market/reverse_vcg.py", "line": 18, "label": "reverse_vcg_payments" }
+      ]
+    },
+    {
+      "id": "certification",
+      "type": "security",
+      "label": "检测认证",
+      "sublabel": "p̲_B^sys Beta 下界",
+      "pos": [280, 360],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/security/certification.py", "line": 62, "label": "certification_sample_size" },
+        { "path": "valor/engine/calibration.py", "line": 231, "label": "AuditPolicyCertifier" }
+      ]
+    },
+    {
+      "id": "liability",
+      "type": "backend",
+      "label": "责任与抵押",
+      "sublabel": "PreLock · Seller Bond",
+      "pos": [30, 360],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/liability/seller_prelock.py", "line": 13, "label": "seller_prelock" },
+        { "path": "valor/liability/seller_bond.py", "line": 35, "label": "reconcile_seller_bond" },
+        { "path": "valor/liability/buyer_usage_bond.py", "line": 15, "label": "buyer_usage_bond_required" }
+      ]
+    },
+    {
+      "id": "pricing",
+      "type": "backend",
+      "label": "定价与清算",
+      "sublabel": "P_min / P_max / NO_TRADE",
+      "pos": [30, 610],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/pricing/seller_min.py", "line": 10, "label": "seller_min_price" },
+        { "path": "valor/pricing/buyer_max.py", "line": 10, "label": "buyer_max_price" },
+        { "path": "valor/pricing/clearing.py", "line": 34, "label": "clear_trade" }
+      ]
+    },
+    {
+      "id": "settlement",
+      "type": "backend",
+      "label": "状态机与结算",
+      "sublabel": "escrow · MoneyLedger",
+      "pos": [280, 610],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/contract/state_machine.py", "line": 27, "label": "TransactionStateMachine" },
+        { "path": "valor/contract/escrow.py", "line": 13, "label": "EscrowAccounts" },
+        { "path": "valor/core/money.py", "line": 35, "label": "Money" }
+      ]
+    },
+    {
+      "id": "delivery",
+      "type": "backend",
+      "label": "交付与受控执行",
+      "sublabel": "DeliveryReceipt",
+      "pos": [530, 610],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/execution/delivery.py", "line": 70, "label": "deliver" },
+        { "path": "valor/execution/controlled_training.py", "line": 51, "label": "ControlledTrainingRunner" }
+      ]
+    },
+    {
+      "id": "usage",
+      "type": "security",
+      "label": "用途控制",
+      "sublabel": "PDP · PEP · Receipt",
+      "pos": [800, 610],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/usage/pdp.py", "line": 13, "label": "authorize" },
+        { "path": "valor/usage/pep.py", "line": 28, "label": "enforce" },
+        { "path": "valor/usage/receipt.py", "line": 15, "label": "UsageReceipt" }
+      ]
+    },
+    {
+      "id": "feedback",
+      "type": "backend",
+      "label": "反馈闭环",
+      "sublabel": "Eligibility Gate",
+      "pos": [800, 860],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/feedback/eligibility.py", "line": 26, "label": "GroundTruthEligibilityGate" },
+        { "path": "valor/feedback/seller_risk.py", "line": 11, "label": "update_seller_beta" }
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "FullChainGate",
+      "sublabel": "MFC-G01..G50 闭合门",
+      "pos": [530, 860],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/engine/full_chain_gate.py", "line": 107, "label": "FullChainGate" },
+        { "path": "valor/engine/full_chain_gate.py", "line": 153, "label": "run()" }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "RunArtifacts",
+      "sublabel": "runs/<run_id>/",
+      "tag": "manifest·trace·money",
+      "pos": [280, 860],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/engine/artifacts.py", "line": 21, "label": "RunArtifacts" },
+        { "path": "valor/engine/trace.py", "line": 129, "label": "TraceLedger" },
+        { "path": "valor/engine/manifest.py", "line": 28, "label": "RunManifest" }
+      ]
+    },
+    {
+      "id": "calibration",
+      "type": "backend",
+      "label": "离线校准",
+      "sublabel": "valor calibration run",
+      "pos": [530, 235],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/engine/calibration_runner.py", "line": 29, "label": "CalibrationConfig" },
+        { "path": "valor/engine/calibration.py", "line": 52, "label": "ValuationCalibrator" }
+      ]
+    },
+    {
+      "id": "distributed",
+      "type": "cloud",
+      "label": "分布式审计节点",
+      "sublabel": "独立进程 + HTTP",
+      "tag": "BFT m=3f+1",
+      "pos": [530, 485],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/distributed/scheduler.py", "line": 40, "label": "DistributedAuditScheduler" },
+        { "path": "valor/distributed/node_server.py", "line": 26, "label": "create_app" },
+        { "path": "valor/security/bft.py", "line": 16, "label": "bft_committee_size" }
+      ]
+    },
+    {
+      "id": "privacy",
+      "type": "security",
+      "label": "隐私审计",
+      "sublabel": "Commit-Challenge",
+      "tag": "仅持 k 行",
+      "pos": [280, 485],
+      "size": [170, 72],
+      "sources": [
+        { "path": "valor/privacy_audit/verifier.py", "line": 47, "label": "CommitChallengeVerifier" },
+        { "path": "valor/privacy_audit/gate.py", "line": 6, "label": "PrivacyAuditGateResult" }
+      ]
+    }
+  ],
+  "connections": [
+    { "id": "cli-config", "from": "cli", "to": "scenario", "label": "config", "fromSide": "right", "toSide": "left" },
+    { "id": "scenario-freeze", "from": "scenario", "to": "orchestrator", "label": "冻结输入", "fromSide": "right", "toSide": "left" },
+    { "id": "entitlement", "from": "orchestrator", "to": "rights", "label": "Entitlement", "fromSide": "right", "toSide": "left" },
+    { "id": "hard-gate", "from": "rights", "to": "valuation", "label": "硬门通过", "fromSide": "bottom", "toSide": "top" },
+    { "id": "data-voi", "from": "valuation", "to": "audit", "label": "V̲_gross", "fromSide": "left", "toSide": "right" },
+    { "id": "audit-evidence", "from": "audit", "to": "certification", "label": "evidence", "fromSide": "left", "toSide": "right" },
+    { "id": "certified-bound", "from": "certification", "to": "liability", "label": "p̲_B^sys", "fromSide": "left", "toSide": "right" },
+    { "id": "seller-bond", "from": "liability", "to": "pricing", "label": "B_S^*", "fromSide": "bottom", "toSide": "top" },
+    { "id": "price", "from": "pricing", "to": "settlement", "label": "P_τ^*", "fromSide": "right", "toSide": "left" },
+    { "id": "settle", "from": "settlement", "to": "delivery", "label": "S_T", "fromSide": "right", "toSide": "left" },
+    { "id": "usage-control", "from": "delivery", "to": "usage", "label": "UsageControl", "fromSide": "right", "toSide": "left" },
+    { "id": "receipt", "from": "usage", "to": "feedback", "label": "receipt", "fromSide": "bottom", "toSide": "top" },
+    { "id": "state-update", "from": "feedback", "to": "gate", "label": "Θ_{t+1}", "fromSide": "left", "toSide": "right" },
+    { "id": "run-artifacts", "from": "gate", "to": "store", "label": "闭合校验", "fromSide": "left", "toSide": "right" },
+    { "id": "calibration-bundle", "from": "calibration", "to": "audit", "label": "冻结 bundle", "fromSide": "bottom", "toSide": "top" },
+    { "id": "calibration-residual", "from": "calibration", "to": "valuation", "label": "V̲ 残差", "fromSide": "right", "toSide": "left" },
+    { "id": "dispatch-nodes", "from": "audit", "to": "distributed", "label": "派发 ⇄ 证据回传", "fromSide": "bottom", "toSide": "top" },
+    { "id": "privacy-commit", "from": "privacy", "to": "audit", "label": "Commit-Challenge" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "入口与编排",
+      "items": [
+        "业务命令强制 --config，缺失即失败（fail-closed）",
+        "config → CapstoneScenario → TransactionOrchestrator 单主链",
+        "各阶段顺序执行，逐阶段落盘 artifact"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "机制主链（规范 §1）",
+      "items": [
+        "Entitlement → QualityReference → DistributedQualityAudit",
+        "→ V̲_gross → Π_A^* → p̲_B^sys → B_S^*",
+        "→ (P_τ^min,P_τ^max) → P_τ^* → UsageControl → S_T → Θ_{t+1}"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "审计与安全",
+      "items": [
+        "Reverse VCG 委员会 + quorum-by-result（#{i:Y_i=y^*}≥q）",
+        "BFT：m=3f+1、q=2f+1；离线节点从备用池替换",
+        "隐私审计仅持 k 行，auditor 不接触全量数据",
+        "检测认证由 breach injection 的 TP/FN 冻结 Beta 下界"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "数据与复现",
+      "items": [
+        "MNIST 经 DatasetAdapter / TrainerAdapter 注入（data/raw，gitignored）",
+        "RunManifest 冻结 commit / config / dataset / seed",
+        "TraceLedger：H_i = H(H_{i-1} ∥ Canonical(Event_i))",
+        "tx_id 由冻结 scenario 派生，支持确定性重放"
+      ]
+    }
+  ]
+}
